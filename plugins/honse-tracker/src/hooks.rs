@@ -31,6 +31,7 @@ extern "C" fn on_shutdown(_event_id: u32, _data: *const c_void, _userdata: *mut 
     crate::memory_reader::stop_tracking();
     crate::overlay_cache::shutdown();
     crate::shop_hooks::uninstall_shop_hooks();
+    crate::command_hooks::uninstall();
     hachimi_telemetry::shutdown();
     hlog_info!("Shutdown: tracking stopped, hooks removed");
 }

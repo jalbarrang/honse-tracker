@@ -47,6 +47,10 @@
 pub mod compat;
 
 mod il2cpp;
+mod command_hooks;
+pub mod read_gate;
+
+pub use read_gate::{read_gate, ReadState};
 
 #[allow(dead_code)]
 mod bond_progress;

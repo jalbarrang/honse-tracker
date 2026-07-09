@@ -125,8 +125,12 @@ fn reads_suspended() -> bool {
 
 /// Combined gate: skip a refresh whenever the Single Mode objects may be unstable
 /// (mid view-transition, or a career command sequence is in flight).
+///
+/// Routes through [`crate::read_gate`] so the hiker property test constrains the
+/// real decision point (not a lookalike). Depth is 0/1 from the deadline flag —
+/// same open/closed semantics as the fork's suspend/resume bracketing.
 fn reads_unsafe() -> bool {
-    in_view_transition() || reads_suspended()
+    !crate::read_gate::reads_permitted(in_view_transition(), i64::from(reads_suspended()))
 }
 
 pub(crate) fn character_ready() -> bool {

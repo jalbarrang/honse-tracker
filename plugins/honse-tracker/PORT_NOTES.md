@@ -68,3 +68,11 @@ Provider codes: `1` = edge-sdk, `2` = honse-services, `3` = local/shim (egui re-
 ## Fixtures (t-002)
 
 - Copied fork `veterans/*.json` → `plugins/honse-tracker/veterans/` and updated `evaluation::tests::validated_runners_match_exactly` path from `{manifest}/../../veterans` to `{manifest}/veterans` (layout adaptation only).
+
+## Command hooks (t-003)
+
+- Ported fork `SingleModeMainViewController.rs` → `src/command_hooks.rs` (four hooks only; STOP not hit).
+- ABI: `SendCommandAsync` / `CommonSendCommandAsync` return `*mut Il2CppObject` and forward trampoline return.
+- **Dropped** `event::TRAINING_COMMAND` dispatch from `SendCommandAsync` — no subscribers in tracker or secondary plugins.
+- `read_gate` / `ReadState` in `src/read_gate.rs`; `overlay_cache::reads_unsafe` routes through `reads_permitted`.
+- Install ordering wired in t-004 (`command_hooks::install` from game-initialized path).
