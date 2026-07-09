@@ -1,0 +1,26 @@
+[package]
+name = "race-hud"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Live per-runner heads-up display during races"
+
+[lib]
+name = "race_hud"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+edge-sdk = { path = "../../crates/edge-sdk" }
+honse-services = { path = "../../crates/honse-services" }
+honse_ui = { path = "../../crates/honse-ui" }
+hachimi_telemetry = { package = "honse-telemetry", path = "../../crates/honse-telemetry" }
+egui = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+base64 = "0.22"
+flate2 = "1"
+
+[lints]
+workspace = true

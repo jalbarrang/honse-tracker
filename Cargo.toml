@@ -8,6 +8,7 @@ members = [
     "plugins/hello-edge",
     "plugins/honse-tracker",
     "plugins/debug-viewer",
+    "plugins/race-hud",
 ]
 
 [workspace.package]

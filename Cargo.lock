@@ -1187,6 +1187,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
+name = "race-hud"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "edge-sdk",
+ "egui",
+ "flate2",
+ "honse-services",
+ "honse-telemetry",
+ "honse_ui",
+ "log",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rand"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
