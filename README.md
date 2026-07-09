@@ -5,22 +5,22 @@ Plugins for [Hachimi-Edge](https://github.com/kairusds/Hachimi-Edge) that add tr
 | Plugin | DLL | Role |
 | --- | --- | --- |
 | **honse-tracker** | `honse_tracker.dll` | Training tracker overlay and analytics (career panels, recommendations, skill shop helpers). |
-| **race-hud** | `race_hud.dll` | Live per-runner heads-up display during races. |
-| **debug-viewer** | `debug_viewer.dll` | Development-only view-transition / debug feed (off unless you load it). |
+| **honse-race-hud** | `honse_race_hud.dll` | Live per-runner heads-up display during races. |
+| **honse-debug** | `honse_debug.dll` | Development-only view-transition / debug feed (off unless you load it). |
 
 ## Installation
 
 1. Install Hachimi-Edge from [`https://github.com/kairusds/Hachimi-Edge/releases/latest`](https://github.com/kairusds/Hachimi-Edge/releases/latest).
 2. Download the three plugin DLLs from this repo's [`releases/latest`](https://github.com/jalbarrang/honse-tracker/releases/latest).
-3. Place `honse_tracker.dll`, `race_hud.dll`, and (optionally) `debug_viewer.dll` in the Honse game folder root — the same directory as the game executable.
+3. Place `honse_tracker.dll`, `honse_race_hud.dll`, and (optionally) `honse_debug.dll` in the Honse game folder root — the same directory as the game executable.
 4. Open `hachimi/config.json` in that folder and add the DLLs to `load_libraries`:
 
 ```json
 {
   "load_libraries": [
     "honse_tracker.dll",
-    "race_hud.dll",
-    "debug_viewer.dll"
+    "honse_race_hud.dll",
+    "honse_debug.dll"
   ]
 }
 ```
@@ -28,7 +28,7 @@ Plugins for [Hachimi-Edge](https://github.com/kairusds/Hachimi-Edge) that add tr
 5. Launch the Honse game once. Edge auto-creates plugin configs under the `hachimi/` data directory (same folder as `config.json`):
    - `hachimi/honseTrackerConfig.json` — tracker settings + optional hosted-data URL overrides
    - `hachimi/raceHudConfig.json` — which race-HUD metrics are shown
-   - (debug-viewer has no persisted config)
+   - (honse-debug has no persisted config)
 
 ## Configuration
 
@@ -84,7 +84,7 @@ Flattened tracker fields plus optional `hosted_data` URL overrides. Defaults mat
 
 Enum string values (`objective`, `strategy`, ground/weather/season/time) follow the serde names of the Rust enums; if a field is missing, defaults apply.
 
-### race-hud (`raceHudConfig.json`)
+### honse-race-hud (`raceHudConfig.json`)
 
 ```json
 {
@@ -114,7 +114,7 @@ These URLs are load-bearing for every deployed plugin. Renaming the data repo, t
 cargo build --release
 ```
 
-Artifacts land at `target/release/honse_tracker.dll`, `race_hud.dll`, and `debug_viewer.dll` (on Windows).
+Artifacts land at `target/release/honse_tracker.dll`, `honse_race_hud.dll`, and `honse_debug.dll` (on Windows).
 
 ### Deploy
 

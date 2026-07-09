@@ -224,17 +224,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "debug-viewer"
-version = "0.1.0"
-dependencies = [
- "edge-sdk",
- "egui",
- "honse-services",
- "honse_ui",
- "log",
-]
-
-[[package]]
 name = "displaydoc"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -517,6 +506,33 @@ name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+
+[[package]]
+name = "honse-debug"
+version = "0.1.0"
+dependencies = [
+ "edge-sdk",
+ "egui",
+ "honse-services",
+ "honse_ui",
+ "log",
+]
+
+[[package]]
+name = "honse-race-hud"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "edge-sdk",
+ "egui",
+ "flate2",
+ "honse-services",
+ "honse-telemetry",
+ "honse_ui",
+ "log",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "honse-services"
@@ -1178,22 +1194,6 @@ name = "r-efi"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
-
-[[package]]
-name = "race-hud"
-version = "0.1.0"
-dependencies = [
- "base64",
- "edge-sdk",
- "egui",
- "flate2",
- "honse-services",
- "honse-telemetry",
- "honse_ui",
- "log",
- "serde",
- "serde_json",
-]
 
 [[package]]
 name = "rand"

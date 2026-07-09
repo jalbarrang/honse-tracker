@@ -145,7 +145,7 @@ message CareerExtras {
 
 // ---------------------------------------------------------------------------
 // Race live frame (race-hud, ~100ms cadence)
-// Mirrors plugins/race-hud/src/state.rs::{LiveSnapshot, RunnerRow}
+// Mirrors plugins/honse-race-hud/src/state.rs::{LiveSnapshot, RunnerRow}
 // ---------------------------------------------------------------------------
 
 message RunnerRow {
@@ -170,7 +170,7 @@ message RaceLiveFrame {
 
 // ---------------------------------------------------------------------------
 // Full decoded race (race-hud, one-shot on capture)
-// Mirrors plugins/race-hud/src/sim.rs::{RaceSummary, FrameData, RunnerSampleRaw}
+// Mirrors plugins/honse-race-hud/src/sim.rs::{RaceSummary, FrameData, RunnerSampleRaw}
 // ---------------------------------------------------------------------------
 
 message RaceSummary {

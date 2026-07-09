@@ -5,8 +5,8 @@
 .DESCRIPTION
     Copies only the three Edge plugin DLLs into the game folder root:
       - target\release\honse_tracker.dll
-      - target\release\race_hud.dll
-      - target\release\debug_viewer.dll
+      - target\release\honse_race_hud.dll
+      - target\release\honse_debug.dll
 
     Does NOT deploy a core/proxy DLL (cri_mana_vpx.dll is Edge's job).
     Does NOT hot-swap or talk IPC — restart the Honse game to reload plugins.
@@ -49,8 +49,8 @@ $TargetDir = Join-Path $RepoRoot "target\release"
 
 $Plugins = @(
     @{ Name = "honse_tracker.dll"; Hint = "cargo build --release -p honse-tracker" },
-    @{ Name = "race_hud.dll";      Hint = "cargo build --release -p race-hud" },
-    @{ Name = "debug_viewer.dll";  Hint = "cargo build --release -p debug-viewer" }
+    @{ Name = "honse_race_hud.dll"; Hint = "cargo build --release -p honse-race-hud" },
+    @{ Name = "honse_debug.dll";     Hint = "cargo build --release -p honse-debug" }
 )
 
 function Show-ConfigHint {
@@ -60,8 +60,8 @@ function Show-ConfigHint {
 {
   "load_libraries": [
     "honse_tracker.dll",
-    "race_hud.dll",
-    "debug_viewer.dll"
+    "honse_race_hud.dll",
+    "honse_debug.dll"
   ]
 }
 '@

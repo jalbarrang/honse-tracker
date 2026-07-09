@@ -55,8 +55,8 @@ jobs:
           $ErrorActionPreference = "Stop"
           $dlls = @(
             "target/release/honse_tracker.dll",
-            "target/release/race_hud.dll",
-            "target/release/debug_viewer.dll"
+            "target/release/honse_race_hud.dll",
+            "target/release/honse_debug.dll"
           )
 
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
