@@ -14,7 +14,7 @@ use edge_sdk::Sdk;
 
 use super::{
     cache::{is_safe_filename, is_safe_relpath, CacheManifest},
-    client::{self, Fetcher, FetchError, UreqFetcher},
+    client::{self, FetchError, Fetcher, UreqFetcher},
     DataSet,
 };
 
@@ -86,14 +86,10 @@ impl Updater {
         let set = self.set;
         let log_target = set.log_target;
 
-        let base = self
-            .url_override
-            .as_deref()
-            .unwrap_or(set.default_url);
+        let base = self.url_override.as_deref().unwrap_or(set.default_url);
 
-        let data_dir = resolve_data_dir(set.subdir).ok_or_else(|| {
-            FetchError::Io("host data path unavailable (Sdk not initialized?)".into())
-        })?;
+        let data_dir = resolve_data_dir(set.subdir)
+            .ok_or_else(|| FetchError::Io("host data path unavailable (Sdk not initialized?)".into()))?;
         let cache_path = data_dir.join(set.cache_filename);
 
         let mut cache: CacheManifest = if fs::metadata(&cache_path).is_ok() {
@@ -207,12 +203,7 @@ fn write_json_atomic(path: &Path, value: &impl serde::Serialize) -> Result<(), F
 
 /// Test-only sync against an explicit data directory (no Sdk required).
 #[cfg(test)]
-pub fn sync_to_dir(
-    set: &DataSet,
-    data_dir: &Path,
-    base_url: &str,
-    fetcher: &dyn Fetcher,
-) -> Result<usize, FetchError> {
+pub fn sync_to_dir(set: &DataSet, data_dir: &Path, base_url: &str, fetcher: &dyn Fetcher) -> Result<usize, FetchError> {
     let cache_path = data_dir.join(set.cache_filename);
     let mut cache: CacheManifest = if cache_path.is_file() {
         serde_json::from_str(&fs::read_to_string(&cache_path).map_err(|e| FetchError::Io(e.to_string()))?)
@@ -292,10 +283,10 @@ mod tests {
         cache.files.insert("b.json".into(), "hash_b_old".into());
 
         let remote = vec![
-            ("a.json".into(), "hash_a".into()),       // unchanged + exists → skip
-            ("b.json".into(), "hash_b_new".into()),   // changed → fetch
-            ("c.json".into(), "hash_c".into()),       // missing from cache → fetch
-            ("d.json".into(), "hash_d".into()),       // cached but file missing → fetch
+            ("a.json".into(), "hash_a".into()),     // unchanged + exists → skip
+            ("b.json".into(), "hash_b_new".into()), // changed → fetch
+            ("c.json".into(), "hash_c".into()),     // missing from cache → fetch
+            ("d.json".into(), "hash_d".into()),     // cached but file missing → fetch
         ];
         let mut cache2 = cache.clone();
         cache2.files.insert("d.json".into(), "hash_d".into());
@@ -314,9 +305,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let body = br#"{"ok":true}"#;
         let hash = blake3::hash(body).to_hex().to_string();
-        let manifest = format!(
-            r#"{{"generated_at":"t","source":"test","files":{{"skills.json":"{hash}"}}}}"#
-        );
+        let manifest = format!(r#"{{"generated_at":"t","source":"test","files":{{"skills.json":"{hash}"}}}}"#);
         let base = "mem://data";
         let mut map = HashMap::new();
         map.insert(format!("{base}/manifest.json"), manifest.into_bytes());

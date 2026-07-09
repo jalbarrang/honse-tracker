@@ -3,6 +3,7 @@
 //! Layering: this crate depends on `edge-sdk`. `edge-sdk` must never depend on
 //! this crate (hiker law `sdk_depends_on_services`).
 
+pub mod config;
 pub mod event;
 pub mod events;
 pub mod frame;
@@ -13,6 +14,7 @@ pub mod scene_views;
 pub mod surface;
 pub mod view_hook;
 
+pub use config::{HostedDataUrls, PluginConfig};
 pub use event::{EventFn, ViewChangeEvent, FRAME, SHUTDOWN, VIEW_CHANGE};
 pub use events::{dispatch, dispatch_shutdown, dispatch_view_change, off, on};
 pub use frame::{install_frame_source, register_frame_job, FrameJob};
@@ -30,6 +32,11 @@ pub use view_hook::install_view_hook;
 /// Unregister a handle from hotkeys and/or surface registries (shared handle space).
 pub fn unregister(handle: u64) -> bool {
     hotkeys::unregister(handle)
+}
+
+/// Sync all hosted-data sets using URL overrides from a [`HostedDataUrls`] config block.
+pub fn sync_all_from_config(urls: &HostedDataUrls, notify: bool) {
+    sync_all(urls.as_overrides(), notify);
 }
 
 use std::sync::atomic::{AtomicU64, Ordering};

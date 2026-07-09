@@ -367,11 +367,7 @@ impl Sdk {
     ///
     /// `callback` and `userdata` must remain valid for the process lifetime —
     /// edge stores them without reclaiming.
-    pub fn register_present_callback(
-        &self,
-        callback: crate::ffi::PresentCallback,
-        userdata: *mut c_void,
-    ) -> bool {
+    pub fn register_present_callback(&self, callback: crate::ffi::PresentCallback, userdata: *mut c_void) -> bool {
         let api = Api::get();
         let Some(f) = api.hachimi_register_present_callback else {
             return false;

@@ -145,17 +145,13 @@ pub fn install_view_hook() {
 
     match (addr7, addr5) {
         (Some(a7), Some(_)) => {
-            log::warn!(
-                "honse-services: both ChangeView overloads (7 and 5) resolved; hooking 7-arg (JP) form"
-            );
+            log::warn!("honse-services: both ChangeView overloads (7 and 5) resolved; hooking 7-arg (JP) form");
             install_jp(sdk, a7);
         }
         (Some(a7), None) => install_jp(sdk, a7),
         (None, Some(a5)) => install_other(sdk, a5),
         (None, None) => {
-            log::error!(
-                "honse-services: neither ChangeView overload (7 nor 5) resolved; continuing without view hook"
-            );
+            log::error!("honse-services: neither ChangeView overload (7 nor 5) resolved; continuing without view hook");
         }
     }
 }
