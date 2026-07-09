@@ -1,0 +1,23 @@
+# =============================================================================
+# Rustfmt Configuration — HachimiRedux
+# Enforces consistent formatting across human and AI-authored code.
+# =============================================================================
+
+edition = "2021"
+max_width = 120
+tab_spaces = 4
+
+# Shorthand forms — idiomatic Rust
+use_field_init_shorthand = true
+use_try_shorthand = true
+
+# Import organization — prevents AI from scattering imports randomly
+imports_granularity = "Crate"
+group_imports = "StdExternalCrate"
+
+# Force trailing commas — better git diffs, AI often forgets these
+# match_arm_leading_pipes = "Always"  # nightly only
+
+# Formatting choices
+newline_style = "Auto"
+fn_params_layout = "Tall"

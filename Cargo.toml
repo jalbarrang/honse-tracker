@@ -1,0 +1,42 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/edge-sdk",
+    "plugins/hello-edge",
+]
+
+[workspace.package]
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+[workspace.dependencies]
+# must match hachimi-edge Cargo.lock
+egui = { version = "=0.33.3", default-features = false, features = ["serde"] }
+egui_extras = { version = "=0.33.3", default-features = false, features = ["image"] }
+egui_taffy = "=0.10.0"
+log = "0.4"
+once_cell = "1.19"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+parking_lot = "0.12"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+non_ascii_idents = "deny"
+
+[workspace.lints.clippy]
+correctness = { level = "deny", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+complexity = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+undocumented_unsafe_blocks = "warn"
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+doc_markdown = "allow"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

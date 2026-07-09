@@ -1,0 +1,35 @@
+// Extraction invariants for the honse-tracker plugin workspace.
+
+// ── 1. Compat surface partition ──
+// Every method of the fork's compat Sdk surface is provided by exactly one
+// crate. provider: 1 = edge-sdk, 2 = honse-services, 3 = plugin-local.
+sort Method
+sort Assignment { method: Method, provider: Int }
+
+relation unique_provider(a: Assignment, b: Assignment)
+law unique_provider(a, b) {
+  a.method == b.method => a.provider == b.provider
+}
+
+relation assigned(a: Assignment)
+law assigned(a) {
+  a.provider >= 1
+  a.provider <= 3
+}
+
+// ── 2. Crash-safety read gate ──
+// IL2CPP reads permitted only when BOTH independent gates are open:
+// view-transition cooldown AND command-submit suspension.
+sort ReadState { view_cooldown_active: Int, command_suspend_depth: Int, permitted: Int }
+
+relation read_gate(s: ReadState)
+law read_gate(s) {
+  s.permitted == 1 => s.view_cooldown_active == 0
+  s.permitted == 1 => s.command_suspend_depth == 0
+}
+
+// ── 3. Layering / lockstep (structural; enforced via verify facts) ──
+sort Crate
+forbidden relation sdk_depends_on_services(c: Crate)
+forbidden relation git_sourced_egui(c: Crate)
+forbidden relation fork_abi_import(c: Crate)

@@ -1,0 +1,18 @@
+[package]
+name = "edge-sdk"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "edge_sdk"
+path = "src/lib.rs"
+
+[dependencies]
+egui = { workspace = true }
+log = { workspace = true }
+once_cell = { workspace = true }
+parking_lot = { workspace = true }
+
+[lints]
+workspace = true
