@@ -117,7 +117,7 @@ pub(super) fn panel_frame() -> egui::Frame {
         .inner_margin(egui::Margin::same(PANEL_INNER_MARGIN as i8))
         .corner_radius(egui::CornerRadius::same(12))
         .fill(egui::Color32::from_rgb(0x12, 0x16, 0x1f))
-        .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(0x2c, 0x36, 0x48)))
+        .stroke(egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(0x2c, 0x36, 0x48)))
 }
 
 /// Transparent variant of [`panel_frame`]: keeps the inner margin (so layout and

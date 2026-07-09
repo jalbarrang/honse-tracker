@@ -158,7 +158,7 @@ pub fn icon_toggle(
         ui.painter().rect_stroke(
             rect.expand(1.0),
             4.0,
-            egui::Stroke::new(1.5, ui.visuals().selection.stroke.color),
+            egui::Stroke::new(1.5_f32, ui.visuals().selection.stroke.color),
             egui::StrokeKind::Outside,
         );
     }

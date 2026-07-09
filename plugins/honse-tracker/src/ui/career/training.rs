@@ -51,11 +51,11 @@ fn grid_6col() -> taffy::Style {
         flex_grow: 1.0,
         grid_template_columns: vec![
             length(dimens::z(dimens::STAT_LABEL_COL)),
-            fr(1.),
-            fr(1.),
-            fr(1.),
-            fr(1.),
-            fr(1.),
+            fr(1.0_f32),
+            fr(1.0_f32),
+            fr(1.0_f32),
+            fr(1.0_f32),
+            fr(1.0_f32),
         ],
         gap: taffy::Size {
             width: length(dimens::z(dimens::GAP_MD)),
@@ -93,7 +93,7 @@ fn card_background(ui: &mut egui::Ui, container: &TaffyContainerUi) {
     ui.painter().rect_stroke(
         rect,
         CornerRadius::same(8),
-        Stroke::new(1.0, theme::LINE),
+        Stroke::new(1.0_f32, theme::LINE),
         StrokeKind::Inside,
     );
 }

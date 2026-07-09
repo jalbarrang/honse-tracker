@@ -125,7 +125,7 @@ fn bond_row(ui: &mut egui::Ui, idx: usize, row: &BondRow, w: f32, font: f32, chi
     let pad_x = dimens::z(dimens::GAP_SM);
     let pad_y = dimens::z(dimens::GAP_XS);
     let border = if row.rainbow { C_RAINBOW } else { theme::LINE };
-    let border_w = if row.rainbow { 1.5 } else { 1.0 };
+    let border_w = if row.rainbow { 1.5_f32 } else { 1.0_f32 };
 
     egui::Frame::new()
         .inner_margin(egui::Margin::symmetric(pad_x as i8, pad_y as i8))
@@ -229,7 +229,7 @@ fn flex_row(ui: &mut egui::Ui, id: egui::Id, width: f32, f: impl FnOnce(&mut egu
             align_items: Some(taffy::AlignItems::Center),
             gap: taffy::Size {
                 width: length(dimens::z(dimens::GAP_MD)),
-                height: length(0.0),
+                height: length(0.0_f32),
             },
             size: taffy::Size {
                 width: length(width),

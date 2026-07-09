@@ -161,7 +161,7 @@ fn shop_row(ui: &mut egui::Ui, idx: usize, w: f32, entry: &skill_shop::SkillShop
             align_items: Some(taffy::AlignItems::Center),
             gap: taffy::Size {
                 width: length(dimens::z(dimens::GAP_SM)),
-                height: length(0.0),
+                height: length(0.0_f32),
             },
             size: taffy::Size {
                 width: length(w),
@@ -178,7 +178,7 @@ fn shop_row(ui: &mut egui::Ui, idx: usize, w: f32, entry: &skill_shop::SkillShop
                 align_items: Some(taffy::AlignItems::Center),
                 justify_content: Some(taffy::JustifyContent::Start),
                 min_size: taffy::Size {
-                    width: length(0.0),
+                    width: length(0.0_f32),
                     height: auto(),
                 },
                 ..Default::default()

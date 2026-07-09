@@ -57,7 +57,7 @@ fn skill_card(ui: &mut egui::Ui, idx: usize, master_id: i32, level: i32, name: &
         })
         .corner_radius(CornerRadius::same(8))
         .fill(theme::SURFACE_2)
-        .stroke(Stroke::new(1.0, theme::LINE))
+        .stroke(Stroke::new(1.0_f32, theme::LINE))
         .show(ui, |ui| {
             let inner = (w - dimens::z(dimens::SKILL_CARD_MARGIN)).max(40.0);
             ui.set_width(inner);
@@ -70,7 +70,7 @@ fn skill_card(ui: &mut egui::Ui, idx: usize, master_id: i32, level: i32, name: &
                     align_items: Some(taffy::AlignItems::Center),
                     gap: taffy::Size {
                         width: length(dimens::z(dimens::GAP_MD)),
-                        height: length(0.0),
+                        height: length(0.0_f32),
                     },
                     size: taffy::Size {
                         width: length(inner),
@@ -164,7 +164,7 @@ fn name_grow() -> taffy::Style {
         align_items: Some(taffy::AlignItems::Center),
         justify_content: Some(taffy::JustifyContent::Start),
         min_size: taffy::Size {
-            width: length(0.0),
+            width: length(0.0_f32),
             height: auto(),
         },
         ..Default::default()
@@ -254,7 +254,7 @@ fn chip_background(ui: &mut egui::Ui, container: &egui_taffy::TaffyContainerUi, 
     ui.painter().rect_stroke(
         rect,
         CornerRadius::same(8),
-        Stroke::new(1.0, color.gamma_multiply(0.6)),
+        Stroke::new(1.0_f32, color.gamma_multiply(0.6)),
         StrokeKind::Inside,
     );
 }

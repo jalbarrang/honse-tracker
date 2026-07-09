@@ -40,7 +40,7 @@ fn draw_lineup(ui: &mut egui::Ui, items: &[memory_reader::TrackblazerShopItem]) 
     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
     tui(ui, ui.id().with("tb_lineup"))
         .reserve_width(w)
-        .style(grid_style(vec![fr(1.0), fr(1.3), auto(), auto(), auto()], w))
+        .style(grid_style(vec![fr(1.0_f32), fr(1.3_f32), auto(), auto(), auto()], w))
         .show(|tui| {
             for h in ["Item", "Effect", "Price", "Avail", "Worth"] {
                 header_cell(tui, h);
@@ -62,7 +62,7 @@ fn draw_owned(ui: &mut egui::Ui, owned: &[memory_reader::TrackblazerOwnedItem]) 
     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
     tui(ui, ui.id().with("tb_owned"))
         .reserve_width(w)
-        .style(grid_style(vec![fr(1.0), fr(1.2), auto()], w))
+        .style(grid_style(vec![fr(1.0_f32), fr(1.2_f32), auto()], w))
         .show(|tui| {
             for o in owned {
                 let name = if o.name.is_empty() {
@@ -177,7 +177,7 @@ fn cell_style() -> taffy::Style {
         align_items: Some(taffy::AlignItems::Center),
         justify_content: Some(taffy::JustifyContent::Start),
         min_size: taffy::Size {
-            width: length(0.0),
+            width: length(0.0_f32),
             height: auto(),
         },
         ..Default::default()

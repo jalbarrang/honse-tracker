@@ -41,7 +41,7 @@ fn grid_2col(gap: f32, width: f32) -> taffy::Style {
     };
     taffy::Style {
         display: taffy::Display::Grid,
-        grid_template_columns: vec![fr(1.), fr(1.)],
+        grid_template_columns: vec![fr(1.0_f32), fr(1.0_f32)],
         gap: length(gap),
         size,
         max_size: size,
@@ -132,7 +132,7 @@ fn portrait(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     ui.painter().rect_stroke(
         p_rect,
         CornerRadius::same(10),
-        Stroke::new(1.0, theme::LINE),
+        Stroke::new(1.0_f32, theme::LINE),
         StrokeKind::Inside,
     );
 }
@@ -147,7 +147,7 @@ fn rank_badge(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     let center = rect.center();
     let r = badge * 0.5;
     ui.painter().circle_filled(center, r, theme::SURFACE_1);
-    ui.painter().circle_stroke(center, r, Stroke::new(2.0, theme::GOLD));
+    ui.painter().circle_stroke(center, r, Stroke::new(2.0_f32, theme::GOLD));
     let drew = career_meta::rank_label_sprite(label)
         .and_then(|path| textures::texture(ui.ctx(), &path))
         .map(|tex| {
@@ -276,7 +276,7 @@ pub(super) fn rank_standalone(ui: &mut egui::Ui, snap: &CareerSnapshot) {
         let center = rect.center();
         let r = badge * 0.5;
         ui.painter().circle_filled(center, r, theme::SURFACE_1);
-        ui.painter().circle_stroke(center, r, Stroke::new(2.0, theme::GOLD));
+        ui.painter().circle_stroke(center, r, Stroke::new(2.0_f32, theme::GOLD));
         let drew = career_meta::rank_label_sprite(label)
             .and_then(|path| textures::texture(ui.ctx(), &path))
             .map(|tex| {

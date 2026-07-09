@@ -143,7 +143,7 @@ fn menu_item(tui: &mut Tui, content: impl FnOnce(&mut Tui)) {
         align_items: Some(taffy::AlignItems::Center),
         justify_content: Some(taffy::JustifyContent::Start),
         min_size: taffy::Size {
-            width: length(0.0),
+            width: length(0.0_f32),
             height: auto(),
         },
         ..Default::default()
@@ -210,7 +210,7 @@ fn draw_recommendation(ui: &mut egui::Ui) {
     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
     tui(ui, ui.id().with("tt_recommend"))
         .reserve_width(w)
-        .style(menu_grid(vec![fr(1.0), auto()], w))
+        .style(menu_grid(vec![fr(1.0_f32), auto()], w))
         .show(|tui| {
             rec_row(
                 tui,
@@ -339,7 +339,7 @@ fn draw_build_profile(ui: &mut egui::Ui) {
     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
     tui(ui, ui.id().with("tt_profile_controls"))
         .reserve_width(ctrl_w)
-        .style(menu_grid(vec![auto(), fr(1.0), auto(), fr(1.0)], ctrl_w))
+        .style(menu_grid(vec![auto(), fr(1.0_f32), auto(), fr(1.0_f32)], ctrl_w))
         .show(|tui| {
             // Row 1: objective + running style.
             menu_item(tui, |tui| {
@@ -460,7 +460,7 @@ fn draw_build_profile(ui: &mut egui::Ui) {
     ui.small("Targets (0 = game cap) • Weights bias CM scoring per stat");
     let stats_w = menu_width(ui);
     let mut stat_cols: Vec<taffy::TrackSizingFunction> = vec![auto()];
-    stat_cols.extend(build_profile::STAT_LABELS.iter().map(|_| fr(1.0)));
+    stat_cols.extend(build_profile::STAT_LABELS.iter().map(|_| fr(1.0_f32)));
     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
     tui(ui, ui.id().with("tt_profile_stats"))
         .reserve_width(stats_w)

@@ -20,13 +20,13 @@ pub fn pill_button(ui: &mut Ui, text: impl Into<String>, kind: PillButtonKind) -
     let (fill, stroke, text_color) = match kind {
         PillButtonKind::Primary => (
             tokens.accent,
-            Stroke::new(1.0, paint::brighten_toward_white(tokens.accent, 0.22)),
+            Stroke::new(1.0_f32, paint::brighten_toward_white(tokens.accent, 0.22)),
             Color32::WHITE,
         ),
-        PillButtonKind::Secondary => (tokens.surface_2, Stroke::new(1.0, tokens.line), tokens.fg),
+        PillButtonKind::Secondary => (tokens.surface_2, Stroke::new(1.0_f32, tokens.line), tokens.fg),
         PillButtonKind::Danger => (
             tokens.crit,
-            Stroke::new(1.0, tokens.crit.linear_multiply(0.8)),
+            Stroke::new(1.0_f32, tokens.crit.linear_multiply(0.8)),
             Color32::WHITE,
         ),
     };
@@ -56,7 +56,7 @@ pub fn card_frame(_ui: &Ui) -> egui::Frame {
     let tokens = Tokens::DEFAULT;
     egui::Frame::new()
         .fill(tokens.surface_2)
-        .stroke(Stroke::new(1.0, tokens.line))
+        .stroke(Stroke::new(1.0_f32, tokens.line))
         .corner_radius(tokens.radius_card)
         .inner_margin(egui::Margin::symmetric(12, 10))
 }
@@ -64,9 +64,9 @@ pub fn card_frame(_ui: &Ui) -> egui::Frame {
 pub fn row_frame(rainbow: bool) -> egui::Frame {
     let tokens = Tokens::DEFAULT;
     let stroke = if rainbow {
-        Stroke::new(1.5, Color32::from_rgb(0x9a, 0x8c, 0xff))
+        Stroke::new(1.5_f32, Color32::from_rgb(0x9a, 0x8c, 0xff))
     } else {
-        Stroke::new(1.0, tokens.line)
+        Stroke::new(1.0_f32, tokens.line)
     };
     egui::Frame::new()
         .fill(tokens.surface_2)
@@ -79,7 +79,7 @@ pub fn window_chrome(ui: &mut Ui, title: &str, add_body: impl FnOnce(&mut Ui)) {
     let tokens = Tokens::DEFAULT;
     egui::Frame::new()
         .fill(tokens.surface_1)
-        .stroke(Stroke::new(1.0, tokens.line))
+        .stroke(Stroke::new(1.0_f32, tokens.line))
         .corner_radius(tokens.radius_card)
         .inner_margin(egui::Margin::same(8))
         .show(ui, |ui| {
@@ -134,7 +134,7 @@ pub fn pill<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> egui::InnerRespon
         .inner_margin(egui::Margin::symmetric(10, 5))
         .corner_radius(tokens.radius_small)
         .fill(tokens.surface_2)
-        .stroke(Stroke::new(1.0, tokens.line))
+        .stroke(Stroke::new(1.0_f32, tokens.line))
         .show(ui, |ui| ui.horizontal(add).inner)
 }
 
@@ -161,7 +161,7 @@ pub fn stat_chip(ui: &mut Ui, label: &str, value: impl ToString, delta: Option<&
         ui.painter().rect_stroke(
             rect,
             tokens.radius_small,
-            Stroke::new(1.0, tokens.line),
+            Stroke::new(1.0_f32, tokens.line),
             StrokeKind::Inside,
         );
         ui.painter().text(
@@ -199,7 +199,7 @@ pub fn stat_chip_chrome(ui: &mut Ui, facility: usize, size: f32, sprite: Option<
         ui.painter().rect_stroke(
             rect,
             CornerRadius::same(4),
-            Stroke::new(1.0, Color32::from_black_alpha(40)),
+            Stroke::new(1.0_f32, Color32::from_black_alpha(40)),
             StrokeKind::Inside,
         );
         if let Some(texture_id) = sprite {

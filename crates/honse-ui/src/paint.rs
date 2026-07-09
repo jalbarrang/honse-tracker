@@ -58,7 +58,7 @@ pub fn strip_stripes(ui: &Ui, rect: Rect) {
         let alpha = (((x - rect.left()) / rect.width()).clamp(0.0, 1.0) * 36.0) as u8;
         let top = Pos2::new(x + rect.height() * 0.5, rect.top());
         let bot = Pos2::new(x - rect.height() * 0.5, rect.bottom());
-        clip.line_segment([top, bot], Stroke::new(3.0, Color32::from_white_alpha(alpha)));
+        clip.line_segment([top, bot], Stroke::new(3.0_f32, Color32::from_white_alpha(alpha)));
         x += step;
     }
     painter.line_segment(
@@ -66,6 +66,6 @@ pub fn strip_stripes(ui: &Ui, rect: Rect) {
             Pos2::new(rect.left() + 4.0, rect.top() + 1.0),
             Pos2::new(rect.right() - 4.0, rect.top() + 1.0),
         ],
-        Stroke::new(1.0, Color32::from_white_alpha(40)),
+        Stroke::new(1.0_f32, Color32::from_white_alpha(40)),
     );
 }

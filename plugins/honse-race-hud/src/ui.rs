@@ -315,7 +315,7 @@ fn draw_timer(ui: &mut egui::Ui, elapsed: Option<f32>) {
         ui.painter().rect_stroke(
             rect,
             15.0,
-            egui::Stroke::new(1.0, line),
+            egui::Stroke::new(1.0_f32, line),
             egui::epaint::StrokeKind::Inside,
         );
         if live {
@@ -335,7 +335,7 @@ fn draw_timer(ui: &mut egui::Ui, elapsed: Option<f32>) {
 fn panel_frame(ui: &egui::Ui) -> egui::Frame {
     egui::Frame::new()
         .fill(surface_color(ui))
-        .stroke(egui::Stroke::new(1.0, line_color(ui)))
+        .stroke(egui::Stroke::new(1.0_f32, line_color(ui)))
         .corner_radius(8.0)
         .inner_margin(egui::Margin::symmetric(8, 6))
 }

@@ -103,31 +103,31 @@ pub fn apply_style(style: &mut Style, opacity: f32) {
     style.visuals.panel_fill = faded(tokens.surface_1);
     style.visuals.extreme_bg_color = tokens.bg;
     style.visuals.window_corner_radius = tokens.radius_card;
-    style.visuals.window_stroke = Stroke::new(1.0, tokens.line);
+    style.visuals.window_stroke = Stroke::new(1.0_f32, tokens.line);
 
-    style.visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0, tokens.fg);
+    style.visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, tokens.fg);
 
     style.visuals.widgets.inactive.weak_bg_fill = faded(tokens.surface_2);
     style.visuals.widgets.inactive.bg_fill = faded(tokens.surface_2);
-    style.visuals.widgets.inactive.bg_stroke = Stroke::new(1.0, tokens.line);
-    style.visuals.widgets.inactive.fg_stroke = Stroke::new(1.0, tokens.fg_dim);
+    style.visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, tokens.line);
+    style.visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, tokens.fg_dim);
     style.visuals.widgets.inactive.corner_radius = tokens.radius_small;
 
     style.visuals.widgets.hovered.weak_bg_fill = faded(tokens.surface_3);
     style.visuals.widgets.hovered.bg_fill = faded(tokens.surface_3);
-    style.visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, tokens.accent.linear_multiply(0.75));
-    style.visuals.widgets.hovered.fg_stroke = Stroke::new(1.0, tokens.fg);
+    style.visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, tokens.accent.linear_multiply(0.75));
+    style.visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, tokens.fg);
     style.visuals.widgets.hovered.corner_radius = tokens.radius_small;
 
     style.visuals.widgets.active.weak_bg_fill = faded(tokens.accent.linear_multiply(0.72));
     style.visuals.widgets.active.bg_fill = faded(tokens.accent);
-    style.visuals.widgets.active.bg_stroke = Stroke::new(1.0, tokens.accent);
-    style.visuals.widgets.active.fg_stroke = Stroke::new(1.0, brighten_toward_white(tokens.fg, 0.6));
+    style.visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, tokens.accent);
+    style.visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, brighten_toward_white(tokens.fg, 0.6));
     style.visuals.widgets.active.corner_radius = tokens.radius_small;
 
     style.visuals.widgets.open = style.visuals.widgets.hovered;
     style.visuals.selection.bg_fill = tokens.accent.linear_multiply(0.42);
-    style.visuals.selection.stroke = Stroke::new(1.0, tokens.accent);
+    style.visuals.selection.stroke = Stroke::new(1.0_f32, tokens.accent);
     style.visuals.override_text_color = Some(tokens.fg);
     style.visuals.hyperlink_color = tokens.accent;
 }
