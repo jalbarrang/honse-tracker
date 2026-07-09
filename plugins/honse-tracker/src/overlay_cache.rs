@@ -73,6 +73,18 @@ pub fn note_view_change() {
     LAST_VIEW_CHANGE_MS.store(now_ms(), AtomicOrdering::Relaxed);
 }
 
+/// Test/inspection helper: wall-clock ms of the last view change (`0` = none).
+#[must_use]
+pub fn last_view_change_ms() -> u64 {
+    LAST_VIEW_CHANGE_MS.load(AtomicOrdering::Relaxed)
+}
+
+/// Test helper: whether the combined read gate currently blocks IL2CPP reads.
+#[must_use]
+pub fn reads_currently_unsafe() -> bool {
+    reads_unsafe()
+}
+
 /// Pure gate: is a view transition still within its cooldown window? `last == 0`
 /// (no view change observed) is never a transition.
 #[must_use]
@@ -503,5 +515,33 @@ mod tests {
         shutdown();
         schedule_refresh();
         assert!(!PENDING.load(AtomicOrdering::Relaxed));
+    }
+
+    #[test]
+    fn view_change_event_updates_timestamp() {
+        // Reset then dispatch VIEW_CHANGE on the services bus (same path as the
+        // SceneManager hook → event::VIEW_CHANGE → hooks::on_view_change).
+        LAST_VIEW_CHANGE_MS.store(0, AtomicOrdering::Release);
+        let before = last_view_change_ms();
+        assert_eq!(before, 0);
+        // Subscribe the same handler the plugin uses, then dispatch.
+        let _ = crate::hooks::subscribe_events();
+        honse_services::dispatch_view_change(42);
+        let after = last_view_change_ms();
+        assert!(after > 0, "VIEW_CHANGE must update LAST_VIEW_CHANGE_MS");
+    }
+
+    #[test]
+    fn suspend_resume_round_trip_closes_then_opens_gate() {
+        // Clear both gates first.
+        LAST_VIEW_CHANGE_MS.store(0, AtomicOrdering::Release);
+        SUSPEND_DEADLINE_MS.store(0, AtomicOrdering::Release);
+        assert!(!reads_currently_unsafe(), "both gates open → reads safe");
+
+        crate::suspend_reads_for_command();
+        assert!(reads_currently_unsafe(), "suspend must close the gate");
+
+        crate::resume_reads_on_command_select();
+        assert!(!reads_currently_unsafe(), "resume must re-open the gate");
     }
 }

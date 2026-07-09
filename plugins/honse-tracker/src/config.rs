@@ -18,31 +18,31 @@ use serde::{Deserialize, Serialize};
 use crate::{build_profile, overlay_prefs, planner, recommend};
 use build_profile::BuildProfile;
 
-#[derive(Debug, Serialize, Deserialize)]
-struct PersistedConfig {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersistedConfigPublic {
     /// Legacy per-stat targets; migrated into the active profile when no
     /// `build_profile` is present (older configs).
     #[serde(default)]
-    stat_targets: [i32; 5],
+    pub stat_targets: [i32; 5],
     /// Legacy overlay tab bitmask; ignored since tracker readouts are independent panels.
     #[serde(default, skip_serializing)]
-    enabled_tabs: u8,
+    pub enabled_tabs: u8,
     #[serde(default)]
-    recommend: recommend::RecommendParams,
+    pub recommend: recommend::RecommendParams,
     #[serde(default)]
-    planner: planner::PlannerParams,
+    pub planner: planner::PlannerParams,
     #[serde(default = "overlay_prefs::default_zoom")]
-    overlay_zoom: f32,
+    pub overlay_zoom: f32,
     /// The active build profile (objective + targets + weights + course/strategy).
     #[serde(default)]
-    build_profile: Option<BuildProfile>,
+    pub build_profile: Option<BuildProfile>,
     /// Legacy user-saved custom profiles. The save/load UI was removed; the field
     /// is kept (ignored) so older config files still deserialize cleanly.
     #[serde(default, skip_serializing)]
-    saved_profiles: Vec<BuildProfile>,
+    pub saved_profiles: Vec<BuildProfile>,
 }
 
-impl Default for PersistedConfig {
+impl Default for PersistedConfigPublic {
     fn default() -> Self {
         Self {
             stat_targets: [0; 5],
@@ -56,11 +56,39 @@ impl Default for PersistedConfig {
     }
 }
 
+type PersistedConfig = PersistedConfigPublic;
+
 fn config_path() -> std::path::PathBuf {
+    // Prefer edge data path when available; fall back to exe-relative legacy path.
+    if let Some(p) = crate::compat::Sdk::get().host_data_path("training_config.json") {
+        return p;
+    }
     std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|dir| dir.join("hachimi").join("training_config.json")))
         .unwrap_or_else(|| std::path::PathBuf::from("training_config.json"))
+}
+
+/// Apply a deserialized config into the feature modules (used by PluginConfig load).
+pub fn apply_persisted(cfg: &PersistedConfigPublic) {
+    let active = cfg.build_profile.clone().unwrap_or_else(|| BuildProfile {
+        per_stat_target: cfg.stat_targets,
+        ..BuildProfile::default()
+    });
+    build_profile::set_active(active);
+    let _ = &cfg.saved_profiles;
+    let _ = cfg.enabled_tabs;
+    recommend::set_params(cfg.recommend);
+    planner::set_params(cfg.planner);
+    overlay_prefs::set_zoom(cfg.overlay_zoom);
+    let p = build_profile::active();
+    hlog_info!(
+        target: "training-tracker",
+        "config applied: profile={:?} objective={:?} targets={:?}",
+        p.name,
+        p.objective,
+        p.per_stat_target
+    );
 }
 
 /// Load persisted config into the feature modules. Call once on plugin init.
@@ -77,27 +105,7 @@ pub fn load() {
         },
         Err(_) => return,
     };
-
-    // Active profile: use the persisted one, else migrate the legacy flat targets
-    // into a fresh default profile (preserves Rank behaviour for old configs).
-    let active = cfg.build_profile.unwrap_or_else(|| BuildProfile {
-        per_stat_target: cfg.stat_targets,
-        ..BuildProfile::default()
-    });
-    build_profile::set_active(active);
-    let _ = cfg.saved_profiles; // legacy field; save/load UI removed
-    let _ = cfg.enabled_tabs;
-    recommend::set_params(cfg.recommend);
-    planner::set_params(cfg.planner);
-    overlay_prefs::set_zoom(cfg.overlay_zoom);
-    let p = build_profile::active();
-    hlog_info!(
-        target: "training-tracker",
-        "config loaded: profile={:?} objective={:?} targets={:?}",
-        p.name,
-        p.objective,
-        p.per_stat_target
-    );
+    apply_persisted(&cfg);
 }
 
 /// Gather the current state from every feature module and write it to disk.

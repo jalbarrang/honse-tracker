@@ -76,3 +76,12 @@ Provider codes: `1` = edge-sdk, `2` = honse-services, `3` = local/shim (egui re-
 - **Dropped** `event::TRAINING_COMMAND` dispatch from `SendCommandAsync` — no subscribers in tracker or secondary plugins.
 - `read_gate` / `ReadState` in `src/read_gate.rs`; `overlay_cache::reads_unsafe` routes through `reads_permitted`.
 - Install ordering wired in t-004 (`command_hooks::install` from game-initialized path).
+
+## Plugin entry (t-004)
+
+- `edge_sdk::declare_plugin!` in `src/entry.rs` exports `hachimi_init_v3` (nm-confirmed).
+- Config: `PluginConfig<HonseTrackerFile>` as `honseTrackerConfig.json` (flatten of tracker fields + `hosted_data` URLs); legacy `training_config.json` still loadable via `config::load` fallback.
+- Game-initialized: services installs view hook + frame source; plugin registers a second callback for shop hooks → command hooks → background `sync_all`.
+- Windows `DllMain` DETACH → `dispatch_shutdown`.
+- Hiker: `tests/hiker_intent.rs` includes generated.rs; SUT exports `read_gate`/`ReadState`/`Assignment`/`unique_provider`/`assigned`.
+- Falsification: inverted `read_gate` → `law_read_gate` FAILED; reverted → ok.

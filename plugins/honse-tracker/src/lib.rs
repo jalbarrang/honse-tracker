@@ -49,8 +49,28 @@ pub mod compat;
 mod il2cpp;
 mod command_hooks;
 pub mod read_gate;
+mod entry;
 
 pub use read_gate::{read_gate, ReadState};
+
+/// Hiker `Assignment` sort (compat method → provider). Used by generated property tests.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Assignment {
+    pub method: u32,
+    pub provider: i64,
+}
+
+/// Hiker `unique_provider` relation: same method ⇒ same provider.
+#[must_use]
+pub fn unique_provider(a: &Assignment, b: &Assignment) -> bool {
+    a.method != b.method || a.provider == b.provider
+}
+
+/// Hiker `assigned` relation: provider ∈ {1,2,3}.
+#[must_use]
+pub fn assigned(a: &Assignment) -> bool {
+    a.provider >= 1 && a.provider <= 3
+}
 
 #[allow(dead_code)]
 mod bond_progress;
@@ -115,6 +135,3 @@ pub(crate) fn suspend_reads_for_command() {
 pub(crate) fn resume_reads_on_command_select() {
     overlay_cache::resume_reads();
 }
-
-// TODO(t-004): replace CoreModule lifecycle with `edge_sdk::declare_plugin!` +
-// `honse_services::init` (config load, game-initialized hooks, surfaces, hosted-data).

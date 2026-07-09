@@ -31,5 +31,12 @@ fnv = "1.0"
 textwrap = "0.16"
 unicode-width = "0.1"
 
+[dev-dependencies]
+proptest = "1"
+tempfile = "3"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_SystemServices"] }
+
 [lints]
 workspace = true
