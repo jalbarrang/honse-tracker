@@ -149,6 +149,45 @@ pub fn show_window(
     unsafe { f(id, title_c.as_ptr(), contents_cb, bottom_cb, userdata) }
 }
 
+/// Re-show a window under a fresh host id, reusing the **same** registered
+/// closures (userdata pointer unchanged). Used by honse-services' surface
+/// watchdog when the host permanently drops a user-closed window.
+///
+/// Moves the registry entry from `old_id` → `new_id`. Returns `false` if
+/// `old_id` is unknown or the host call fails.
+pub fn reshow_window(old_id: i32, new_id: i32, title: &str) -> bool {
+    let api = Api::get();
+    let Some(f) = api.gui_show_window else {
+        return false;
+    };
+    let Ok(title_c) = CString::new(title) else {
+        return false;
+    };
+
+    let userdata = {
+        let mut reg = WINDOW_REGISTRY.lock();
+        let Some(boxed) = reg.remove(&old_id) else {
+            return false;
+        };
+        let has_bottom = boxed.bottom.is_some();
+        let userdata = Box::into_raw(boxed) as *mut c_void;
+        // SAFETY: just produced by Box::into_raw of WindowCallbacks.
+        let boxed = unsafe { Box::from_raw(userdata as *mut WindowCallbacks) };
+        reg.insert(new_id, boxed);
+        (userdata, has_bottom)
+    };
+
+    let contents_cb: Option<GuiWindowCallback> = Some(window_contents_trampoline);
+    let bottom_cb: Option<GuiWindowCallback> = if userdata.1 {
+        Some(window_bottom_trampoline)
+    } else {
+        None
+    };
+
+    // SAFETY: title NUL-terminated for the call; userdata is registry-owned.
+    unsafe { f(new_id, title_c.as_ptr(), contents_cb, bottom_cb, userdata.0) }
+}
+
 /// Close a window and reclaim its registered userdata (if any).
 pub fn close_window(id: i32) {
     let api = Api::get();

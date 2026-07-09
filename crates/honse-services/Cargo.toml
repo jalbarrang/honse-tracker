@@ -10,6 +10,7 @@ path = "src/lib.rs"
 
 [dependencies]
 edge-sdk = { path = "../edge-sdk" }
+egui = { workspace = true }
 log = { workspace = true }
 once_cell = { workspace = true }
 parking_lot = { workspace = true }
