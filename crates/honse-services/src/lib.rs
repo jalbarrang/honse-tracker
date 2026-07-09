@@ -6,6 +6,7 @@
 pub mod event;
 pub mod events;
 pub mod frame;
+pub mod hosted_data;
 pub mod hotkeys;
 pub mod init;
 pub mod scene_views;
@@ -15,6 +16,7 @@ pub mod view_hook;
 pub use event::{EventFn, ViewChangeEvent, FRAME, SHUTDOWN, VIEW_CHANGE};
 pub use events::{dispatch, dispatch_shutdown, dispatch_view_change, off, on};
 pub use frame::{install_frame_source, register_frame_job, FrameJob};
+pub use hosted_data::{gametora_data_dir, host_data_path, sync_all};
 pub use hotkeys::{register_hotkey, Chord, MOD_ALT, MOD_CTRL, MOD_SHIFT};
 pub use init::{init, InitOptions};
 pub use scene_views::view_name;
