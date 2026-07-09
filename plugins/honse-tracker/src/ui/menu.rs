@@ -119,7 +119,7 @@ fn menu_row(width: f32) -> taffy::Style {
 }
 
 /// A grid container of `columns` tracks pinned to `width`.
-fn menu_grid(columns: Vec<taffy::GridTemplateComponent<String>>, width: f32) -> taffy::Style {
+fn menu_grid(columns: Vec<taffy::TrackSizingFunction>, width: f32) -> taffy::Style {
     taffy::Style {
         display: taffy::Display::Grid,
         grid_template_columns: columns,
@@ -459,7 +459,7 @@ fn draw_build_profile(ui: &mut egui::Ui) {
     // --- Per-stat targets + weights ---
     ui.small("Targets (0 = game cap) • Weights bias CM scoring per stat");
     let stats_w = menu_width(ui);
-    let mut stat_cols: Vec<taffy::GridTemplateComponent<String>> = vec![auto()];
+    let mut stat_cols: Vec<taffy::TrackSizingFunction> = vec![auto()];
     stat_cols.extend(build_profile::STAT_LABELS.iter().map(|_| fr(1.0)));
     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
     tui(ui, ui.id().with("tt_profile_stats"))

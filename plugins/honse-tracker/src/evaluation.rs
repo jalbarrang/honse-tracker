@@ -337,7 +337,7 @@ mod tests {
             .filter_map(|(k, v)| k.parse::<i32>().ok().map(|id| (id, v)))
             .collect();
 
-        let vets_dir = format!("{manifest}/../../veterans");
+        let vets_dir = format!("{manifest}/veterans");
         let entries = std::fs::read_dir(&vets_dir).expect("veterans/ dir present");
         let mut checked = 0;
         for entry in entries {

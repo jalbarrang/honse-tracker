@@ -42,3 +42,14 @@ Cross-checked against the 0.34.3 counterparts where an API looked new.
 - Package renamed to `honse-telemetry`; `[lib] name = "hachimi_telemetry"` kept so `hachimi_telemetry::` / `hachimi_telemetry::pb` imports stay valid for plans 3/4.
 - Config path is already injected (`init(cfg_path: Option<PathBuf>)`) — no fork-host `Hachimi::instance()` / `crate::core` coupling to remove.
 - `proto/` + `build.rs` (prost 0.13 + protox, no system `protoc`) copied verbatim.
+
+## Tracker UI substitutions (plan 3 t-002)
+
+Verified against `taffy-0.7.7` (pulled by `egui_taffy 0.10.0`):
+
+| fork (taffy via egui_taffy 0.12 / taffy ~0.9) | 0.7.7 replacement | Evidence |
+|---|---|---|
+| `taffy::GridTemplateComponent<String>` | `taffy::TrackSizingFunction` | `taffy-0.7.7/src/style/mod.rs` `grid_template_columns: GridTrackVec<TrackSizingFunction>`; `GridTemplateComponent` appears only in taffy ≥0.9 |
+| `auto()` / `fr(1.0)` / `length(...)` in column vecs | unchanged (still coerce via `TaffyAuto` / `FromFlex` / `FromLength` impls on `TrackSizingFunction`) | `taffy-0.7.7/src/style/grid.rs` `impl TaffyAuto for TrackSizingFunction`, `impl FromFlex for TrackSizingFunction` |
+
+Files: `plugins/honse-tracker/src/ui/menu.rs`, `plugins/honse-tracker/src/ui/scenario/trackblazer.rs`.

@@ -389,6 +389,12 @@ pub fn set_overlay_visible(id: &str, visible: bool) -> bool {
     true
 }
 
+/// Set visibility only if `id` has no prior entry (fork `set_overlay_visible_if_unset`).
+pub fn set_overlay_visible_if_unset(id: &str, visible: bool) {
+    let mut state = STATE.lock();
+    state.visible.entry(id.to_owned()).or_insert(visible);
+}
+
 /// Alias — race-hud calls this name.
 pub fn overlay_set_visible(id: &str, visible: bool) -> bool {
     set_overlay_visible(id, visible)

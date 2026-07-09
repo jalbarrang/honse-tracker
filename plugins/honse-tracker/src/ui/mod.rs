@@ -35,7 +35,7 @@ struct TrackerPanel {
     id: &'static str,
     hotkey_id: &'static str,
     label: &'static str,
-    callback: crate::core::plugin::types::GuiMenuSectionCallback,
+    callback: edge_sdk::ffi::GuiMenuSectionCallback,
 }
 
 const PANELS: [TrackerPanel; 6] = [
@@ -94,7 +94,7 @@ pub fn register_ui() {
     for panel in PANELS {
         if sdk.register_panel_chromeless(panel.id, panel.callback, std::ptr::null_mut()) != 0 {
             registered += 1;
-            crate::core::plugin::overlay::set_overlay_visible_if_unset(panel.id, false);
+            crate::compat::set_overlay_visible_if_unset(panel.id, false);
         } else {
             hlog_warn!(target: "training-tracker", "L2 panel registration declined by host: {}", panel.id);
         }

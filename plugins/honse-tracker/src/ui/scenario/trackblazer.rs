@@ -152,7 +152,7 @@ fn lineup_row(tui: &mut Tui, item: &memory_reader::TrackblazerShopItem) {
 }
 
 /// Shared grid container style: `columns` tracks, pinned to `width`.
-fn grid_style(columns: Vec<taffy::GridTemplateComponent<String>>, width: f32) -> taffy::Style {
+fn grid_style(columns: Vec<taffy::TrackSizingFunction>, width: f32) -> taffy::Style {
     taffy::Style {
         display: taffy::Display::Grid,
         grid_template_columns: columns,

@@ -8,8 +8,7 @@
 
 use std::ffi::c_void;
 
-use crate::compat::Sdk;
-use hachimi_plugin_abi::event;
+use crate::compat::{capability, event, Sdk};
 
 /// Fired once per rendered frame on the render thread (`data` is null). Drive the
 /// overlay-cache refresh here so career snapshots are read/published even when the
@@ -40,7 +39,7 @@ extern "C" fn on_shutdown(_event_id: u32, _data: *const c_void, _userdata: *mut 
 /// events capability (required for the shutdown teardown).
 pub fn subscribe_events() -> bool {
     let sdk = Sdk::get();
-    if !sdk.has_capability(hachimi_plugin_abi::capability::EVENTS) {
+    if !sdk.has_capability(capability::EVENTS) {
         hlog_warn!("Host does not advertise the EVENTS capability");
         return false;
     }

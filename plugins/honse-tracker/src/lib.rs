@@ -46,6 +46,8 @@
 #[macro_use]
 pub mod compat;
 
+mod il2cpp;
+
 #[allow(dead_code)]
 mod bond_progress;
 #[allow(dead_code)]
