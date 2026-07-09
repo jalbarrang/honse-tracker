@@ -1,0 +1,109 @@
+# CI quality gate — push/PR on windows-latest (single job).
+#
+# HIKER-IN-CI decision: hiker IS publicly installable (`cargo install hiker`,
+# crates.io hiker 0.1.2). We install it in CI, run `hiker check` + `hiker gen`
+# (generated tests are gitignored under .hiker-cache/), then `cargo test`.
+# Also run `hiker verify` against the committed facts under .hiker/facts/.
+# Do not silently skip these steps.
+#
+# EXPORT-CHECK decision: same dumpbin/vswhere approach as release.yml
+# (authoritative PE export check on windows-latest).
+#
+# TOOLCHAIN decision: same as release.yml — dtolnay/rust-toolchain@stable
+# matches rust-toolchain.toml channel; action does not auto-parse the toml.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality gate (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: swatinem/rust-cache@v2
+
+      - name: rustfmt
+        run: cargo fmt --check
+
+      - name: clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Install hiker
+        run: cargo install hiker --locked --version 0.1.2
+
+      - name: hiker check
+        run: hiker check .hiker/tents
+
+      - name: hiker verify (committed facts)
+        run: hiker verify .hiker/tents/honse-extraction/honse-extraction.tent --facts .hiker/facts/honse-extraction.facts.json
+
+      - name: hiker gen (property tests)
+        run: hiker gen .hiker/tents/honse-extraction/honse-extraction.tent --target rust --module honse_tracker
+
+      - name: cargo test
+        run: cargo test
+
+      - name: cargo build --release
+        run: cargo build --release
+
+      - name: Verify hachimi_init_v3 exports
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dlls = @(
+            "target/release/honse_tracker.dll",
+            "target/release/race_hud.dll",
+            "target/release/debug_viewer.dll"
+          )
+
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) {
+            throw "vswhere.exe not found at $vswhere — cannot locate dumpbin"
+          }
+          $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsPath) {
+            throw "MSVC installation not found via vswhere"
+          }
+          $dumpbin = Get-ChildItem -Path $vsPath -Recurse -Filter dumpbin.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\Hostx64\\x64\\' } |
+            Select-Object -First 1
+          if (-not $dumpbin) {
+            throw "dumpbin.exe not found under $vsPath"
+          }
+          Write-Host "Using dumpbin: $($dumpbin.FullName)"
+
+          foreach ($dll in $dlls) {
+            if (-not (Test-Path $dll)) {
+              throw "Missing DLL: $dll"
+            }
+            $exports = & $dumpbin.FullName /EXPORTS $dll | Out-String
+            if ($exports -notmatch 'hachimi_init_v3') {
+              throw "Export hachimi_init_v3 missing from $dll"
+            }
+            Write-Host "OK: $dll exports hachimi_init_v3"
+          }

@@ -1,0 +1,100 @@
+# Release workflow — adapted from horse-act's .github/workflows/release.yml.
+#
+# Structural mapping (horse-act → honse-tracker):
+#   Checkout code              → Checkout code
+#   Setup Rust toolchain       → Setup Rust toolchain (see TOOLCHAIN decision below)
+#   Build Release              → Build Release (no HMAC secret; see SECRET decision)
+#   (none)                     → Verify hachimi_init_v3 exports (authoritative Windows check)
+#   Create Release + Upload    → Create Release and Upload Asset (*.dll glob covers all three)
+#
+# TOOLCHAIN decision: dtolnay/rust-toolchain does NOT auto-read rust-toolchain.toml
+# (confirmed against the action README / upstream issues). We use @stable to match
+# this repo's rust-toolchain.toml `channel = "stable"`, and cargo/rustup still honor
+# the file for overrides once the matching channel is installed. Do not pass a
+# `toolchain:` input that disagrees with rust-toolchain.toml.
+#
+# EXPORT-CHECK decision: use dumpbin /EXPORTS located via vswhere (MSVC is present
+# on windows-latest). Prefer dumpbin over llvm-nm because it is the PE-native
+# export reader already available with the VS Build Tools — no extra install.
+#
+# SECRET decision: rg found no build-time env!/option_env! secrets in
+# crates/honse-telemetry (only env!("OUT_DIR") for prost). Drop horse-act's
+# HORSEACT_HMAC_KEY; no equivalent secret to wire.
+#
+# RELEASE BODY: bump the egui version string below when re-pinning for a new
+# Hachimi-Edge release (must match Cargo.lock / workspace = pin).
+
+name: Build and Release DLL
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-windows:
+    name: Build Windows DLL
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Release
+        run: cargo build --release
+
+      - name: Verify hachimi_init_v3 exports
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dlls = @(
+            "target/release/honse_tracker.dll",
+            "target/release/race_hud.dll",
+            "target/release/debug_viewer.dll"
+          )
+
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) {
+            throw "vswhere.exe not found at $vswhere — cannot locate dumpbin"
+          }
+          $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsPath) {
+            throw "MSVC installation not found via vswhere"
+          }
+          $dumpbin = Get-ChildItem -Path $vsPath -Recurse -Filter dumpbin.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\Hostx64\\x64\\' } |
+            Select-Object -First 1
+          if (-not $dumpbin) {
+            throw "dumpbin.exe not found under $vsPath"
+          }
+          Write-Host "Using dumpbin: $($dumpbin.FullName)"
+
+          foreach ($dll in $dlls) {
+            if (-not (Test-Path $dll)) {
+              throw "Missing DLL: $dll"
+            }
+            $exports = & $dumpbin.FullName /EXPORTS $dll | Out-String
+            if ($exports -notmatch 'hachimi_init_v3') {
+              throw "Export hachimi_init_v3 missing from $dll"
+            }
+            Write-Host "OK: $dll exports hachimi_init_v3"
+          }
+
+      - name: Create Release and Upload Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/release/*.dll
+          body: |
+            Plugin DLLs for Hachimi-Edge.
+
+            **Compatibility contract:** build against Hachimi-Edge with egui **0.33.3** (workspace pin `=0.33.3`, matching Edge's Cargo.lock) and a compatible rustc. Mismatched egui or an incompatible rustc makes the `*mut c_void → &mut egui::Ui` cast unsound and will crash. When Edge releases a new build, re-pin egui from its Cargo.lock and cut a new release.
+
+            Install: place the three DLLs in the Honse game folder root and add them to `load_libraries` in `hachimi/config.json`.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
