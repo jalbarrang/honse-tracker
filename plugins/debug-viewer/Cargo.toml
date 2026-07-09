@@ -1,0 +1,21 @@
+[package]
+name = "debug-viewer"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Development-only plugin that records view transitions and live debug values"
+
+[lib]
+name = "debug_viewer"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+edge-sdk = { path = "../../crates/edge-sdk" }
+honse-services = { path = "../../crates/honse-services" }
+honse_ui = { path = "../../crates/honse-ui" }
+egui = { workspace = true }
+log = { workspace = true }
+
+[lints]
+workspace = true
