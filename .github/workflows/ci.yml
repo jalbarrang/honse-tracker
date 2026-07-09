@@ -50,9 +50,6 @@ jobs:
       - name: rustfmt
         run: cargo fmt --check
 
-      - name: clippy
-        run: cargo clippy --all-targets -- -D warnings
-
       - name: Install hiker
         run: cargo install hiker --locked --version 0.1.2
 
@@ -63,7 +60,12 @@ jobs:
         run: hiker verify .hiker/tents/honse-extraction/honse-extraction.tent --facts .hiker/facts/honse-extraction.facts.json
 
       - name: hiker gen (property tests)
+        # Must run before clippy/test: hiker_intent.rs include!s the generated
+        # file, and clippy --all-targets compiles the test target.
         run: hiker gen .hiker/tents/honse-extraction/honse-extraction.tent --target rust --module honse_tracker
+
+      - name: clippy
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: cargo test
         run: cargo test
