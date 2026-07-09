@@ -363,6 +363,37 @@ impl Sdk {
         unsafe { f(msg.as_ptr()) }
     }
 
+    /// Register a per-frame present callback (`hachimi_register_present_callback`).
+    ///
+    /// `callback` and `userdata` must remain valid for the process lifetime —
+    /// edge stores them without reclaiming.
+    pub fn register_present_callback(
+        &self,
+        callback: crate::ffi::PresentCallback,
+        userdata: *mut c_void,
+    ) -> bool {
+        let api = Api::get();
+        let Some(f) = api.hachimi_register_present_callback else {
+            return false;
+        };
+        // SAFETY: callback/userdata must remain valid for the process lifetime.
+        unsafe { f(Some(callback), userdata) }
+    }
+
+    /// Register a one-shot game-initialized callback (`hachimi_register_on_game_initialized`).
+    pub fn register_on_game_initialized(
+        &self,
+        callback: crate::ffi::GameInitializedCallback,
+        userdata: *mut c_void,
+    ) -> bool {
+        let api = Api::get();
+        let Some(f) = api.hachimi_register_on_game_initialized else {
+            return false;
+        };
+        // SAFETY: callback/userdata must remain valid for the process lifetime.
+        unsafe { f(Some(callback), userdata) }
+    }
+
     // ── Paths ──
 
     /// Host base / data directory (`hachimi_get_base_dir`).

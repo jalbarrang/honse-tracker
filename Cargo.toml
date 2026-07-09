@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/edge-sdk",
+    "crates/honse-services",
     "plugins/hello-edge",
 ]
 
