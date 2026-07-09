@@ -1,0 +1,205 @@
+syntax = "proto3";
+
+package hachimi.telemetry.v1;
+
+// Top-level message posted to the dashboard ingest webhook. Exactly one payload
+// is set per envelope; the oneof discriminates the channel.
+message Envelope {
+  uint64 sent_at_ms = 1; // epoch milliseconds at send time
+  uint32 seq = 2;        // per-process monotonic sequence
+  string source = 3;     // "training-tracker" | "race-hud"
+  oneof payload {
+    CareerSnapshot career_snapshot = 10;
+    CareerExtras career_extras = 11;
+    RaceLiveFrame race_live_frame = 12;
+    RaceFull race_full = 13;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Career snapshot (training-tracker, ~2s cadence)
+// Mirrors plugins/training-tracker/src/memory_reader/snapshot.rs::CareerSnapshot
+// ---------------------------------------------------------------------------
+
+message Aptitudes {
+  int32 dist_short = 1;
+  int32 dist_mile = 2;
+  int32 dist_middle = 3;
+  int32 dist_long = 4;
+  int32 style_nige = 5;
+  int32 style_senko = 6;
+  int32 style_sashi = 7;
+  int32 style_oikomi = 8;
+  int32 ground_turf = 9;
+  int32 ground_dirt = 10;
+}
+
+// A per-facility row of 5 main-stat deltas [Speed, Stamina, Power, Guts, Wisdom].
+message StatRow {
+  repeated int32 values = 1; // length 5
+}
+
+message CareerSnapshot {
+  bool is_playing = 1;
+  int32 current_turn = 2;
+  int32 month = 3;
+
+  int32 speed = 4;
+  int32 stamina = 5;
+  int32 power = 6;
+  int32 guts = 7;
+  int32 wiz = 8;
+  int32 total_stats = 9;
+
+  int32 hp = 10;
+  int32 max_hp = 11;
+  int32 motivation = 12; // RaceDefine.Motivation enum (1-5)
+  int32 fan_count = 13;
+  int32 card_id = 14;
+  int32 skill_point = 15;
+
+  int32 total_races = 16;
+  int32 win_count = 17;
+
+  repeated int32 training_levels = 18;          // [Speed, Stamina, Power, Guts, Wisdom]
+  repeated int32 stat_caps = 19;                // [Speed, Stamina, Power, Guts, Wisdom]
+  Aptitudes aptitudes = 20;
+  int32 star = 21;
+
+  optional int32 evaluation_value = 22;         // self-computed 評価点
+
+  repeated int32 failure_rates = 23;            // per-facility, -1 = unknown
+  repeated int32 stat_gains = 24;               // per-facility total gain
+  repeated StatRow per_stat_gains = 25;         // 5 rows of 5
+  repeated float per_facility_bond_pressure = 26;
+
+  int32 scenario_command_base = 27;
+  int32 scenario_id = 28;
+  // Live scenario-specific state serialized as JSON (e.g. Trackblazer shop).
+  // Empty when none / base URA scenario. Pragmatic: the scenario enum shape is
+  // complex and iterates faster as JSON than as a frozen proto.
+  string scenario_state_json = 29;
+
+  repeated int32 chara_effect_ids = 30;
+}
+
+// ---------------------------------------------------------------------------
+// Career extras (training-tracker): skills, bonds, skill shop, deck
+// ---------------------------------------------------------------------------
+
+message AcquiredSkill {
+  int32 master_id = 1;
+  int32 level = 2;
+  string name = 3;
+}
+
+message Evaluation {
+  int32 target_id = 1;      // support card chara ID
+  int32 value = 2;          // friendship/bond value
+  bool is_appear = 3;
+  string name = 4;
+  int32 story_step = 5;
+  int32 guest_chara_id = 6;
+  // Training preview this turn: facility slot 0=Speed..4=Wit; unset = not present.
+  optional int32 training_facility = 7;
+  // Per-character near-rainbow bond pressure 0..1 at that facility.
+  optional float bond_pressure = 8;
+}
+
+message SkillShopEntry {
+  int32 skill_id = 1;
+  int32 group_id = 2;
+  int32 rarity = 3;
+  int32 hint_level = 4;
+  string name = 5;
+  int32 base_cost = 6;
+  bool is_learned = 7;
+  bool has_hint = 8;
+  repeated int32 tags = 9;
+  int32 filter_switch = 10;
+}
+
+message SupportSlot {
+  int32 slot = 1;
+  int32 support_card_id = 2;
+}
+
+// A race the player has reserved/scheduled in SingleMode (the in-game "agenda").
+// Mirrors Gallop.SingleModeReservedRace. `program_id` resolves to the concrete
+// race (name/grade/distance/turn) via master data on the dashboard side.
+message ReservedRace {
+  int32 year = 1;
+  int32 program_id = 2;
+}
+
+message CareerExtras {
+  repeated AcquiredSkill skills = 1;
+  repeated Evaluation evaluations = 2;
+  repeated SkillShopEntry skill_shop = 3;
+  optional int32 skill_points = 4;
+  repeated SupportSlot deck = 5;
+  // Player-reserved races (the in-game agenda), in deck order. Empty when none
+  // are reserved or the data is unavailable.
+  repeated ReservedRace reserved_races = 6;
+}
+
+// ---------------------------------------------------------------------------
+// Race live frame (race-hud, ~100ms cadence)
+// Mirrors plugins/race-hud/src/state.rs::{LiveSnapshot, RunnerRow}
+// ---------------------------------------------------------------------------
+
+message RunnerRow {
+  uint32 rank = 1;
+  uint32 post = 2;
+  string name = 3;
+  float distance = 4;
+  uint32 speed_raw = 5; // x100 m/s
+  uint32 hp = 6;
+  float accel = 7;      // m/s^2
+  bool kakari = 8;      // temptation != 0
+  bool blocked = 9;     // block_front >= 0
+  // Game RunningStyle enum: 0 unknown, 1 Front (Nige), 2 Pace (Senko),
+  // 3 Late (Sashi), 4 End (Oikomi). Constant per runner across the race.
+  uint32 strategy = 10;
+}
+
+message RaceLiveFrame {
+  float elapsed = 1;
+  repeated RunnerRow rows = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Full decoded race (race-hud, one-shot on capture)
+// Mirrors plugins/race-hud/src/sim.rs::{RaceSummary, FrameData, RunnerSampleRaw}
+// ---------------------------------------------------------------------------
+
+message RaceSummary {
+  int32 version = 1;
+  int32 horse_num = 2;
+  int32 frame_count = 3;
+  int32 frame_size = 4;
+  int32 horse_frame_size = 5;
+  float distance_diff_max = 6;
+  float race_length_m = 7;
+}
+
+message RunnerSample {
+  float distance = 1;
+  uint32 lane = 2;
+  uint32 speed = 3;
+  uint32 hp = 4;
+  int32 temptation = 5;
+  int32 block_front = 6;
+}
+
+message RaceFrame {
+  float time = 1;
+  repeated RunnerSample runners = 2;
+}
+
+message RaceFull {
+  RaceSummary summary = 1;
+  repeated string names = 2;      // by horse index
+  repeated bool is_player = 3;    // HorseData.IsUser by horse index
+  repeated RaceFrame frames = 4;
+}

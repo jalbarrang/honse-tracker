@@ -3,6 +3,8 @@ resolver = "2"
 members = [
     "crates/edge-sdk",
     "crates/honse-services",
+    "crates/honse-ui",
+    "crates/honse-telemetry",
     "plugins/hello-edge",
 ]
 

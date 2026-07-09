@@ -1,0 +1,25 @@
+[package]
+name = "honse-telemetry"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Shared protobuf telemetry emitter (HTTP webhook) for Honse plugins"
+
+[lib]
+name = "hachimi_telemetry"
+path = "src/lib.rs"
+
+# Keep lib name `hachimi_telemetry` so plan 3/4 imports (`hachimi_telemetry::pb`) stay valid.
+
+[lints]
+workspace = true
+
+[dependencies]
+prost = "0.13"
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[build-dependencies]
+prost-build = "0.13"
+protox = "0.7"

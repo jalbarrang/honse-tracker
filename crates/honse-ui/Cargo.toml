@@ -1,0 +1,14 @@
+[package]
+name = "honse_ui"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+# First-party crate; never published to a registry.
+publish = false
+
+[dependencies]
+egui = { workspace = true }
+egui_taffy = { workspace = true }
+
+[lints]
+workspace = true
