@@ -1,0 +1,431 @@
+{
+  "instances": {
+    "Method": [
+      {
+        "id": "ui_from_ptr"
+      },
+      {
+        "id": "get"
+      },
+      {
+        "id": "try_get"
+      },
+      {
+        "id": "version"
+      },
+      {
+        "id": "has_capability"
+      },
+      {
+        "id": "resolve_symbol"
+      },
+      {
+        "id": "dlsym"
+      },
+      {
+        "id": "get_assembly_image"
+      },
+      {
+        "id": "get_class"
+      },
+      {
+        "id": "get_method"
+      },
+      {
+        "id": "get_method_addr"
+      },
+      {
+        "id": "find_nested_class"
+      },
+      {
+        "id": "get_field_from_name"
+      },
+      {
+        "id": "get_field_value"
+      },
+      {
+        "id": "get_singleton"
+      },
+      {
+        "id": "class_get_methods"
+      },
+      {
+        "id": "schedule_on_main_thread"
+      },
+      {
+        "id": "free_il2cpp_string"
+      },
+      {
+        "id": "hook"
+      },
+      {
+        "id": "unhook"
+      },
+      {
+        "id": "on"
+      },
+      {
+        "id": "off"
+      },
+      {
+        "id": "register_page"
+      },
+      {
+        "id": "register_tab"
+      },
+      {
+        "id": "register_page_with_icon"
+      },
+      {
+        "id": "register_menu_section"
+      },
+      {
+        "id": "register_panel"
+      },
+      {
+        "id": "register_overlay"
+      },
+      {
+        "id": "register_panel_chromeless"
+      },
+      {
+        "id": "register_panel_chromeless_fixed"
+      },
+      {
+        "id": "set_overlay_visible"
+      },
+      {
+        "id": "overlay_set_visible"
+      },
+      {
+        "id": "overlay_visible"
+      },
+      {
+        "id": "toggle_overlay"
+      },
+      {
+        "id": "register_hotkey"
+      },
+      {
+        "id": "unregister"
+      },
+      {
+        "id": "show_notification"
+      },
+      {
+        "id": "host_data_path"
+      },
+      {
+        "id": "gametora_data_dir"
+      },
+      {
+        "id": "view_name"
+      }
+    ],
+    "Assignment": [
+      {
+        "id": "assign_ui_from_ptr",
+        "fields": {
+          "method": 0,
+          "provider": 1
+        }
+      },
+      {
+        "id": "assign_get",
+        "fields": {
+          "method": 1,
+          "provider": 3
+        }
+      },
+      {
+        "id": "assign_try_get",
+        "fields": {
+          "method": 2,
+          "provider": 3
+        }
+      },
+      {
+        "id": "assign_version",
+        "fields": {
+          "method": 3,
+          "provider": 1
+        }
+      },
+      {
+        "id": "assign_has_capability",
+        "fields": {
+          "method": 4,
+          "provider": 3
+        }
+      },
+      {
+        "id": "assign_resolve_symbol",
+        "fields": {
+          "method": 5,
+          "provider": 1
+        }
+      },
+      {
+        "id": "assign_dlsym",
+        "fields": {
+          "method": 6,
+          "provider": 1
+        }
+      },
+      {
+        "id": "assign_get_assembly_image",
+        "fields": {
+          "method": 7,
+          "provider": 1
+        }
+      },
+      {
+        "id": "assign_get_class",
+        "fields": {
+          "method": 8,
+          "provider": 1
+        }
+      },
+      {
+        "id": "assign_get_method",
+        "fields": {
+          "method": 9,
+          "provider": 1
+        }
+      },
+      {
+        "id": "assign_get_method_addr",
+        "fields": {
+          "method": 10,
+          "provider": 1
+        }
+      },
+      {
+        "id": "assign_find_nested_class",
+        "fields": {
+          "method": 11,
+          "provider": 1
+        }
+      },
+      {
+        "id": "assign_get_field_from_name",
+        "fields": {
+          "method": 12,
+          "provider": 1
+        }
+      },
+      {
+        "id": "assign_get_field_value",
+        "fields": {
+          "method": 13,
+          "provider": 1
+        }
+      },
+      {
+        "id": "assign_get_singleton",
+        "fields": {
+          "method": 14,
+          "provider": 1
+        }
+      },
+      {
+        "id": "assign_class_get_methods",
+        "fields": {
+          "method": 15,
+          "provider": 1
+        }
+      },
+      {
+        "id": "assign_schedule_on_main_thread",
+        "fields": {
+          "method": 16,
+          "provider": 1
+        }
+      },
+      {
+        "id": "assign_free_il2cpp_string",
+        "fields": {
+          "method": 17,
+          "provider": 1
+        }
+      },
+      {
+        "id": "assign_hook",
+        "fields": {
+          "method": 18,
+          "provider": 1
+        }
+      },
+      {
+        "id": "assign_unhook",
+        "fields": {
+          "method": 19,
+          "provider": 1
+        }
+      },
+      {
+        "id": "assign_on",
+        "fields": {
+          "method": 20,
+          "provider": 2
+        }
+      },
+      {
+        "id": "assign_off",
+        "fields": {
+          "method": 21,
+          "provider": 2
+        }
+      },
+      {
+        "id": "assign_register_page",
+        "fields": {
+          "method": 22,
+          "provider": 2
+        }
+      },
+      {
+        "id": "assign_register_tab",
+        "fields": {
+          "method": 23,
+          "provider": 2
+        }
+      },
+      {
+        "id": "assign_register_page_with_icon",
+        "fields": {
+          "method": 24,
+          "provider": 2
+        }
+      },
+      {
+        "id": "assign_register_menu_section",
+        "fields": {
+          "method": 25,
+          "provider": 1
+        }
+      },
+      {
+        "id": "assign_register_panel",
+        "fields": {
+          "method": 26,
+          "provider": 2
+        }
+      },
+      {
+        "id": "assign_register_overlay",
+        "fields": {
+          "method": 27,
+          "provider": 2
+        }
+      },
+      {
+        "id": "assign_register_panel_chromeless",
+        "fields": {
+          "method": 28,
+          "provider": 2
+        }
+      },
+      {
+        "id": "assign_register_panel_chromeless_fixed",
+        "fields": {
+          "method": 29,
+          "provider": 2
+        }
+      },
+      {
+        "id": "assign_set_overlay_visible",
+        "fields": {
+          "method": 30,
+          "provider": 2
+        }
+      },
+      {
+        "id": "assign_overlay_set_visible",
+        "fields": {
+          "method": 31,
+          "provider": 2
+        }
+      },
+      {
+        "id": "assign_overlay_visible",
+        "fields": {
+          "method": 32,
+          "provider": 2
+        }
+      },
+      {
+        "id": "assign_toggle_overlay",
+        "fields": {
+          "method": 33,
+          "provider": 2
+        }
+      },
+      {
+        "id": "assign_register_hotkey",
+        "fields": {
+          "method": 34,
+          "provider": 2
+        }
+      },
+      {
+        "id": "assign_unregister",
+        "fields": {
+          "method": 35,
+          "provider": 2
+        }
+      },
+      {
+        "id": "assign_show_notification",
+        "fields": {
+          "method": 36,
+          "provider": 1
+        }
+      },
+      {
+        "id": "assign_host_data_path",
+        "fields": {
+          "method": 37,
+          "provider": 1
+        }
+      },
+      {
+        "id": "assign_gametora_data_dir",
+        "fields": {
+          "method": 38,
+          "provider": 2
+        }
+      },
+      {
+        "id": "assign_view_name",
+        "fields": {
+          "method": 39,
+          "provider": 2
+        }
+      }
+    ],
+    "Crate": [
+      {
+        "id": "edge-sdk"
+      },
+      {
+        "id": "honse-services"
+      },
+      {
+        "id": "honse_ui"
+      },
+      {
+        "id": "honse-telemetry"
+      },
+      {
+        "id": "honse-tracker"
+      }
+    ],
+    "ReadState": []
+  },
+  "tuples": {
+    "sdk_depends_on_services": [],
+    "git_sourced_egui": [],
+    "fork_abi_import": []
+  }
+}

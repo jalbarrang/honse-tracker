@@ -6,9 +6,7 @@
 //! the name cell flexes. Each row is a framed card (rainbow border when the card
 //! can friendship-train this turn).
 
-use crate::compat::egui::{
-    self, Color32, CornerRadius, Pos2, Rect, RichText, Stroke, Vec2,
-};
+use crate::compat::egui::{self, Color32, CornerRadius, Pos2, Rect, RichText, Stroke, Vec2};
 use egui_taffy::taffy::prelude::length;
 use egui_taffy::{taffy, tui, TuiBuilderLogic};
 

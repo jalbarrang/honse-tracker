@@ -24,7 +24,7 @@ pub type Il2CppObject = c_void;
 pub type MethodInfo = c_void;
 pub type FieldInfo = c_void;
 
-/// Host→plugin event ids (fork `hachimi_plugin_abi::event`).
+/// Host→plugin event ids (fork `legacy plugin ABI::event`).
 pub mod event {
     pub use honse_services::{FRAME, SHUTDOWN, VIEW_CHANGE};
     /// Fired after the host reloads its config. `data` is null. (fork id; unused here)
@@ -39,7 +39,7 @@ pub mod event {
     pub const SPLASH_SHOWN: u32 = 8;
 }
 
-/// Host capability bitflags (fork `hachimi_plugin_abi::capability`).
+/// Host capability bitflags (fork `legacy plugin ABI::capability`).
 /// Single-version world: [`Sdk::has_capability`] always returns true.
 pub mod capability {
     pub const GUI: u64 = 1 << 0;
@@ -49,7 +49,7 @@ pub mod capability {
     pub const DATA_PATHS: u64 = 1 << 4;
 }
 
-/// Overlay presentation flags (fork `hachimi_plugin_abi::overlay_flags`).
+/// Overlay presentation flags (fork `legacy plugin ABI::overlay_flags`).
 pub mod overlay_flags {
     pub use honse_services::surface::overlay_flags::*;
 }
@@ -179,16 +179,12 @@ impl Sdk {
 
     #[must_use]
     pub fn find_nested_class(&self, parent: *mut Il2CppClass, name: &str) -> Option<*mut Il2CppClass> {
-        EdgeSdk::get()
-            .find_nested_class(parent.cast(), name)
-            .map(|p| p.cast())
+        EdgeSdk::get().find_nested_class(parent.cast(), name).map(|p| p.cast())
     }
 
     #[must_use]
     pub fn get_field_from_name(&self, class: *mut Il2CppClass, name: &str) -> Option<*mut FieldInfo> {
-        EdgeSdk::get()
-            .get_field_from_name(class.cast(), name)
-            .map(|p| p.cast())
+        EdgeSdk::get().get_field_from_name(class.cast(), name).map(|p| p.cast())
     }
 
     /// Read a field value into `out_value`.
@@ -274,14 +270,9 @@ impl Sdk {
         // Services take a Rust closure; wrap the C callback.
         let cb = callback;
         let ud = userdata as usize;
-        let ok = honse_services::register_page_with_icon(
-            title,
-            Some(icon_uri),
-            icon_bytes,
-            move |ui| {
-                cb(ui as *mut egui::Ui as *mut c_void, ud as *mut c_void);
-            },
-        );
+        let ok = honse_services::register_page_with_icon(title, Some(icon_uri), icon_bytes, move |ui| {
+            cb(ui as *mut egui::Ui as *mut c_void, ud as *mut c_void);
+        });
         u64::from(ok)
     }
 

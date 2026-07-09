@@ -2,7 +2,7 @@
 //!
 //! Tracks training-facility visits and surfaces career analytics overlays/pages.
 //! Source moved near-verbatim against [`compat`], which bridges the old
-//! `hachimi-plugin-sdk` surface to `edge-sdk` + `honse-services`. Plugin entry
+//! `legacy plugin SDK` surface to `edge-sdk` + `honse-services`. Plugin entry
 //! wiring lands in t-004 (`edge_sdk::declare_plugin!`).
 //!
 //! The `#![allow(...)]` block below carries the lint posture the tracker shipped with
@@ -39,17 +39,22 @@
     clippy::manual_let_else,
     clippy::unnested_or_patterns,
     clippy::redundant_closure_for_method_calls,
+    clippy::nonminimal_bool,
+    clippy::undocumented_unsafe_blocks,
+    unexpected_cfgs,
+    dead_code,
     unnecessary_transmutes,
-    function_casts_as_integer
+    function_casts_as_integer,
+    non_snake_case
 )]
 
 #[macro_use]
 pub mod compat;
 
-mod il2cpp;
 mod command_hooks;
-pub mod read_gate;
 mod entry;
+mod il2cpp;
+pub mod read_gate;
 
 pub use read_gate::{read_gate, ReadState};
 

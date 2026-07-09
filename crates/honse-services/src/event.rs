@@ -1,6 +1,6 @@
 //! Host→plugin event ids and payload structs.
 //!
-//! Copied from fork `hachimi-plugin-abi` event module so tracker code ports
+//! Copied from fork `legacy plugin ABI` event module so tracker code ports
 //! without depending on the fork ABI crate (hiker law `fork_abi_import`).
 
 use std::ffi::c_void;

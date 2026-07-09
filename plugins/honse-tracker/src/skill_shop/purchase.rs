@@ -17,10 +17,10 @@ use std::ffi::c_void;
 use std::sync::{Mutex, OnceLock};
 
 use crate::compat::Sdk;
-use crate::overlay_cache;
 use crate::il2cpp::api::il2cpp_object_new;
 use crate::il2cpp::symbols::{create_delegate, set_field_value, Array, Thread};
 use crate::il2cpp::types::{Il2CppArray, Il2CppClass, Il2CppObject, MethodInfo};
+use crate::overlay_cache;
 
 // ---------------------------------------------------------------------------
 // Resolved IL2CPP pointers (one-time)

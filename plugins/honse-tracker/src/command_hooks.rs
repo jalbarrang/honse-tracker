@@ -126,7 +126,7 @@ pub fn install() -> bool {
 
     if let Some(addr) = sdk.get_method_addr(klass, "SendCommandAsync", 6) {
         if let Some(tramp) = sdk.hook(addr, SendCommandAsync as *mut c_void) {
-            // SAFETY: written once before hooks fire.
+            // SAFETY: written once before hooks fire; trampoline from edge interceptor.
             unsafe {
                 ORIG_SEND_COMMAND_ASYNC = tramp;
             }
@@ -135,6 +135,7 @@ pub fn install() -> bool {
     }
     if let Some(addr) = sdk.get_method_addr(klass, "CommonSendCommandAsync", 2) {
         if let Some(tramp) = sdk.hook(addr, CommonSendCommandAsync as *mut c_void) {
+            // SAFETY: written once before hooks fire; trampoline from edge interceptor.
             unsafe {
                 ORIG_COMMON_SEND_COMMAND_ASYNC = tramp;
             }
@@ -143,6 +144,7 @@ pub fn install() -> bool {
     }
     if let Some(addr) = sdk.get_method_addr(klass, "SetupCommandSelectStart", 2) {
         if let Some(tramp) = sdk.hook(addr, SetupCommandSelectStart as *mut c_void) {
+            // SAFETY: written once before hooks fire; trampoline from edge interceptor.
             unsafe {
                 ORIG_SETUP_COMMAND_SELECT_START = tramp;
             }
@@ -151,6 +153,7 @@ pub fn install() -> bool {
     }
     if let Some(addr) = sdk.get_method_addr(klass, "SetupCommandSelectStartStepTurn", 1) {
         if let Some(tramp) = sdk.hook(addr, SetupCommandSelectStartStepTurn as *mut c_void) {
+            // SAFETY: written once before hooks fire; trampoline from edge interceptor.
             unsafe {
                 ORIG_SETUP_COMMAND_SELECT_START_STEP_TURN = tramp;
             }

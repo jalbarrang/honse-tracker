@@ -34,7 +34,7 @@ use parking_lot::Mutex;
 
 use crate::next_handle;
 
-/// Overlay presentation flags (fork `hachimi_plugin_abi::overlay_flags`).
+/// Overlay presentation flags (fork `legacy plugin ABI::overlay_flags`).
 pub mod overlay_flags {
     pub const CHROMELESS: u64 = 1 << 0;
     pub const FIXED: u64 = 1 << 1;

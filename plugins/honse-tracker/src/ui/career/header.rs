@@ -2,9 +2,7 @@
 //! name, outfit, stars) and the condition cluster (year·date·turn, energy, mood).
 //! Mirrors the top row of the dashboard `CareerPanel`.
 
-use crate::compat::egui::{
-    self, Color32, CornerRadius, Pos2, Rect, RichText, Stroke, StrokeKind, Vec2, Vec2b,
-};
+use crate::compat::egui::{self, Color32, CornerRadius, Pos2, Rect, RichText, Stroke, StrokeKind, Vec2, Vec2b};
 use egui_taffy::taffy::prelude::{fr, length};
 use egui_taffy::taffy::style_helpers::auto;
 use egui_taffy::{taffy, tui, TuiBuilderLogic, TuiContainerResponse};

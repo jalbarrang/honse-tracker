@@ -204,10 +204,7 @@ mod tests {
     /// The generated resource asset, if present, must parse cleanly.
     #[test]
     fn shipped_asset_parses() {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/assets/course_params.json"
-        );
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/course_params.json");
         let Ok(bytes) = std::fs::read(path) else {
             return; // asset not generated in this checkout — skip
         };

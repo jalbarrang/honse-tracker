@@ -10,6 +10,10 @@ description = "Training Tracker edge plugin (ported from hachimi-redux in-core m
 name = "honse_tracker"
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# Desktop preview harness (fork leftover cfg gates). Not enabled for the shipped cdylib.
+dev-harness = []
+
 [dependencies]
 edge-sdk = { path = "../../crates/edge-sdk" }
 honse-services = { path = "../../crates/honse-services" }

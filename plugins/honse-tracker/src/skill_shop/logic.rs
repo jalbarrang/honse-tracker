@@ -1,9 +1,7 @@
 //! Pure shop logic: variant selection, discounts, sorting, and filtering.
 //! No IL2CPP access — fully unit-testable.
 
-use crate::skill_shop_prefs::{
-    DistanceFilter, ShopSortMode, SkillShopPrefs, StyleFilter,
-};
+use crate::skill_shop_prefs::{DistanceFilter, ShopSortMode, SkillShopPrefs, StyleFilter};
 
 use super::SkillShopEntry;
 

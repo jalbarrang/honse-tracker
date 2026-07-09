@@ -12,9 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::compat::Sdk;
 
 use crate::deck_bonuses;
-use crate::memory_reader::{
-    self, AcquiredSkillInfo, CareerSnapshot, EvaluationInfo, FiredEvent,
-};
+use crate::memory_reader::{self, AcquiredSkillInfo, CareerSnapshot, EvaluationInfo, FiredEvent};
 use crate::skill_shop::{self, SkillShopEntry};
 
 /// Refresh interval while memory tracking is on (milliseconds).
@@ -310,8 +308,7 @@ fn refresh_cache_inner() {
         // Self-computed evaluation estimate from stats + skills + aptitudes.
         if let Some(s) = snapshot.as_mut() {
             let stats = [s.speed, s.stamina, s.power, s.guts, s.wiz];
-            s.evaluation_value =
-                crate::evaluation::compute(stats, &s.aptitudes, s.star, &skills);
+            s.evaluation_value = crate::evaluation::compute(stats, &s.aptitudes, s.star, &skills);
         }
         log_career_diagnostic(&evaluations, &support_ids, &fired_events);
     } else {
@@ -383,8 +380,7 @@ fn log_career_diagnostic(evaluations: &[EvaluationInfo], support_ids: &[(i32, i3
 
     hlog_info!(target: "training-tracker", "Deck map ({} slots):", support_ids.len());
     for (slot, support_id) in support_ids {
-        let name =
-            crate::gametora_data::support_card_name(*support_id as i64).unwrap_or("?");
+        let name = crate::gametora_data::support_card_name(*support_id as i64).unwrap_or("?");
         let max = crate::gametora_data::max_chain_steps(*support_id as i64);
         let keys = crate::gametora_data::chain_event_keys(*support_id as i64);
         let matched = keys

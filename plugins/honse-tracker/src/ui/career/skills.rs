@@ -1,9 +1,7 @@
 //! Career panel Skills section (acquired-skill cards with rarity rail + icon +
 //! level) and the Conditions tag row. Mirrors the dashboard `CareerPanel` tail.
 
-use crate::compat::egui::{
-    self, Color32, CornerRadius, RichText, Stroke, StrokeKind, Vec2, Vec2b,
-};
+use crate::compat::egui::{self, Color32, CornerRadius, RichText, Stroke, StrokeKind, Vec2, Vec2b};
 use egui_taffy::taffy::prelude::{auto, length};
 use egui_taffy::{taffy, tui, TuiBuilderLogic, TuiContainerResponse};
 

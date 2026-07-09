@@ -6,9 +6,7 @@ use egui_taffy::{taffy, tui, TuiBuilderLogic, TuiContainerResponse};
 
 use crate::overlay_cache;
 use crate::skill_shop;
-use crate::skill_shop_prefs::{
-    cycle_sort_mode, prefs, set_prefs, sort_mode_label, DistanceFilter, StyleFilter,
-};
+use crate::skill_shop_prefs::{cycle_sort_mode, prefs, set_prefs, sort_mode_label, DistanceFilter, StyleFilter};
 
 use std::sync::Mutex;
 

@@ -85,3 +85,26 @@ Provider codes: `1` = edge-sdk, `2` = honse-services, `3` = local/shim (egui re-
 - Windows `DllMain` DETACH → `dispatch_shutdown`.
 - Hiker: `tests/hiker_intent.rs` includes generated.rs; SUT exports `read_gate`/`ReadState`/`Assignment`/`unique_provider`/`assigned`.
 - Falsification: inverted `read_gate` → `law_read_gate` FAILED; reverted → ok.
+
+
+## Totality (t-005)
+
+- Compat methods enumerated: **40**
+- Assignment instances in facts.json: **40**
+- `hiker verify`: OK: 0 violations across 3 laws
+
+## Version audit (t-005)
+
+- `cargo tree -p honse-tracker | grep egui|taffy`: registry egui 0.33.3 / egui_extras 0.33.3 / egui_taffy 0.10.0 / taffy 0.7.x only
+- `cargo tree | grep git+ | wc -l` = 0
+
+## In-game validation checklist (USER)
+
+1. Overlay appears in career
+2. View transitions don't crash
+3. **Training/rest/outing command submit doesn't crash** (command-suspend path)
+4. Skill shop tab loads
+5. Purchase flow works
+6. Hosted data syncs
+7. Hotkeys fire with menu closed
+8. Surface window reappears after being closed

@@ -104,11 +104,7 @@ unsafe extern "C" fn on_game_initialized(_userdata: *mut c_void) {
 /// Windows `DllMain`: on detach, dispatch SHUTDOWN so hooks unhook before unload.
 #[cfg(target_os = "windows")]
 #[no_mangle]
-pub unsafe extern "system" fn DllMain(
-    _hinst: *mut c_void,
-    reason: u32,
-    _reserved: *mut c_void,
-) -> i32 {
+pub unsafe extern "system" fn DllMain(_hinst: *mut c_void, reason: u32, _reserved: *mut c_void) -> i32 {
     const DLL_PROCESS_DETACH: u32 = 0;
     if reason == DLL_PROCESS_DETACH {
         honse_services::dispatch_shutdown();

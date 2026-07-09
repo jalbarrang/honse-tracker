@@ -25,9 +25,7 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::build_profile::Objective;
-use crate::cm_model::{
-    self, Aptitudes, CourseParams, GroundCondition, StatKind, Strategy, Surface,
-};
+use crate::cm_model::{self, Aptitudes, CourseParams, GroundCondition, StatKind, Strategy, Surface};
 use crate::evaluation::{self, stat_score};
 use crate::stat_targets;
 

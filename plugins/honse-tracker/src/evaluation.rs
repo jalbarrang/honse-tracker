@@ -327,10 +327,8 @@ mod tests {
     #[test]
     fn validated_runners_match_exactly() {
         let manifest = env!("CARGO_MANIFEST_DIR");
-        let resource = std::fs::read(format!(
-            "{manifest}/assets/skill_grades.json"
-        ))
-        .expect("skill_grades.json resource present");
+        let resource =
+            std::fs::read(format!("{manifest}/assets/skill_grades.json")).expect("skill_grades.json resource present");
         let raw: HashMap<String, SkillGrade> = serde_json::from_slice(&resource).expect("resource parses");
         let table: HashMap<i32, SkillGrade> = raw
             .into_iter()
