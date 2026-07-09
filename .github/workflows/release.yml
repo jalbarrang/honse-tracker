@@ -33,6 +33,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Git tag to create or update for this release (for example, v1.2.3)
+        required: true
+        type: string
 
 jobs:
   build-windows:
@@ -42,6 +48,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          # The dashboard's selected branch is the source for a manual release.
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.ref }}
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -89,6 +98,8 @@ jobs:
       - name: Create Release and Upload Asset
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           files: target/release/*.dll
           body: |
             Plugin DLLs for Hachimi-Edge.
