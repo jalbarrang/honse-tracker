@@ -6,10 +6,16 @@
 pub mod event;
 pub mod events;
 pub mod frame;
+pub mod init;
+pub mod scene_views;
+pub mod view_hook;
 
 pub use event::{EventFn, ViewChangeEvent, FRAME, SHUTDOWN, VIEW_CHANGE};
 pub use events::{dispatch, dispatch_shutdown, dispatch_view_change, off, on};
 pub use frame::{install_frame_source, register_frame_job, FrameJob};
+pub use init::{init, InitOptions};
+pub use scene_views::view_name;
+pub use view_hook::install_view_hook;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
