@@ -1,0 +1,35 @@
+[package]
+name = "honse-tracker"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Training Tracker edge plugin (ported from hachimi-redux in-core module)"
+
+[lib]
+name = "honse_tracker"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+edge-sdk = { path = "../../crates/edge-sdk" }
+honse-services = { path = "../../crates/honse-services" }
+honse_ui = { path = "../../crates/honse-ui" }
+hachimi_telemetry = { package = "honse-telemetry", path = "../../crates/honse-telemetry" }
+egui = { workspace = true }
+egui_extras = { workspace = true }
+egui_taffy = { workspace = true }
+log = { workspace = true }
+once_cell = { workspace = true }
+parking_lot = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+blake3 = { workspace = true }
+chrono = { workspace = true }
+image = { version = "0.25.9", default-features = false, features = ["png"] }
+png = "0.17"
+fnv = "1.0"
+textwrap = "0.16"
+unicode-width = "0.1"
+
+[lints]
+workspace = true

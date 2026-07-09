@@ -1,0 +1,975 @@
+{
+  "10101": {
+    "distance": 1200.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 675000.0,
+    "finish_time_max": 710000.0
+  },
+  "10102": {
+    "distance": 1500.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 879000.0,
+    "finish_time_max": 950000.0
+  },
+  "10103": {
+    "distance": 1800.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 1044000.0,
+    "finish_time_max": 1100000.0
+  },
+  "10104": {
+    "distance": 2000.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Power"
+    ],
+    "finish_time_min": 1171000.0,
+    "finish_time_max": 1230000.0
+  },
+  "10105": {
+    "distance": 2600.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Stamina"
+    ],
+    "finish_time_min": 1576000.0,
+    "finish_time_max": 1650000.0
+  },
+  "10106": {
+    "distance": 1000.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 574000.0,
+    "finish_time_max": 630000.0
+  },
+  "10107": {
+    "distance": 1700.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [
+      "Speed"
+    ],
+    "finish_time_min": 1014000.0,
+    "finish_time_max": 1130000.0
+  },
+  "10108": {
+    "distance": 2400.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 1491000.0,
+    "finish_time_max": 1560000.0
+  },
+  "10201": {
+    "distance": 1000.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 547000.0,
+    "finish_time_max": 570000.0
+  },
+  "10202": {
+    "distance": 1200.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 675000.0,
+    "finish_time_max": 710000.0
+  },
+  "10203": {
+    "distance": 1800.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Power"
+    ],
+    "finish_time_min": 1044000.0,
+    "finish_time_max": 1100000.0
+  },
+  "10204": {
+    "distance": 2000.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Speed"
+    ],
+    "finish_time_min": 1171000.0,
+    "finish_time_max": 1230000.0
+  },
+  "10205": {
+    "distance": 2600.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Stamina"
+    ],
+    "finish_time_min": 1576000.0,
+    "finish_time_max": 1650000.0
+  },
+  "10206": {
+    "distance": 1000.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 574000.0,
+    "finish_time_max": 630000.0
+  },
+  "10207": {
+    "distance": 1700.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 1014000.0,
+    "finish_time_max": 1130000.0
+  },
+  "10208": {
+    "distance": 2400.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [
+      "Stamina"
+    ],
+    "finish_time_min": 1491000.0,
+    "finish_time_max": 1560000.0
+  },
+  "10301": {
+    "distance": 1000.0,
+    "surface": "Turf",
+    "turn": 4,
+    "thresholds": [
+      "Power"
+    ],
+    "finish_time_min": 547000.0,
+    "finish_time_max": 570000.0
+  },
+  "10302": {
+    "distance": 1200.0,
+    "surface": "Turf",
+    "turn": 2,
+    "thresholds": [],
+    "finish_time_min": 675000.0,
+    "finish_time_max": 710000.0
+  },
+  "10303": {
+    "distance": 1400.0,
+    "surface": "Turf",
+    "turn": 2,
+    "thresholds": [],
+    "finish_time_min": 800000.0,
+    "finish_time_max": 840000.0
+  },
+  "10304": {
+    "distance": 1600.0,
+    "surface": "Turf",
+    "turn": 2,
+    "thresholds": [],
+    "finish_time_min": 908000.0,
+    "finish_time_max": 950000.0
+  },
+  "10305": {
+    "distance": 1800.0,
+    "surface": "Turf",
+    "turn": 2,
+    "thresholds": [
+      "Power"
+    ],
+    "finish_time_min": 1044000.0,
+    "finish_time_max": 1100000.0
+  },
+  "10306": {
+    "distance": 2000.0,
+    "surface": "Turf",
+    "turn": 2,
+    "thresholds": [
+      "Stamina",
+      "Power"
+    ],
+    "finish_time_min": 1171000.0,
+    "finish_time_max": 1230000.0
+  },
+  "10307": {
+    "distance": 2000.0,
+    "surface": "Turf",
+    "turn": 2,
+    "thresholds": [
+      "Stamina",
+      "Power"
+    ],
+    "finish_time_min": 1171000.0,
+    "finish_time_max": 1230000.0
+  },
+  "10308": {
+    "distance": 2200.0,
+    "surface": "Turf",
+    "turn": 2,
+    "thresholds": [
+      "Speed"
+    ],
+    "finish_time_min": 1302000.0,
+    "finish_time_max": 1350000.0
+  },
+  "10309": {
+    "distance": 2400.0,
+    "surface": "Turf",
+    "turn": 2,
+    "thresholds": [],
+    "finish_time_min": 1416000.0,
+    "finish_time_max": 1490000.0
+  },
+  "10310": {
+    "distance": 1200.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [],
+    "finish_time_min": 690000.0,
+    "finish_time_max": 770000.0
+  },
+  "10311": {
+    "distance": 1800.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [
+      "Wit"
+    ],
+    "finish_time_min": 1081000.0,
+    "finish_time_max": 1180000.0
+  },
+  "10312": {
+    "distance": 2500.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [],
+    "finish_time_min": 1591000.0,
+    "finish_time_max": 1640000.0
+  },
+  "10401": {
+    "distance": 1200.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 675000.0,
+    "finish_time_max": 710000.0
+  },
+  "10402": {
+    "distance": 1800.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Stamina"
+    ],
+    "finish_time_min": 1044000.0,
+    "finish_time_max": 1100000.0
+  },
+  "10403": {
+    "distance": 2000.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Stamina"
+    ],
+    "finish_time_min": 1171000.0,
+    "finish_time_max": 1230000.0
+  },
+  "10404": {
+    "distance": 2600.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 1576000.0,
+    "finish_time_max": 1650000.0
+  },
+  "10405": {
+    "distance": 1150.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 666000.0,
+    "finish_time_max": 720000.0
+  },
+  "10406": {
+    "distance": 1700.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [
+      "Power"
+    ],
+    "finish_time_min": 1014000.0,
+    "finish_time_max": 1130000.0
+  },
+  "10407": {
+    "distance": 2400.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [
+      "Stamina"
+    ],
+    "finish_time_min": 1491000.0,
+    "finish_time_max": 1560000.0
+  },
+  "10501": {
+    "distance": 1200.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 675000.0,
+    "finish_time_max": 710000.0
+  },
+  "10502": {
+    "distance": 1600.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Power"
+    ],
+    "finish_time_min": 908000.0,
+    "finish_time_max": 950000.0
+  },
+  "10503": {
+    "distance": 1800.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 1044000.0,
+    "finish_time_max": 1100000.0
+  },
+  "10504": {
+    "distance": 2000.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Speed"
+    ],
+    "finish_time_min": 1171000.0,
+    "finish_time_max": 1230000.0
+  },
+  "10505": {
+    "distance": 2200.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Stamina",
+      "Guts"
+    ],
+    "finish_time_min": 1302000.0,
+    "finish_time_max": 1350000.0
+  },
+  "10506": {
+    "distance": 2500.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Stamina",
+      "Guts"
+    ],
+    "finish_time_min": 1487000.0,
+    "finish_time_max": 1570000.0
+  },
+  "10507": {
+    "distance": 3600.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Stamina"
+    ],
+    "finish_time_min": 2231000.0,
+    "finish_time_max": 2270000.0
+  },
+  "10508": {
+    "distance": 1200.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [
+      "Power"
+    ],
+    "finish_time_min": 690000.0,
+    "finish_time_max": 770000.0
+  },
+  "10509": {
+    "distance": 1800.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [
+      "Power"
+    ],
+    "finish_time_min": 1081000.0,
+    "finish_time_max": 1180000.0
+  },
+  "10510": {
+    "distance": 2400.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [
+      "Stamina"
+    ],
+    "finish_time_min": 1491000.0,
+    "finish_time_max": 1560000.0
+  },
+  "10511": {
+    "distance": 2500.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 1591000.0,
+    "finish_time_max": 1640000.0
+  },
+  "10601": {
+    "distance": 1400.0,
+    "surface": "Turf",
+    "turn": 2,
+    "thresholds": [
+      "Stamina",
+      "Power"
+    ],
+    "finish_time_min": 800000.0,
+    "finish_time_max": 840000.0
+  },
+  "10602": {
+    "distance": 1600.0,
+    "surface": "Turf",
+    "turn": 2,
+    "thresholds": [
+      "Stamina",
+      "Guts"
+    ],
+    "finish_time_min": 908000.0,
+    "finish_time_max": 950000.0
+  },
+  "10603": {
+    "distance": 1800.0,
+    "surface": "Turf",
+    "turn": 2,
+    "thresholds": [
+      "Speed"
+    ],
+    "finish_time_min": 1044000.0,
+    "finish_time_max": 1100000.0
+  },
+  "10604": {
+    "distance": 2000.0,
+    "surface": "Turf",
+    "turn": 2,
+    "thresholds": [],
+    "finish_time_min": 1171000.0,
+    "finish_time_max": 1230000.0
+  },
+  "10605": {
+    "distance": 2300.0,
+    "surface": "Turf",
+    "turn": 2,
+    "thresholds": [
+      "Power"
+    ],
+    "finish_time_min": 1393000.0,
+    "finish_time_max": 1430000.0
+  },
+  "10606": {
+    "distance": 2400.0,
+    "surface": "Turf",
+    "turn": 2,
+    "thresholds": [],
+    "finish_time_min": 1416000.0,
+    "finish_time_max": 1490000.0
+  },
+  "10607": {
+    "distance": 2500.0,
+    "surface": "Turf",
+    "turn": 2,
+    "thresholds": [
+      "Stamina"
+    ],
+    "finish_time_min": 1487000.0,
+    "finish_time_max": 1570000.0
+  },
+  "10608": {
+    "distance": 3400.0,
+    "surface": "Turf",
+    "turn": 2,
+    "thresholds": [],
+    "finish_time_min": 2099000.0,
+    "finish_time_max": 2140000.0
+  },
+  "10609": {
+    "distance": 1300.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [
+      "Speed"
+    ],
+    "finish_time_min": 766000.0,
+    "finish_time_max": 820000.0
+  },
+  "10610": {
+    "distance": 1400.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [
+      "Stamina"
+    ],
+    "finish_time_min": 808000.0,
+    "finish_time_max": 940000.0
+  },
+  "10611": {
+    "distance": 1600.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [
+      "Speed",
+      "Stamina"
+    ],
+    "finish_time_min": 941000.0,
+    "finish_time_max": 1080000.0
+  },
+  "10612": {
+    "distance": 2100.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [],
+    "finish_time_min": 1274000.0,
+    "finish_time_max": 1330000.0
+  },
+  "10613": {
+    "distance": 2400.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [
+      "Stamina"
+    ],
+    "finish_time_min": 1491000.0,
+    "finish_time_max": 1560000.0
+  },
+  "10701": {
+    "distance": 1200.0,
+    "surface": "Turf",
+    "turn": 2,
+    "thresholds": [],
+    "finish_time_min": 675000.0,
+    "finish_time_max": 710000.0
+  },
+  "10702": {
+    "distance": 1400.0,
+    "surface": "Turf",
+    "turn": 2,
+    "thresholds": [],
+    "finish_time_min": 800000.0,
+    "finish_time_max": 840000.0
+  },
+  "10703": {
+    "distance": 1600.0,
+    "surface": "Turf",
+    "turn": 2,
+    "thresholds": [
+      "Speed"
+    ],
+    "finish_time_min": 908000.0,
+    "finish_time_max": 950000.0
+  },
+  "10704": {
+    "distance": 2000.0,
+    "surface": "Turf",
+    "turn": 2,
+    "thresholds": [],
+    "finish_time_min": 1171000.0,
+    "finish_time_max": 1230000.0
+  },
+  "10705": {
+    "distance": 2200.0,
+    "surface": "Turf",
+    "turn": 2,
+    "thresholds": [
+      "Stamina"
+    ],
+    "finish_time_min": 1302000.0,
+    "finish_time_max": 1350000.0
+  },
+  "10706": {
+    "distance": 1200.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [],
+    "finish_time_min": 690000.0,
+    "finish_time_max": 770000.0
+  },
+  "10707": {
+    "distance": 1400.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [],
+    "finish_time_min": 808000.0,
+    "finish_time_max": 940000.0
+  },
+  "10708": {
+    "distance": 1800.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [
+      "Stamina"
+    ],
+    "finish_time_min": 1081000.0,
+    "finish_time_max": 1180000.0
+  },
+  "10709": {
+    "distance": 1900.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [],
+    "finish_time_min": 1142000.0,
+    "finish_time_max": 1230000.0
+  },
+  "10801": {
+    "distance": 1200.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 675000.0,
+    "finish_time_max": 710000.0
+  },
+  "10802": {
+    "distance": 1400.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 800000.0,
+    "finish_time_max": 840000.0
+  },
+  "10803": {
+    "distance": 1400.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 800000.0,
+    "finish_time_max": 840000.0
+  },
+  "10804": {
+    "distance": 1600.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Speed"
+    ],
+    "finish_time_min": 908000.0,
+    "finish_time_max": 950000.0
+  },
+  "10805": {
+    "distance": 1600.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Speed"
+    ],
+    "finish_time_min": 908000.0,
+    "finish_time_max": 950000.0
+  },
+  "10806": {
+    "distance": 1800.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 1044000.0,
+    "finish_time_max": 1100000.0
+  },
+  "10807": {
+    "distance": 2000.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Power"
+    ],
+    "finish_time_min": 1171000.0,
+    "finish_time_max": 1230000.0
+  },
+  "10808": {
+    "distance": 2200.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Speed"
+    ],
+    "finish_time_min": 1302000.0,
+    "finish_time_max": 1350000.0
+  },
+  "10809": {
+    "distance": 2400.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Power"
+    ],
+    "finish_time_min": 1416000.0,
+    "finish_time_max": 1490000.0
+  },
+  "10810": {
+    "distance": 3000.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Power",
+      "Wit"
+    ],
+    "finish_time_min": 1815000.0,
+    "finish_time_max": 1900000.0
+  },
+  "10811": {
+    "distance": 3200.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 1930000.0,
+    "finish_time_max": 2040000.0
+  },
+  "10812": {
+    "distance": 1200.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 690000.0,
+    "finish_time_max": 770000.0
+  },
+  "10813": {
+    "distance": 1400.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 808000.0,
+    "finish_time_max": 940000.0
+  },
+  "10814": {
+    "distance": 1800.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 1081000.0,
+    "finish_time_max": 1180000.0
+  },
+  "10815": {
+    "distance": 1900.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 1142000.0,
+    "finish_time_max": 1230000.0
+  },
+  "10901": {
+    "distance": 1200.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 675000.0,
+    "finish_time_max": 710000.0
+  },
+  "10902": {
+    "distance": 1400.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 800000.0,
+    "finish_time_max": 840000.0
+  },
+  "10903": {
+    "distance": 1600.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Power"
+    ],
+    "finish_time_min": 908000.0,
+    "finish_time_max": 950000.0
+  },
+  "10904": {
+    "distance": 1800.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Power"
+    ],
+    "finish_time_min": 1044000.0,
+    "finish_time_max": 1100000.0
+  },
+  "10905": {
+    "distance": 2000.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Guts"
+    ],
+    "finish_time_min": 1171000.0,
+    "finish_time_max": 1230000.0
+  },
+  "10906": {
+    "distance": 2200.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Speed"
+    ],
+    "finish_time_min": 1302000.0,
+    "finish_time_max": 1350000.0
+  },
+  "10907": {
+    "distance": 2400.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Power"
+    ],
+    "finish_time_min": 1416000.0,
+    "finish_time_max": 1490000.0
+  },
+  "10908": {
+    "distance": 2600.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 1576000.0,
+    "finish_time_max": 1650000.0
+  },
+  "10909": {
+    "distance": 3000.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Power"
+    ],
+    "finish_time_min": 1815000.0,
+    "finish_time_max": 1900000.0
+  },
+  "10910": {
+    "distance": 1200.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 690000.0,
+    "finish_time_max": 770000.0
+  },
+  "10911": {
+    "distance": 1400.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 808000.0,
+    "finish_time_max": 940000.0
+  },
+  "10912": {
+    "distance": 1800.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 1081000.0,
+    "finish_time_max": 1180000.0
+  },
+  "10913": {
+    "distance": 2000.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [
+      "Stamina",
+      "Power"
+    ],
+    "finish_time_min": 1219000.0,
+    "finish_time_max": 1290000.0
+  },
+  "10914": {
+    "distance": 3200.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 1930000.0,
+    "finish_time_max": 2040000.0
+  },
+  "11001": {
+    "distance": 1200.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Speed"
+    ],
+    "finish_time_min": 675000.0,
+    "finish_time_max": 710000.0
+  },
+  "11002": {
+    "distance": 1800.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 1044000.0,
+    "finish_time_max": 1100000.0
+  },
+  "11003": {
+    "distance": 2000.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Power"
+    ],
+    "finish_time_min": 1171000.0,
+    "finish_time_max": 1230000.0
+  },
+  "11004": {
+    "distance": 2600.0,
+    "surface": "Turf",
+    "turn": 1,
+    "thresholds": [
+      "Stamina"
+    ],
+    "finish_time_min": 1576000.0,
+    "finish_time_max": 1650000.0
+  },
+  "11005": {
+    "distance": 1000.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [
+      "Speed"
+    ],
+    "finish_time_min": 574000.0,
+    "finish_time_max": 630000.0
+  },
+  "11006": {
+    "distance": 1700.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 1014000.0,
+    "finish_time_max": 1130000.0
+  },
+  "11007": {
+    "distance": 2400.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 1491000.0,
+    "finish_time_max": 1560000.0
+  },
+  "11101": {
+    "distance": 1200.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 690000.0,
+    "finish_time_max": 770000.0
+  },
+  "11102": {
+    "distance": 1800.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 1081000.0,
+    "finish_time_max": 1180000.0
+  },
+  "11103": {
+    "distance": 2000.0,
+    "surface": "Dirt",
+    "turn": 1,
+    "thresholds": [],
+    "finish_time_min": 1219000.0,
+    "finish_time_max": 1290000.0
+  }
+}
