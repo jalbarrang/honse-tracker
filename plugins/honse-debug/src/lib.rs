@@ -44,6 +44,10 @@ fn plugin_init() -> bool {
 }
 
 /// Windows `DllMain`: on detach, dispatch SHUTDOWN so state resets before unload.
+///
+/// # Safety
+///
+/// Called only by the Windows loader with valid arguments; must not be called from user code. Runs under the loader lock, and `dispatch_shutdown` is loader-lock-safe (no thread joins or DLL loads).
 #[cfg(target_os = "windows")]
 #[no_mangle]
 pub unsafe extern "system" fn DllMain(
