@@ -24,7 +24,7 @@
 #![allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_possible_wrap)]
 
 use std::ffi::c_void;
-use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, Ordering};
 use std::time::Instant;
 
 use parking_lot::Mutex;
@@ -57,6 +57,12 @@ static PENDING_EVENTS: Mutex<Vec<egui::Event>> = Mutex::new(Vec::new());
 
 static STATE: Mutex<Option<OverlayState>> = Mutex::new(None);
 static INIT_FAILED: AtomicBool = AtomicBool::new(false);
+/// Consecutive render failures — transient errors (resize transitions, device
+/// churn) must not kill the spike; only sustained failure disables it.
+static RENDER_FAILS: AtomicU32 = AtomicU32::new(0);
+const MAX_CONSECUTIVE_RENDER_FAILS: u32 = 300;
+/// Bounded key-event diagnostics (t-005 debugging: menu key / Alt+9 delivery).
+static KEY_LOG_BUDGET: AtomicU32 = AtomicU32::new(50);
 
 struct OverlayState {
     device: ID3D11Device,
@@ -64,8 +70,10 @@ struct OverlayState {
     renderer: egui_directx11::Renderer,
     egui_ctx: egui::Context,
     hwnd: HWND,
-    /// Cached RTV + the backbuffer size it was created for (t-003: recreate on resize).
-    rtv: Option<(ID3D11RenderTargetView, (u32, u32))>,
+    /// Last seen backbuffer size (log-only; the RTV itself is created per frame
+    /// and dropped before Present returns — a cached RTV holds a backbuffer
+    /// reference and makes `ResizeBuffers` fail, breaking resolution changes).
+    last_size: (u32, u32),
     started: Instant,
     // Demo widgets
     text: String,
@@ -138,11 +146,23 @@ unsafe extern "C" fn present_callback(swapchain: *mut c_void, _userdata: *mut c_
     }
 
     let frame_start = Instant::now();
-    if let Err(e) = render_frame(state, swapchain) {
-        hlog_warn!(target: "debug-viewer", "own_overlay: render failed: {e}; spike disabled");
-        INIT_FAILED.store(true, Ordering::Relaxed);
-    } else {
-        state.frame_cost_us = frame_start.elapsed().as_secs_f32() * 1_000_000.0;
+    match render_frame(state, swapchain) {
+        Ok(()) => {
+            RENDER_FAILS.store(0, Ordering::Relaxed);
+            state.frame_cost_us = frame_start.elapsed().as_secs_f32() * 1_000_000.0;
+        }
+        Err(e) => {
+            // Transient during resolution changes (backbuffer churn) — skip the
+            // frame; only sustained failure disables the spike.
+            let fails = RENDER_FAILS.fetch_add(1, Ordering::Relaxed) + 1;
+            if fails == 1 {
+                hlog_warn!(target: "debug-viewer", "own_overlay: render failed (transient?): {e}");
+            }
+            if fails >= MAX_CONSECUTIVE_RENDER_FAILS {
+                hlog_warn!(target: "debug-viewer", "own_overlay: {fails} consecutive render failures; spike disabled");
+                INIT_FAILED.store(true, Ordering::Relaxed);
+            }
+        }
     }
 }
 
@@ -169,7 +189,7 @@ fn init_state(swapchain: &IDXGISwapChain) -> Result<OverlayState, String> {
         renderer,
         egui_ctx,
         hwnd,
-        rtv: None,
+        last_size: (0, 0),
         started: Instant::now(),
         text: String::new(),
         clicks: 0,
@@ -191,19 +211,19 @@ fn render_frame(state: &mut OverlayState, swapchain: &IDXGISwapChain) -> Result<
         return Ok(()); // minimized
     }
 
-    let rtv_stale = state.rtv.as_ref().is_none_or(|(_, cached)| *cached != size);
-    if rtv_stale {
-        let mut rtv: Option<ID3D11RenderTargetView> = None;
-        // SAFETY: backbuffer is a valid render-target-capable texture.
-        unsafe { state.device.CreateRenderTargetView(&backbuffer, None, Some(&mut rtv)) }
-            .map_err(|e| format!("CreateRenderTargetView: {e}"))?;
-        let rtv = rtv.ok_or("CreateRenderTargetView returned none")?;
-        if state.rtv.take().is_some() {
-            hlog_info!(target: "debug-viewer", "own_overlay: backbuffer resized to {}x{}", size.0, size.1);
-        }
-        state.rtv = Some((rtv, size));
+    if state.last_size != (0, 0) && state.last_size != size {
+        hlog_info!(target: "debug-viewer", "own_overlay: backbuffer resized to {}x{}", size.0, size.1);
     }
-    let (rtv, _) = state.rtv.as_ref().expect("rtv ensured above");
+    state.last_size = size;
+
+    // Per-frame RTV: created, used, unbound, and dropped inside this Present.
+    // Holding it across frames keeps a backbuffer reference alive, which makes
+    // the game's `ResizeBuffers` fail on resolution / fullscreen changes.
+    let mut rtv: Option<ID3D11RenderTargetView> = None;
+    // SAFETY: backbuffer is a valid render-target-capable texture.
+    unsafe { state.device.CreateRenderTargetView(&backbuffer, None, Some(&mut rtv)) }
+        .map_err(|e| format!("CreateRenderTargetView: {e}"))?;
+    let rtv = rtv.ok_or("CreateRenderTargetView returned none")?;
 
     // Build raw input: screen rect + drained window events.
     let events = std::mem::take(&mut *PENDING_EVENTS.lock());
@@ -253,10 +273,16 @@ fn render_frame(state: &mut OverlayState, swapchain: &IDXGISwapChain) -> Result<
     WANTS_KEYBOARD.store(state.egui_ctx.wants_keyboard_input(), Ordering::Relaxed);
 
     let (renderer_output, _platform, _viewports) = egui_directx11::split_output(full_output);
-    state
+    let result = state
         .renderer
-        .render(&state.context, rtv, &state.egui_ctx, renderer_output)
-        .map_err(|e| format!("render: {e}"))
+        .render(&state.context, &rtv, &state.egui_ctx, renderer_output)
+        .map_err(|e| format!("render: {e}"));
+
+    // Unbind our RTV from the output-merger stage so the pipeline holds no
+    // internal backbuffer reference either (would also block ResizeBuffers).
+    // SAFETY: clearing render-target slot 0 on a live device context.
+    unsafe { state.context.OMSetRenderTargets(Some(&[None]), None) };
+    result
 }
 
 // ───────────────────────────── input (t-004) ─────────────────────────────
@@ -301,6 +327,25 @@ extern "system" fn subclass_wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam
             CallWindowProcW(proc, hwnd, msg, wparam, lparam)
         }
     };
+
+    // Alt+9 toggle handled here directly: we are the head of the WndProc chain,
+    // so delivery is guaranteed regardless of the hotkey-polling stack.
+    if msg == WM_SYSKEYDOWN && wparam.0 as u16 == 0x39 {
+        toggle_hotkey(std::ptr::null_mut());
+        return LRESULT(0);
+    }
+
+    // Bounded diagnostics for t-005: what key traffic do we see / forward?
+    if matches!(msg, WM_KEYDOWN | WM_SYSKEYDOWN) && KEY_LOG_BUDGET.load(Ordering::Relaxed) > 0 {
+        KEY_LOG_BUDGET.fetch_sub(1, Ordering::Relaxed);
+        hlog_info!(
+            target: "debug-viewer",
+            "own_overlay: keydown vk={:#04x} visible={} wants_kb={}",
+            wparam.0 as u16,
+            VISIBLE.load(Ordering::Relaxed),
+            WANTS_KEYBOARD.load(Ordering::Relaxed)
+        );
+    }
 
     if !VISIBLE.load(Ordering::Relaxed) {
         return call_orig();
