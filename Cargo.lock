@@ -274,6 +274,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui-directx11"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1a3fea83a5effd3fa95902753dd54021c263e49af39953424e7b25f84040cb6"
+dependencies = [
+ "egui",
+ "log",
+ "windows",
+]
+
+[[package]]
 name = "egui_extras"
 version = "0.33.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -356,12 +367,19 @@ dependencies = [
  "ahash",
  "ecolor",
  "emath",
+ "epaint_default_fonts",
  "log",
  "nohash-hasher",
  "parking_lot",
  "profiling",
  "serde",
 ]
+
+[[package]]
+name = "epaint_default_fonts"
+version = "0.33.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c4fbe202b6578d3d56428fa185cdf114a05e49da05f477b3c7f0fbb221f1862"
 
 [[package]]
 name = "equivalent"
@@ -513,9 +531,12 @@ version = "0.1.0"
 dependencies = [
  "edge-sdk",
  "egui",
+ "egui-directx11",
  "honse-services",
  "honse_ui",
  "log",
+ "parking_lot",
+ "windows",
 ]
 
 [[package]]

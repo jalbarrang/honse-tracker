@@ -8,6 +8,8 @@
 extern crate edge_sdk;
 
 mod hooks;
+#[cfg(windows)]
+mod own_overlay;
 mod state;
 mod ui;
 
@@ -35,6 +37,11 @@ fn plugin_init() -> bool {
     // Capability checks deleted: single-version world — EVENTS always available.
     let _ = hooks::subscribe_events();
 
+    // SPIKE (self-hosted-overlay initiative): own egui + DX11 renderer driven
+    // from the edge present callback. Alt+9 toggles the demo window.
+    #[cfg(windows)]
+    own_overlay::install();
+
     hlog_info!(target: "debug-viewer", "Debug Viewer ready");
     if let Some(sdk) = edge_sdk::Sdk::try_get() {
         sdk.show_notification("Debug Viewer loaded");
@@ -57,6 +64,7 @@ pub unsafe extern "system" fn DllMain(
 ) -> i32 {
     const DLL_PROCESS_DETACH: u32 = 0;
     if reason == DLL_PROCESS_DETACH {
+        own_overlay::uninstall_wndproc(None);
         honse_services::dispatch_shutdown();
     }
     1
