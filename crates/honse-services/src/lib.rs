@@ -24,6 +24,7 @@ pub use init::{init, InitOptions};
 pub use scene_views::view_name;
 pub use surface::{
     overlay_set_visible, overlay_visible, register_menu_section, register_menu_section_with_icon, register_overlay,
+    set_surface_title,
     register_page, register_page_with_icon, register_panel, register_panel_chromeless, register_panel_chromeless_fixed,
     register_tab, set_overlay_visible, toggle_overlay, Surface,
 };

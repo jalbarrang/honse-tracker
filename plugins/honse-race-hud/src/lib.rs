@@ -72,10 +72,14 @@ fn plugin_init() -> bool {
         hachimi_telemetry::init(None);
     }
 
-    ui::register_ui();
-
     // Install view hook + frame source (surface window renders every frame).
-    honse_services::init(honse_services::InitOptions::default());
+    // Must run BEFORE register_ui: it names this plugin's surface window and
+    // "Show <title>" host-menu item, which register_ui creates.
+    honse_services::init(honse_services::InitOptions {
+        surface_title: Some("Race HUD".to_owned()),
+    });
+
+    ui::register_ui();
 
     // Capability checks deleted: single-version world — EVENTS always available.
     let _ = tick::subscribe_events();

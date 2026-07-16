@@ -29,10 +29,15 @@ fn plugin_init() -> bool {
     );
 
     state::init();
-    ui::register_ui();
 
     // Install view hook + frame source so VIEW_CHANGE / FRAME events fire.
-    honse_services::init(honse_services::InitOptions::default());
+    // Must run BEFORE register_ui: it names this plugin's surface window and
+    // "Show <title>" host-menu item, which register_ui creates.
+    honse_services::init(honse_services::InitOptions {
+        surface_title: Some("Honse Debug".to_owned()),
+    });
+
+    ui::register_ui();
 
     // Capability checks deleted: single-version world — EVENTS always available.
     let _ = hooks::subscribe_events();

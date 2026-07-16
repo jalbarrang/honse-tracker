@@ -46,14 +46,18 @@ fn plugin_init() -> bool {
     let sdk = Sdk::get();
     hachimi_telemetry::init(sdk.host_data_path("telemetry.json"));
 
+    // (2) Services init: view hook + frame source on game-initialized. Must run
+    // BEFORE register_ui: it names this plugin's surface window and "Show
+    // <title>" host-menu item, which register_ui creates.
+    honse_services::init(honse_services::InitOptions {
+        surface_title: Some("Honse Tracker".to_owned()),
+    });
+
     // Surface registrations (tabs / panels / hotkeys) — no IL2CPP required.
     ui::register_ui();
 
     // Event subscriptions (FRAME / VIEW_CHANGE / SHUTDOWN).
     hooks::subscribe_events();
-
-    // (2) Services init: view hook + frame source on game-initialized.
-    honse_services::init(honse_services::InitOptions::default());
 
     // Tracker IL2CPP hooks + hosted-data sync on the same game-initialized path.
     // Edge supports multiple game-initialized callbacks (list).

@@ -6,16 +6,25 @@ use edge_sdk::Sdk;
 
 use crate::{frame::install_frame_source, view_hook::install_view_hook};
 
-/// Options for [`init`]. Reserved for future toggles; currently empty.
+/// Options for [`init`].
 #[derive(Debug, Clone, Default)]
-pub struct InitOptions {}
+pub struct InitOptions {
+    /// Title for this plugin's surface window and its "Show <title>" host-menu
+    /// item. `None` keeps the default ("Honse Tracker"). Each plugin should set
+    /// a distinct title — the surface is per-DLL, so two plugins with the same
+    /// title produce two identically-named windows and menu items.
+    pub surface_title: Option<String>,
+}
 
 /// Register the game-initialized callback that installs the view hook and frame source.
 ///
 /// Plugins call this from their `init()` after `Api::init` / edge entry setup.
 /// Idempotent at the registration level; the deferred installers are themselves
 /// idempotent.
-pub fn init(_opts: InitOptions) {
+pub fn init(opts: InitOptions) {
+    if let Some(title) = opts.surface_title {
+        crate::surface::set_surface_title(&title);
+    }
     let Some(sdk) = Sdk::try_get() else {
         log::warn!("honse-services::init called before Sdk init");
         return;

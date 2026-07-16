@@ -104,7 +104,20 @@ static WATCHDOG_INSTALLED: AtomicBool = AtomicBool::new(false);
 static USER_CLOSED: AtomicBool = AtomicBool::new(false);
 static MENU_ITEM_REGISTERED: AtomicBool = AtomicBool::new(false);
 
-const SURFACE_TITLE: &str = "Honse Tracker";
+/// Per-plugin surface title. Each plugin DLL statically links its own copy of
+/// honse-services, so this is per-DLL state — set it in `init` BEFORE any
+/// `register_*` call, otherwise two plugins both show "Honse Tracker" windows
+/// and duplicate "Show Honse Tracker" host-menu items.
+static TITLE: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new("Honse Tracker".to_owned()));
+
+/// Set this plugin's surface window title (and host-menu reopen label).
+pub fn set_surface_title(title: &str) {
+    *TITLE.lock() = title.to_owned();
+}
+
+fn surface_title() -> String {
+    TITLE.lock().clone()
+}
 /// Re-show if contents callback missed more than this many present ticks.
 const WATCHDOG_MISS_THRESHOLD: u64 = 2;
 
@@ -154,7 +167,8 @@ fn install_watchdog_job() {
             log::info!("honse-services: surface window closed by user; staying closed");
             if let Some(sdk) = edge_sdk::Sdk::try_get() {
                 sdk.show_notification(&format!(
-                    "{SURFACE_TITLE} hidden — reopen from the Hachimi menu or a panel hotkey"
+                    "{} hidden — reopen from the Hachimi menu or a panel hotkey",
+                    surface_title()
                 ));
             }
         }
@@ -177,7 +191,7 @@ fn register_reopen_menu_item() {
     if MENU_ITEM_REGISTERED.swap(true, Ordering::SeqCst) {
         return;
     }
-    if !edge_sdk::register_menu_item(&format!("Show {SURFACE_TITLE}"), reopen) {
+    if !edge_sdk::register_menu_item(&format!("Show {}", surface_title()), reopen) {
         log::warn!("honse-services: gui_register_menu_item failed for surface reopen");
         MENU_ITEM_REGISTERED.store(false, Ordering::SeqCst);
     }
@@ -194,7 +208,7 @@ fn show_surface_fresh() {
     LAST_DRAWN_FRAME.store(0, Ordering::SeqCst);
     let ok = edge_sdk::show_window(
         id,
-        SURFACE_TITLE,
+        &surface_title(),
         |ui| {
             LAST_DRAWN_FRAME.store(FRAME_COUNTER.load(Ordering::Relaxed), Ordering::Relaxed);
             draw_surface_contents(ui);
@@ -214,7 +228,7 @@ fn reshow_surface() {
         log::error!("honse-services: gui_new_window_id failed during reshow");
         return;
     }
-    if edge_sdk::reshow_window(old_id, new_id, SURFACE_TITLE) {
+    if edge_sdk::reshow_window(old_id, new_id, &surface_title()) {
         SURFACE_WINDOW_ID.store(new_id, Ordering::SeqCst);
         // Reset so we don't immediately re-trigger before the new window paints.
         LAST_DRAWN_FRAME.store(0, Ordering::SeqCst);
