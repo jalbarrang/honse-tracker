@@ -92,6 +92,30 @@ Flattened tracker fields plus optional `hosted_data` URL overrides. Defaults mat
 
 Enum string values (`objective`, `strategy`, ground/weather/season/time) follow the serde names of the Rust enums; if a field is missing, defaults apply.
 
+### Hotkeys
+
+Default bindings (tracker panels start hidden — toggle them with these or the checkboxes in the Training Tracker menu section):
+
+| Chord | Action |
+| --- | --- |
+| `Alt+1` … `Alt+6` | Toggle Energy / Training / Bonds / Scenario / Shop / Rank panel |
+| `Alt+0` | Toggle all tracker panels |
+| `Alt+T` | Start/stop tracking |
+| `Alt+7` | Toggle Race HUD (timer + per-uma widgets) |
+
+Rebind the tracker actions in `honseTrackerConfig.json` under `"hotkeys"` (`mods`: Ctrl=1, Shift=2, Alt=4; `vk`: Windows virtual-key code, 0 = unbound; restart the game to apply):
+
+```json
+{
+  "hotkeys": {
+    "training-tracker.toggle_training": { "mods": 4, "vk": 50 },
+    "training-tracker.toggle_tracking": { "mods": 0, "vk": 0 }
+  }
+}
+```
+
+Hotkeys fire only while the game window is foreground; they work with the menu closed.
+
 ### honse-race-hud (`raceHudConfig.json`)
 
 ```json

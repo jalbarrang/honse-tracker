@@ -36,12 +36,14 @@ pub fn register_ui() {
         register_panel(&id, draw_uma_overlay, slot as *mut c_void);
     }
 
-    // Unbound by default; the user assigns a chord from the host's Hotkeys tab.
+    // Alt+7 by default (tracker panels own Alt+1..6 / Alt+0; edge has no host
+    // Hotkeys tab to rebind from, so an unbound default made the HUD toggle
+    // unreachable).
     honse_services::register_hotkey(
         "race-hud.toggle",
         "Toggle Race HUD",
-        0,
-        0,
+        honse_services::MOD_ALT,
+        0x37, // '7'
         toggle_hud_hotkey,
         std::ptr::null_mut(),
     );

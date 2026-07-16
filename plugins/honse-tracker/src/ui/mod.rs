@@ -31,14 +31,14 @@ pub use util::bond_color;
 
 type PanelBody = fn(&mut egui::Ui, &crate::memory_reader::CareerSnapshot);
 
-struct TrackerPanel {
-    id: &'static str,
-    hotkey_id: &'static str,
-    label: &'static str,
+pub(crate) struct TrackerPanel {
+    pub(crate) id: &'static str,
+    pub(crate) hotkey_id: &'static str,
+    pub(crate) label: &'static str,
     callback: edge_sdk::ffi::GuiMenuSectionCallback,
 }
 
-const PANELS: [TrackerPanel; 6] = [
+pub(crate) const PANELS: [TrackerPanel; 6] = [
     TrackerPanel {
         id: constants::ENERGY_OVERLAY_ID,
         hotkey_id: "training-tracker.toggle_energy",
@@ -99,31 +99,36 @@ pub fn register_ui() {
             hlog_warn!(target: "training-tracker", "L2 panel registration declined by host: {}", panel.id);
         }
 
+        // Default chord (or the user's honseTrackerConfig.json override) —
+        // config is loaded before register_ui in plugin_init.
+        let bind = crate::hotkey_binds::effective(panel.hotkey_id);
         let hotkey_label = format!("Toggle {} Panel", panel.label);
         sdk.register_hotkey(
             panel.hotkey_id,
             &hotkey_label,
-            0,
-            0,
+            bind.mods,
+            bind.vk,
             toggle_panel_hotkey,
             panel.id.as_ptr().cast_mut().cast(),
         );
     }
 
+    let bind = crate::hotkey_binds::effective("training-tracker.toggle_all");
     sdk.register_hotkey(
         "training-tracker.toggle_all",
         "Toggle All Tracker Panels",
-        0,
-        0,
+        bind.mods,
+        bind.vk,
         toggle_all_hotkey,
         std::ptr::null_mut(),
     );
 
+    let bind = crate::hotkey_binds::effective("training-tracker.toggle_tracking");
     sdk.register_hotkey(
         "training-tracker.toggle_tracking",
         "Start/Stop Tracking",
-        0,
-        0,
+        bind.mods,
+        bind.vk,
         toggle_tracking_hotkey,
         std::ptr::null_mut(),
     );

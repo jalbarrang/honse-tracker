@@ -8,7 +8,6 @@ use egui_taffy::{taffy, tui, Tui, TuiBuilderLogic};
 
 use super::dimens;
 
-use super::constants::TRAINING_OVERLAY_ID;
 use super::overlay;
 use crate::build_profile::{self, Objective};
 use crate::class_dump;
@@ -46,6 +45,11 @@ pub(super) fn draw(ui: &mut egui::Ui) {
     ui.add_space(12.0);
     ui.separator();
     ui.add_space(8.0);
+    draw_panels_section(ui);
+
+    ui.add_space(12.0);
+    ui.separator();
+    ui.add_space(8.0);
     draw_build_profile(ui);
 
     ui.add_space(12.0);
@@ -69,17 +73,6 @@ pub(super) fn draw(ui: &mut egui::Ui) {
         .show(|tui| {
             menu_item(tui, |tui| {
                 tui.ui(|ui| {
-                    if ui.button("\u{1f4ca} Show Training Panel").clicked() {
-                        if sdk.overlay_set_visible(TRAINING_OVERLAY_ID, true) {
-                            sdk.show_notification("Training overlay shown");
-                        } else {
-                            hlog_warn!(target: "training-tracker", "Host declined overlay_set_visible");
-                        }
-                    }
-                });
-            });
-            menu_item(tui, |tui| {
-                tui.ui(|ui| {
                     if ui.button("\u{1f4cb} Dump All IL2CPP Classes").clicked() {
                         class_dump::dump_all_classes();
                         sdk.show_notification("Class dump complete — see il2cpp_classes.txt");
@@ -87,6 +80,29 @@ pub(super) fn draw(ui: &mut egui::Ui) {
                 });
             });
         });
+}
+
+/// Panel visibility checkboxes, one per tracker panel, with the effective
+/// hotkey chord in the label (e.g. "Training (Alt+2)").
+fn draw_panels_section(ui: &mut egui::Ui) {
+    let sdk = Sdk::get();
+    heading_h3(ui, "Panels");
+    ui.add_space(4.0);
+    ui.horizontal_wrapped(|ui| {
+        for panel in &super::PANELS {
+            let bind = crate::hotkey_binds::effective(panel.hotkey_id);
+            let label = format!("{} ({})", panel.label, crate::hotkey_binds::display(bind));
+            let mut visible = sdk.overlay_visible(panel.id);
+            if ui.checkbox(&mut visible, label).changed() {
+                sdk.set_overlay_visible(panel.id, visible);
+            }
+        }
+    });
+    ui.add_space(4.0);
+    let all_bind = crate::hotkey_binds::display(crate::hotkey_binds::effective("training-tracker.toggle_all"));
+    ui.small(format!(
+        "{all_bind} toggles all panels. Rebind in honseTrackerConfig.json under \"hotkeys\" (restart to apply)."
+    ));
 }
 
 /// Deterministic width for the menu's taffy layouts. Floored so sub-pixel host

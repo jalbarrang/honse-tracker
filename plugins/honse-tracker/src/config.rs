@@ -13,8 +13,11 @@
 //! flat `stat_targets` field is kept for one-way migration into the default
 //! profile's `per_stat_target`.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
+use crate::hotkey_binds::{self, HotkeyBind};
 use crate::{build_profile, overlay_prefs, planner, recommend};
 use build_profile::BuildProfile;
 
@@ -40,6 +43,11 @@ pub struct PersistedConfigPublic {
     /// is kept (ignored) so older config files still deserialize cleanly.
     #[serde(default, skip_serializing)]
     pub saved_profiles: Vec<BuildProfile>,
+    /// Hotkey chord overrides keyed by action id (see [`crate::hotkey_binds`]).
+    /// Persist writes the full effective map so every rebindable action is
+    /// visible in the JSON; missing/empty means "use the built-in defaults".
+    #[serde(default)]
+    pub hotkeys: BTreeMap<String, HotkeyBind>,
 }
 
 impl Default for PersistedConfigPublic {
@@ -52,6 +60,7 @@ impl Default for PersistedConfigPublic {
             overlay_zoom: overlay_prefs::default_zoom(),
             build_profile: None,
             saved_profiles: Vec::new(),
+            hotkeys: BTreeMap::new(),
         }
     }
 }
@@ -81,6 +90,7 @@ pub fn apply_persisted(cfg: &PersistedConfigPublic) {
     recommend::set_params(cfg.recommend);
     planner::set_params(cfg.planner);
     overlay_prefs::set_zoom(cfg.overlay_zoom);
+    hotkey_binds::apply_overrides(&cfg.hotkeys);
     let p = build_profile::active();
     hlog_info!(
         target: "training-tracker",
@@ -121,6 +131,7 @@ pub fn persist() {
         overlay_zoom: overlay_prefs::zoom(),
         build_profile: Some(active),
         saved_profiles: Vec::new(),
+        hotkeys: hotkey_binds::all(),
     };
     let Ok(bytes) = serde_json::to_vec_pretty(&cfg) else {
         return;

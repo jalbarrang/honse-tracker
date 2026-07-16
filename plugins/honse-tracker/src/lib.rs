@@ -95,6 +95,7 @@ mod eval_data;
 mod evaluation;
 mod gametora_data;
 mod hooks;
+pub(crate) mod hotkey_binds;
 mod memory_reader;
 mod overlay_cache;
 mod overlay_prefs;
