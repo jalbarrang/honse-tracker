@@ -41,8 +41,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_RBUTTONUP, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDPROC,
 };
 
-/// Toggled by the Alt+9 hotkey (see [`install`]).
-static VISIBLE: AtomicBool = AtomicBool::new(true);
+/// Toggled by the Alt+9 hotkey (see [`install`]). Starts hidden — silent boot.
+static VISIBLE: AtomicBool = AtomicBool::new(false);
 /// egui wants the pointer (hover or drag on our UI) — swallow mouse buttons/wheel.
 static WANTS_POINTER: AtomicBool = AtomicBool::new(false);
 /// egui wants keyboard (text field focused) — swallow keys/chars.

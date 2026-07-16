@@ -18,6 +18,8 @@ pub fn register_ui() {
         hlog_warn!(target: "debug-viewer", "Overlay panel registration declined by host");
     } else {
         hlog_info!(target: "debug-viewer", "Overlay panel registered ({})", handle);
+        // Hidden until asked for — silent boot (toggle hotkey / menu item shows it).
+        honse_services::surface::set_overlay_visible_if_unset(OVERLAY_ID, false);
     }
 
     honse_services::register_hotkey(

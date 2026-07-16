@@ -62,6 +62,9 @@ fn register_panel(id: &str, callback: extern "C" fn(*mut c_void, *mut c_void), u
         hlog_warn!(target: "race-hud", "Overlay panel registration declined: {id}");
     } else {
         hlog_info!(target: "race-hud", "Overlay panel registered: {id} ({handle})");
+        // Hidden until asked for — silent boot; Alt+7 (or the control page)
+        // shows the HUD, which also brings up the hosting surface window.
+        honse_services::surface::set_overlay_visible_if_unset(id, false);
     }
 }
 

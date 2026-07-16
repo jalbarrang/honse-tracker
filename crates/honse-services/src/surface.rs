@@ -8,8 +8,10 @@
 //!
 //! # Design
 //!
-//! 1. [`Surface::ensure`] creates one surface window titled "Honse Tracker" via
-//!    edge-sdk [`show_window`].
+//! 1. Registrations arm the machinery ([`ensure`]: watchdog + "Show <title>"
+//!    host-menu item) but the window itself is **created on demand** by
+//!    [`reopen`] (menu item click / overlay turned visible) via edge-sdk
+//!    [`show_window`] — boot is silent.
 //! 2. A present-callback watchdog compares `last_drawn_frame` to the current
 //!    frame counter; if the contents callback has not run for >2 frames, the
 //!    host dropped the window — the user clicked [X]. **The close is
@@ -137,20 +139,22 @@ pub fn watchdog_should_reshow(last_drawn_frame: u64, current_frame: u64) -> bool
 pub struct Surface;
 
 impl Surface {
-    /// Ensure the surface window exists and the present-callback watchdog is armed.
+    /// Arm the surface machinery (watchdog + host-menu item). Does NOT show the
+    /// window — boot is silent; the window appears on demand via [`reopen`].
     pub fn ensure() {
         ensure();
     }
 }
 
-/// Ensure the surface window exists and the present-callback watchdog is armed.
+/// Arm the surface machinery (watchdog + "Show <title>" host-menu item).
+///
+/// Deliberately does NOT show the window: registrations at plugin init used to
+/// pop every plugin's surface window at boot ("this many windows for no
+/// reason"). The window first appears when [`reopen`] fires — host-menu item
+/// click or an overlay being turned visible.
 pub fn ensure() {
     install_watchdog_job();
     register_reopen_menu_item();
-    if SURFACE_ENSURED.swap(true, Ordering::SeqCst) {
-        return;
-    }
-    show_surface_fresh();
 }
 
 fn install_watchdog_job() {
@@ -175,11 +179,12 @@ fn install_watchdog_job() {
     }));
 }
 
-/// Re-show the surface window after a user close (or ensure it on first use).
+/// Show the surface window: first show, or re-show after a user close.
 /// No-op when the window is already alive.
 pub fn reopen() {
-    if !SURFACE_ENSURED.load(Ordering::SeqCst) {
-        ensure();
+    ensure();
+    if !SURFACE_ENSURED.swap(true, Ordering::SeqCst) {
+        show_surface_fresh();
         return;
     }
     if USER_CLOSED.swap(false, Ordering::SeqCst) {
@@ -234,9 +239,8 @@ fn reshow_surface() {
         LAST_DRAWN_FRAME.store(0, Ordering::SeqCst);
         log::debug!("honse-services: surface re-shown (host dropped window {old_id} → {new_id})");
     } else {
-        // Registry miss (e.g. first ensure never succeeded) — create fresh.
-        SURFACE_ENSURED.store(false, Ordering::SeqCst);
-        ensure();
+        // Registry miss (e.g. first show never succeeded) — create fresh.
+        show_surface_fresh();
     }
 }
 
