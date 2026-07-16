@@ -8,6 +8,14 @@ Plugins for [Hachimi-Edge](https://github.com/kairusds/Hachimi-Edge) that add tr
 | **honse-race-hud** | `honse_race_hud.dll` | Live per-runner heads-up display during races. |
 | **honse-debug** | `honse_debug.dll` | Development-only view-transition / debug feed (off unless you load it). |
 
+## Compatibility (read this first)
+
+Each plugin release targets **one specific Hachimi-Edge release** — currently **v0.26.4**.
+
+The plugins draw their UI by casting Hachimi-Edge's raw egui pointer back into `egui` types. That is only sound when both sides are built from the same egui source (`=0.33.3`) **with the same rustc** — Rust struct layout is not stable across compiler versions. A mismatch crashes the game at launch (before the title screen), even though the plugin configs still get generated. `rust-toolchain.toml` pins the exact rustc used by the targeted Edge release (1.96.0 for v0.26.4); `scripts/check-rustc-lockstep.ps1` verifies a build against a `hachimi.dll`.
+
+If the game crashes on boot with these DLLs loaded, first check that your Hachimi-Edge version matches the one named in the plugin release notes, and remove the honse DLLs from `load_libraries` to confirm the game boots without them.
+
 ## Installation
 
 1. Install Hachimi-Edge from [`https://github.com/kairusds/Hachimi-Edge/releases/latest`](https://github.com/kairusds/Hachimi-Edge/releases/latest).

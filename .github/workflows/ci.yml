@@ -9,8 +9,10 @@
 # EXPORT-CHECK decision: same dumpbin/vswhere approach as release.yml
 # (authoritative PE export check on windows-latest).
 #
-# TOOLCHAIN decision: same as release.yml — dtolnay/rust-toolchain@stable
-# matches rust-toolchain.toml channel; action does not auto-parse the toml.
+# TOOLCHAIN decision: same as release.yml — pinned to the exact rustc that the
+# targeted Hachimi-Edge release was built with (ABI lockstep for the egui
+# `*mut c_void → &mut egui::Ui` cast; see rust-toolchain.toml). The dtolnay
+# action does not auto-parse the toml, so the `toolchain:` input must match it.
 
 name: CI
 
@@ -41,8 +43,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        # Must match rust-toolchain.toml (Hachimi-Edge rustc lockstep).
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.96.0
           components: rustfmt, clippy
 
       - name: Cache cargo

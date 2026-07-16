@@ -1,2 +1,21 @@
+# ABI LOCKSTEP: this pin is part of the plugin↔host compatibility contract.
+#
+# edge-sdk casts the host's `*mut c_void` GUI pointer to `&mut egui::Ui`
+# (crates/edge-sdk/src/gui.rs `ui_from_ptr`). That cast is only sound when the
+# plugins are compiled with the SAME egui source (workspace pin `=0.33.3`) AND
+# a rustc whose `repr(Rust)` layout matches the one Hachimi-Edge was built with.
+# Rust does not guarantee layout stability across compiler versions, so we pin
+# the exact rustc used by the Hachimi-Edge release we target.
+#
+# Hachimi-Edge v0.26.4 hachimi.dll was built with rustc 1.96.0
+# (rust-lang/rust commit ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96 — verified by
+# extracting the `rustc/<commit>` path string from the release binary; see
+# scripts/check-rustc-lockstep.ps1).
+#
+# When Hachimi-Edge ships a new release: re-run the lockstep check against the
+# new hachimi.dll, update this pin if their rustc moved, and cut a new plugin
+# release. Do NOT float this back to "stable" — that is what shipped the
+# boot-crash (plugins on 1.97.0 vs host on 1.96.0).
 [toolchain]
-channel = "stable"
+channel = "1.96.0"
+components = ["rustfmt", "clippy"]

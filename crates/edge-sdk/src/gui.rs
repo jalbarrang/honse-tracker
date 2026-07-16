@@ -32,8 +32,12 @@ use crate::{
 /// `ui` must be the non-null `*mut c_void` the host passed into a GUI callback
 /// (really `&mut egui::Ui`), and the returned reference must not outlive that
 /// callback invocation. Sound only when this plugin and the host compile the
-/// **same egui 0.33.x** (pinned to `hachimi-edge` `Cargo.lock`) with a
-/// compatible rustc — the sdk owns this cast in exactly this function.
+/// **same egui 0.33.x** (pinned to `hachimi-edge` `Cargo.lock`) with the
+/// **same rustc** — `repr(Rust)` layout is not stable across compiler
+/// versions, so the workspace `rust-toolchain.toml` pins the exact rustc the
+/// targeted Hachimi-Edge release binary was built with (verify with
+/// `scripts/check-rustc-lockstep.ps1`). The sdk owns this cast in exactly
+/// this function.
 #[must_use]
 pub unsafe fn ui_from_ptr<'a>(ui: *mut c_void) -> &'a mut egui::Ui {
     // SAFETY: caller + egui-version-lockstep invariant documented above.

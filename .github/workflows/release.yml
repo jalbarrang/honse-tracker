@@ -8,10 +8,12 @@
 #   Create Release + Upload    → Create Release and Upload Asset (*.dll glob covers all three)
 #
 # TOOLCHAIN decision: dtolnay/rust-toolchain does NOT auto-read rust-toolchain.toml
-# (confirmed against the action README / upstream issues). We use @stable to match
-# this repo's rust-toolchain.toml `channel = "stable"`, and cargo/rustup still honor
-# the file for overrides once the matching channel is installed. Do not pass a
-# `toolchain:` input that disagrees with rust-toolchain.toml.
+# (confirmed against the action README / upstream issues). The toolchain is PINNED
+# to the exact rustc the targeted Hachimi-Edge release was built with — ABI
+# lockstep for the egui `*mut c_void → &mut egui::Ui` cast (rust-toolchain.toml
+# has the full rationale + the verified host rustc commit). Keep the `toolchain:`
+# input identical to rust-toolchain.toml; floating @stable shipped a boot-crash
+# when our rustc (1.97.0) drifted ahead of Hachimi-Edge's (1.96.0).
 #
 # EXPORT-CHECK decision: use dumpbin /EXPORTS located via vswhere (MSVC is present
 # on windows-latest). Prefer dumpbin over llvm-nm because it is the PE-native
@@ -53,7 +55,10 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.ref }}
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        # Must match rust-toolchain.toml (Hachimi-Edge rustc lockstep).
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
 
       - name: Build Release
         run: cargo build --release
@@ -104,7 +109,7 @@ jobs:
           body: |
             Plugin DLLs for Hachimi-Edge.
 
-            **Compatibility contract:** build against Hachimi-Edge with egui **0.33.3** (workspace pin `=0.33.3`, matching Edge's Cargo.lock) and a compatible rustc. Mismatched egui or an incompatible rustc makes the `*mut c_void → &mut egui::Ui` cast unsound and will crash. When Edge releases a new build, re-pin egui from its Cargo.lock and cut a new release.
+            **Compatibility contract:** built for **Hachimi-Edge v0.26.4** — egui **0.33.3** (workspace pin `=0.33.3`, matching Edge's Cargo.lock) compiled with **rustc 1.96.0** (the exact compiler used for the Edge release binary). Mismatched egui or a different rustc makes the `*mut c_void → &mut egui::Ui` cast unsound and crashes the game at boot. When Edge releases a new build, re-run `scripts/check-rustc-lockstep.ps1` against its `hachimi.dll`, re-pin egui/rustc as needed, and cut a new plugin release.
 
             Install: place the three DLLs in the Honse game folder root and add them to `load_libraries` in `hachimi/config.json`.
         env:
