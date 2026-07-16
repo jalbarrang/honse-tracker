@@ -12,13 +12,19 @@
 //!    edge-sdk [`show_window`].
 //! 2. A present-callback watchdog compares `last_drawn_frame` to the current
 //!    frame counter; if the contents callback has not run for >2 frames, the
-//!    host dropped the window — re-show with a fresh `gui_new_window_id`,
-//!    reusing the same registered closures ([`reshow_window`]).
+//!    host dropped the window — the user clicked [X]. **The close is
+//!    respected**: the window (and every overlay it hosts — see below) stays
+//!    hidden until the user asks for it back via the host-menu item
+//!    ("Show <title>") or by turning any overlay visible (panel hotkey /
+//!    checkbox), both of which call [`reopen`] → [`reshow_window`] with a
+//!    fresh `gui_new_window_id`, reusing the same registered closures.
 //! 3. Overlay/panel egui state uses **our** stable ids
 //!    (`egui::Id::new("honse-overlay").with(name)`), never the host window id,
 //!    so positions survive re-shows.
-//! 4. Accepted jank: the surface title bar is visible; after user [X] the
-//!    window flickers back next frame via the watchdog.
+//! 4. Rendering constraint: overlays/panels are painted from *inside* this
+//!    window's contents callback (the only per-frame egui entry point edge
+//!    gives plugins), so a closed surface window also stops the overlays.
+//!    That is why turning an overlay visible force-reopens the window.
 //!
 //! Menu sections / pages with icons delegate to edge-sdk wrappers — never raw
 //! `get_api`.
@@ -94,15 +100,18 @@ static LAST_DRAWN_FRAME: AtomicU64 = AtomicU64::new(0);
 static SURFACE_WINDOW_ID: AtomicI32 = AtomicI32::new(-1);
 static SURFACE_ENSURED: AtomicBool = AtomicBool::new(false);
 static WATCHDOG_INSTALLED: AtomicBool = AtomicBool::new(false);
+/// Set when the watchdog detects a user [X]; cleared by [`reopen`].
+static USER_CLOSED: AtomicBool = AtomicBool::new(false);
+static MENU_ITEM_REGISTERED: AtomicBool = AtomicBool::new(false);
 
 const SURFACE_TITLE: &str = "Honse Tracker";
 /// Re-show if contents callback missed more than this many present ticks.
 const WATCHDOG_MISS_THRESHOLD: u64 = 2;
 
-/// Pure watchdog decision: should we re-show the surface window?
+/// Pure watchdog decision: has the host dropped the surface window (user [X])?
 ///
 /// `last_drawn == 0` means the contents callback has never run (just created /
-/// not yet painted) — do not re-show yet.
+/// not yet painted, or already marked closed) — not a drop.
 #[must_use]
 pub fn watchdog_should_reshow(last_drawn_frame: u64, current_frame: u64) -> bool {
     if last_drawn_frame == 0 {
@@ -124,6 +133,7 @@ impl Surface {
 /// Ensure the surface window exists and the present-callback watchdog is armed.
 pub fn ensure() {
     install_watchdog_job();
+    register_reopen_menu_item();
     if SURFACE_ENSURED.swap(true, Ordering::SeqCst) {
         return;
     }
@@ -138,9 +148,39 @@ fn install_watchdog_job() {
         let frame = FRAME_COUNTER.fetch_add(1, Ordering::Relaxed) + 1;
         let last = LAST_DRAWN_FRAME.load(Ordering::Relaxed);
         if watchdog_should_reshow(last, frame) {
-            reshow_surface();
+            // Host dropped the window — the user closed it. Respect it.
+            LAST_DRAWN_FRAME.store(0, Ordering::Relaxed);
+            USER_CLOSED.store(true, Ordering::SeqCst);
+            log::info!("honse-services: surface window closed by user; staying closed");
+            if let Some(sdk) = edge_sdk::Sdk::try_get() {
+                sdk.show_notification(&format!(
+                    "{SURFACE_TITLE} hidden — reopen from the Hachimi menu or a panel hotkey"
+                ));
+            }
         }
     }));
+}
+
+/// Re-show the surface window after a user close (or ensure it on first use).
+/// No-op when the window is already alive.
+pub fn reopen() {
+    if !SURFACE_ENSURED.load(Ordering::SeqCst) {
+        ensure();
+        return;
+    }
+    if USER_CLOSED.swap(false, Ordering::SeqCst) {
+        reshow_surface();
+    }
+}
+
+fn register_reopen_menu_item() {
+    if MENU_ITEM_REGISTERED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    if !edge_sdk::register_menu_item(&format!("Show {SURFACE_TITLE}"), reopen) {
+        log::warn!("honse-services: gui_register_menu_item failed for surface reopen");
+        MENU_ITEM_REGISTERED.store(false, Ordering::SeqCst);
+    }
 }
 
 fn show_surface_fresh() {
@@ -386,6 +426,11 @@ pub fn overlay_visible(id: &str) -> bool {
 
 pub fn set_overlay_visible(id: &str, visible: bool) -> bool {
     STATE.lock().visible.insert(id.to_owned(), visible);
+    if visible {
+        // Overlays render from inside the surface window's contents callback;
+        // if the user closed it, showing an overlay must bring it back.
+        reopen();
+    }
     true
 }
 

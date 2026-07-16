@@ -26,7 +26,8 @@ fn uma_overlay_id(slot: usize) -> String {
 /// the L1 control page for toggling which metrics each widget shows.
 ///
 /// Surface primitive: `register_panel_chromeless` (services surface window renders
-/// every frame with the edge menu closed; watchdog re-shows if closed).
+/// every frame with the edge menu closed; user [X] is respected — reopen via
+/// the host-menu item or by toggling any overlay visible).
 pub fn register_ui() {
     honse_services::register_page("Race HUD", draw_control_page, std::ptr::null_mut());
     register_panel(TIMER_OVERLAY_ID, draw_timer_overlay, std::ptr::null_mut());

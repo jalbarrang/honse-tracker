@@ -10,7 +10,7 @@ pub mod sdk;
 pub use api::Api;
 pub use egui;
 pub use gui::{
-    close_window, new_window_id, register_menu_section, register_menu_section_with_icon, reshow_window, show_window,
-    ui_from_ptr,
+    close_window, new_window_id, register_menu_item, register_menu_section, register_menu_section_with_icon,
+    reshow_window, show_window, ui_from_ptr,
 };
 pub use sdk::Sdk;

@@ -8,8 +8,9 @@
 //! the plugin is **not** notified. Therefore userdata `Box`es live in an
 //! sdk-internal registry keyed by window id and are reclaimed only on our own
 //! [`close_window`]. Process-lifetime windows that the user may close via [X]
-//! intentionally leak one allocation per window id (bounded); plan 2's watchdog
-//! re-shows dropped windows reusing the **same** registered closures.
+//! intentionally leak one allocation per window id (bounded); honse-services'
+//! surface layer re-shows a dropped window on user request ([`reshow_window`]
+//! reuses the **same** registered closures).
 
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
@@ -23,7 +24,7 @@ use parking_lot::Mutex;
 
 use crate::{
     api::Api,
-    ffi::{GuiMenuSectionCallback, GuiWindowCallback},
+    ffi::{GuiMenuCallback, GuiMenuSectionCallback, GuiWindowCallback},
 };
 
 /// Cast a host-provided `Ui` pointer to a real [`egui::Ui`].
@@ -62,7 +63,9 @@ struct MenuSectionUserdata {
 /// Allocate a fresh plugin window id from the host.
 #[must_use]
 pub fn new_window_id() -> i32 {
-    let api = Api::get();
+    let Some(api) = Api::try_get() else {
+        return -1;
+    };
     let Some(f) = api.gui_new_window_id else {
         return -1;
     };
@@ -100,7 +103,9 @@ pub fn show_window(
     mut contents: impl FnMut(&mut egui::Ui) + Send + 'static,
     bottom: Option<impl FnMut(&mut egui::Ui) + Send + 'static>,
 ) -> bool {
-    let api = Api::get();
+    let Some(api) = Api::try_get() else {
+        return Default::default();
+    };
     let Some(f) = api.gui_show_window else {
         return false;
     };
@@ -155,12 +160,14 @@ pub fn show_window(
 
 /// Re-show a window under a fresh host id, reusing the **same** registered
 /// closures (userdata pointer unchanged). Used by honse-services' surface
-/// watchdog when the host permanently drops a user-closed window.
+/// reopen path after the host permanently drops a user-closed window.
 ///
 /// Moves the registry entry from `old_id` → `new_id`. Returns `false` if
 /// `old_id` is unknown or the host call fails.
 pub fn reshow_window(old_id: i32, new_id: i32, title: &str) -> bool {
-    let api = Api::get();
+    let Some(api) = Api::try_get() else {
+        return Default::default();
+    };
     let Some(f) = api.gui_show_window else {
         return false;
     };
@@ -194,13 +201,51 @@ pub fn reshow_window(old_id: i32, new_id: i32, title: &str) -> bool {
 
 /// Close a window and reclaim its registered userdata (if any).
 pub fn close_window(id: i32) {
-    let api = Api::get();
+    let Some(api) = Api::try_get() else {
+        return Default::default();
+    };
     if let Some(f) = api.gui_close_window {
         // SAFETY: edge removes the window by id; no other pointers involved.
         unsafe { f(id) };
     }
     let mut reg = WINDOW_REGISTRY.lock();
     let _ = reg.remove(&id);
+}
+
+struct MenuItemUserdata {
+    on_click: Box<dyn FnMut() + Send>,
+}
+
+extern "C" fn menu_item_trampoline(userdata: *mut c_void) {
+    if userdata.is_null() {
+        return;
+    }
+    // SAFETY: userdata is `*mut MenuItemUserdata` leaked for process lifetime.
+    let data = unsafe { &mut *(userdata as *mut MenuItemUserdata) };
+    (data.on_click)();
+}
+
+/// Register a clickable item in the host (Hachimi) menu from a Rust closure.
+///
+/// Maps to edge `gui_register_menu_item(label, callback, userdata)`. The
+/// closure + userdata are intentionally leaked (process lifetime, one per item).
+pub fn register_menu_item(label: &str, on_click: impl FnMut() + Send + 'static) -> bool {
+    let Some(api) = Api::try_get() else {
+        return Default::default();
+    };
+    let Some(f) = api.gui_register_menu_item else {
+        return false;
+    };
+    let Ok(label_c) = CString::new(label) else {
+        return false;
+    };
+    let data = Box::new(MenuItemUserdata {
+        on_click: Box::new(on_click),
+    });
+    let userdata = Box::into_raw(data) as *mut c_void;
+    // SAFETY: label NUL-terminated for the call; trampoline + userdata are a
+    // process-lifetime leak by design.
+    unsafe { f(label_c.as_ptr(), Some(menu_item_trampoline as GuiMenuCallback), userdata) }
 }
 
 extern "C" fn menu_section_trampoline(ui: *mut c_void, userdata: *mut c_void) {
@@ -214,7 +259,9 @@ extern "C" fn menu_section_trampoline(ui: *mut c_void, userdata: *mut c_void) {
 
 /// Register a menu section from a Rust closure (trampoline + leaked userdata).
 pub fn register_menu_section(mut draw: impl FnMut(&mut egui::Ui) + Send + 'static) -> bool {
-    let api = Api::get();
+    let Some(api) = Api::try_get() else {
+        return Default::default();
+    };
     let Some(f) = api.gui_register_menu_section else {
         return false;
     };
@@ -240,7 +287,9 @@ pub fn register_menu_section_with_icon(
     icon_bytes: &[u8],
     mut draw: impl FnMut(&mut egui::Ui) + Send + 'static,
 ) -> bool {
-    let api = Api::get();
+    let Some(api) = Api::try_get() else {
+        return Default::default();
+    };
     let Some(f) = api.gui_register_menu_section_with_icon else {
         return false;
     };
