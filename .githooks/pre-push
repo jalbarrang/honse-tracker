@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Mirror CI's static gates locally before pushing (rustfmt + clippy).
+# Enabled by: git config core.hooksPath .githooks
+#
+# The most common CI failure here is `cargo fmt --check`; clippy is enforced
+# with `-D warnings`. Running both before push turns a red CI run into a
+# ~seconds-local check. Skip with `git push --no-verify` in a pinch.
+set -euo pipefail
+
+echo "pre-push: cargo fmt --check"
+cargo fmt --all --check
+
+# hiker generates the property-test file that `clippy --all-targets` compiles
+# (see .github/workflows/ci.yml). Best-effort so clippy matches CI; ignored if
+# hiker isn't installed.
+if command -v hiker >/dev/null 2>&1; then
+  hiker gen .hiker/tents/honse-extraction/honse-extraction.tent \
+    --target rust --module honse_tracker >/dev/null 2>&1 || true
+fi
+
+echo "pre-push: cargo clippy --all-targets -- -D warnings"
+cargo clippy --all-targets -- -D warnings
+
+echo "pre-push: ok"

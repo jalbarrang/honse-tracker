@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Conventional Commits check via cocogitto (cog).
+# Enabled by: git config core.hooksPath .githooks
+set -euo pipefail
+
+if ! command -v cog >/dev/null 2>&1; then
+  echo "error: cocogitto (cog) not installed — commit message not verified." >&2
+  echo "  install: cargo install cocogitto   (or: cargo binstall cocogitto)" >&2
+  exit 1
+fi
+
+# $1 is the path to the file holding the commit message.
+exec cog verify --file "$1"

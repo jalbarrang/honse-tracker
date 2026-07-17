@@ -1,0 +1,8 @@
+# cocogitto config — enforces Conventional Commits.
+# Verified by the commit-msg hook in .githooks/ (see core.hooksPath).
+from_latest_tag = false
+ignore_merge_commits = true
+
+# Standard Conventional Commit types. `feat` and `fix` map to semver bumps;
+# the rest are non-bumping. Set bump_minor/bump_patch as needed.
+[commit_types]
