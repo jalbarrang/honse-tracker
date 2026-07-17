@@ -12,7 +12,9 @@ Plugins for [Hachimi-Edge](https://github.com/kairusds/Hachimi-Edge) that add tr
 
 Each plugin release targets **one specific Hachimi-Edge release** — currently **v0.26.4**.
 
-The plugins draw their UI by casting Hachimi-Edge's raw egui pointer back into `egui` types. That is only sound when both sides are built from the same egui source (`=0.33.3`) **with the same rustc** — Rust struct layout is not stable across compiler versions. A mismatch crashes the game at launch (before the title screen), even though the plugin configs still get generated. `rust-toolchain.toml` pins the exact rustc used by the targeted Edge release (1.96.0 for v0.26.4); `scripts/check-rustc-lockstep.ps1` verifies a build against a `hachimi.dll`.
+All plugin UI renders on a **self-hosted egui stack** (`honse-services::overlay`): each plugin owns its egui context and an `egui-directx11` renderer driven from Edge's present callback, with input via a chained WndProc subclass. **No egui types cross the plugin↔host boundary**, so plugin UI does not require an egui-version or rustc lockstep with the Edge binary.
+
+What still binds a plugin release to an Edge release is Edge's **C plugin ABI** (`hachimi_get_plugin_api`, present callbacks, menu items, notifications, IL2CPP helpers) — a stable-by-construction C surface. The historical egui/rustc lockstep only applies to `edge-sdk`'s *host-egui* entry points (`ui_from_ptr`, `show_window`, `register_menu_section*`), which no shipped plugin calls anymore. If you write a plugin that does call them, the old rule returns: build with Edge's exact egui (`=0.33.3` for v0.26.4) and the exact rustc used for the Edge binary (1.96.0; verify with `scripts/check-rustc-lockstep.ps1`).
 
 If the game crashes on boot with these DLLs loaded, first check that your Hachimi-Edge version matches the one named in the plugin release notes, and remove the honse DLLs from `load_libraries` to confirm the game boots without them.
 
@@ -160,9 +162,9 @@ $env:HACHIMI_GAME_DIR = "C:\path\to\game"   # optional override
 
 The script copies only the three plugin DLLs into the game folder root. It never launches or kills the game. If a DLL is locked, close the Honse game and retry.
 
-### EGUI LOCKSTEP RULE
+### EGUI LOCKSTEP RULE (host-egui entry points only)
 
-Plugins must build with the egui version pinned in this workspace (`egui = "=0.33.3"` today), which must equal the version resolved in Hachimi-Edge's `Cargo.lock` for the targeted Edge release, plus a compatible rustc. The overlay path casts `*mut c_void` to `&mut egui::Ui`; a mismatched egui (or incompatible rustc) makes that cast unsound and crashes. When Edge ships a new build: read egui from *its* `Cargo.lock`, re-pin this workspace to match, rebuild, and cut a new release.
+Since the self-hosted overlay migration, plugin UI draws on its own statically-linked egui — the workspace egui pin is an ordinary dependency choice, not an ABI contract, and any stable rustc can build working DLLs. The lockstep rule survives **only** for `edge-sdk`'s host-egui entry points (`ui_from_ptr`, `show_window`/`reshow_window`, `register_menu_section*`): code that calls those must be built from the same egui source as Edge's `Cargo.lock` (`=0.33.3` for v0.26.4) with the same rustc as the Edge binary (1.96.0), because they cast the host's `*mut c_void` to `&mut egui::Ui`. No shipped honse plugin calls them. `rust-toolchain.toml` stays pinned for reproducible builds and to keep that escape hatch sound.
 
 ### Hiker intent
 

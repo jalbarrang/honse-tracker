@@ -1,5 +1,16 @@
 //! GUI helpers: `ui_from_ptr`, true-ABI window wrappers, menu-section closure adapters.
 //!
+//! # ⚠ HOST-EGUI = ABI LOCKSTEP
+//!
+//! Everything in this module that passes an `egui::Ui`/`egui::Context` across
+//! the plugin↔host boundary (`ui_from_ptr`, `show_window`, `reshow_window`,
+//! `register_menu_section*`) is only sound when the plugin is built from the
+//! SAME egui source as the Edge binary's `Cargo.lock` with the SAME rustc.
+//! **No shipped honse plugin calls these anymore** — all plugin UI renders on
+//! the self-hosted overlay (`honse_services::overlay`). If you add a caller,
+//! the lockstep contract (README "Compatibility") applies to your build again.
+//! `register_menu_item` (label + callback, no egui) is lockstep-free.
+//!
 //! # Host window lifetime (edge ABI)
 //!
 //! `gui_show_window` creates a **decorated** egui window (title bar + close [X]).
@@ -8,9 +19,8 @@
 //! the plugin is **not** notified. Therefore userdata `Box`es live in an
 //! sdk-internal registry keyed by window id and are reclaimed only on our own
 //! [`close_window`]. Process-lifetime windows that the user may close via [X]
-//! intentionally leak one allocation per window id (bounded); honse-services'
-//! surface layer re-shows a dropped window on user request ([`reshow_window`]
-//! reuses the **same** registered closures).
+//! intentionally leak one allocation per window id (bounded); [`reshow_window`]
+//! can re-show a dropped window reusing the **same** registered closures.
 
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 

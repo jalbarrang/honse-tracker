@@ -1,21 +1,24 @@
-# ABI LOCKSTEP: this pin is part of the plugin↔host compatibility contract.
+# Toolchain pin — REPRODUCIBILITY + host-egui escape hatch (no longer a hard
+# ABI requirement for shipped plugins).
 #
-# edge-sdk casts the host's `*mut c_void` GUI pointer to `&mut egui::Ui`
-# (crates/edge-sdk/src/gui.rs `ui_from_ptr`). That cast is only sound when the
-# plugins are compiled with the SAME egui source (workspace pin `=0.33.3`) AND
-# a rustc whose `repr(Rust)` layout matches the one Hachimi-Edge was built with.
-# Rust does not guarantee layout stability across compiler versions, so we pin
-# the exact rustc used by the Hachimi-Edge release we target.
+# Since the self-hosted overlay migration (honse-services::overlay), all plugin
+# UI renders on the plugins' OWN statically-linked egui — no egui types cross
+# the plugin↔host boundary, so plugin UI works on any stable rustc.
+#
+# The pin is kept because:
+# 1. Reproducible CI/release builds (workflows pin the same version).
+# 2. edge-sdk still exposes HOST-egui entry points (`ui_from_ptr`,
+#    `show_window`, `register_menu_section*`). Nothing shipped calls them, but
+#    any code that does must be built with Edge's exact egui (`=0.33.3` for
+#    v0.26.4) AND the exact rustc used for the Edge binary — `repr(Rust)`
+#    layout is not stable across compiler versions. That mismatch is what
+#    shipped the v0.1.0 boot-crash (plugins on 1.97.0 vs host on 1.96.0).
 #
 # Hachimi-Edge v0.26.4 hachimi.dll was built with rustc 1.96.0
 # (rust-lang/rust commit ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96 — verified by
 # extracting the `rustc/<commit>` path string from the release binary; see
-# scripts/check-rustc-lockstep.ps1).
-#
-# When Hachimi-Edge ships a new release: re-run the lockstep check against the
-# new hachimi.dll, update this pin if their rustc moved, and cut a new plugin
-# release. Do NOT float this back to "stable" — that is what shipped the
-# boot-crash (plugins on 1.97.0 vs host on 1.96.0).
+# scripts/check-rustc-lockstep.ps1). Bumping this pin is safe for the shipped
+# plugins; re-run the lockstep check only if host-egui entry points are used.
 [toolchain]
 channel = "1.96.0"
 components = ["rustfmt", "clippy"]

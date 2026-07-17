@@ -109,7 +109,7 @@ jobs:
           body: |
             Plugin DLLs for Hachimi-Edge.
 
-            **Compatibility contract:** built for **Hachimi-Edge v0.26.4** — egui **0.33.3** (workspace pin `=0.33.3`, matching Edge's Cargo.lock) compiled with **rustc 1.96.0** (the exact compiler used for the Edge release binary). Mismatched egui or a different rustc makes the `*mut c_void → &mut egui::Ui` cast unsound and crashes the game at boot. When Edge releases a new build, re-run `scripts/check-rustc-lockstep.ps1` against its `hachimi.dll`, re-pin egui/rustc as needed, and cut a new plugin release.
+            **Compatibility contract:** built for **Hachimi-Edge v0.26.4**. All plugin UI renders on a self-hosted egui stack (statically linked; no egui types cross the plugin↔host boundary), so the DLLs only depend on Edge's stable C plugin ABI — no egui/rustc lockstep with the Edge binary is required for the shipped plugins.
 
             Install: place the three DLLs in the Honse game folder root and add them to `load_libraries` in `hachimi/config.json`.
         env:

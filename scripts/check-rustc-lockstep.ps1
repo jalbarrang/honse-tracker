@@ -6,6 +6,11 @@
 # egui) is only sound when this matches — a mismatch is the boot-crash mode
 # reported against v0.1.0 (plugins 1.97.0 vs Edge v0.26.4 on 1.96.0).
 #
+# NOTE: since the self-hosted overlay migration, shipped plugins draw all UI
+# on their own statically-linked egui and call NO host-egui entry points, so
+# this check is informational unless code starts calling edge-sdk's host-egui
+# functions (ui_from_ptr / show_window / register_menu_section*) again.
+#
 # Usage:
 #   ./scripts/check-rustc-lockstep.ps1 -HostDll path/to/hachimi.dll `
 #       [-PluginDlls target/release/honse_tracker.dll,...]
