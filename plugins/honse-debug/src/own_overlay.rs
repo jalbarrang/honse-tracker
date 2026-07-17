@@ -95,15 +95,11 @@ pub fn install() {
         hlog_warn!(target: "debug-viewer", "own_overlay: present callback registration failed");
         return;
     }
-    honse_services::register_hotkey(
-        "honse-debug.own_overlay",
-        "Toggle Own-Overlay Spike",
-        honse_services::MOD_ALT,
-        0x39, // '9'
-        toggle_hotkey,
-        std::ptr::null_mut(),
-    );
-    hlog_info!(target: "debug-viewer", "own_overlay: spike installed (Alt+9 toggles)");
+    // Alt+9 is handled ONLY in subclass_wndproc. It was also registered as a
+    // polling hotkey while the polling stack was dead (pre game-ready-bootstrap);
+    // once polling came back both paths fired on one press — double-toggle, so
+    // the window "never opened". One binding, one owner: the WndProc.
+    hlog_info!(target: "debug-viewer", "own_overlay: spike installed (Alt+9 toggles via WndProc)");
 }
 
 extern "C" fn toggle_hotkey(_userdata: *mut c_void) {
