@@ -1,10 +1,13 @@
 //! Race overlays: a standalone timer plus one independent widget per player-owned
-//! uma (HP + velocity), each its own draggable chromeless panel.
+//! uma (HP + velocity), each its own draggable chromeless panel on the plugin's
+//! self-hosted egui context (`honse_services::overlay`) — no surface window, no
+//! host egui, no ABI lockstep.
 
 use std::ffi::c_void;
 use std::panic::{self, AssertUnwindSafe};
 
-use edge_sdk::{egui, ui_from_ptr};
+use edge_sdk::egui;
+use honse_services::overlay;
 use honse_ui::components;
 use honse_ui::theme::Tokens;
 
@@ -23,18 +26,29 @@ fn uma_overlay_id(slot: usize) -> String {
 }
 
 /// Register the race-hud overlays: the timer plus the per-uma widget pool, and
-/// the L1 control page for toggling which metrics each widget shows.
+/// the control window for toggling widgets and which metrics they show.
 ///
-/// Surface primitive: `register_panel_chromeless` (services surface window renders
-/// every frame with the edge menu closed; user [X] is respected — reopen via
-/// the host-menu item or by toggling any overlay visible).
+/// Everything renders on OUR egui context from the present callback — each
+/// widget is fully independent; the control window has a real close button and
+/// reopens from the hachimi menu ("Show Race HUD").
 pub fn register_ui() {
-    honse_services::register_page("Race HUD", draw_control_page, std::ptr::null_mut());
-    register_panel(TIMER_OVERLAY_ID, draw_timer_overlay, std::ptr::null_mut());
+    overlay::register_window("race_hud_config", "Race HUD", |ui| {
+        if panic::catch_unwind(AssertUnwindSafe(|| draw_control_page_inner(ui))).is_err() {
+            hlog_error!(target: "race-hud", "draw_control_page panicked");
+        }
+    });
+    overlay::register_panel(TIMER_OVERLAY_ID, |ui| {
+        if panic::catch_unwind(AssertUnwindSafe(|| draw_timer_inner(ui))).is_err() {
+            hlog_error!(target: "race-hud", "draw_timer_overlay panicked");
+        }
+    });
     for slot in 0..MAX_UMA_WIDGETS {
         let id = uma_overlay_id(slot);
-        // SAFETY-free: the slot index is carried as the userdata "pointer".
-        register_panel(&id, draw_uma_overlay, slot as *mut c_void);
+        overlay::register_panel(&id, move |ui| {
+            if panic::catch_unwind(AssertUnwindSafe(|| draw_uma_inner(ui, slot))).is_err() {
+                hlog_error!(target: "race-hud", "draw_uma_overlay panicked (slot {slot})");
+            }
+        });
     }
 
     // Alt+7 by default (tracker panels own Alt+1..6 / Alt+0; edge has no host
@@ -48,24 +62,11 @@ pub fn register_ui() {
         toggle_hud_hotkey,
         std::ptr::null_mut(),
     );
-    // NOTE: the plugin never writes overlay visibility — show/hide is entirely the
-    // user's choice (persisted by the host's Overlay tab). Visible slots always
-    // render a card (placeholder when idle), so there are no invisible ghosts and
-    // race start never overrides a hidden widget.
-}
-
-fn register_panel(id: &str, callback: extern "C" fn(*mut c_void, *mut c_void), userdata: *mut c_void) {
-    // Chromeless: the overlays draw their own card/chip visuals, so the host must
-    // not wrap them in a titled window with a frame and close/collapse buttons.
-    let handle = honse_services::register_panel_chromeless(id, callback, userdata);
-    if handle == 0 {
-        hlog_warn!(target: "race-hud", "Overlay panel registration declined: {id}");
-    } else {
-        hlog_info!(target: "race-hud", "Overlay panel registered: {id} ({handle})");
-        // Hidden until asked for — silent boot; Alt+7 (or the control page)
-        // shows the HUD, which also brings up the hosting surface window.
-        honse_services::surface::set_overlay_visible_if_unset(id, false);
-    }
+    // NOTE: the plugin never writes overlay visibility on its own — show/hide is
+    // the user's choice (Alt+7 or the control window). Registry entries default
+    // hidden, so boot is silent. Visible slots always render a card (placeholder
+    // when idle), so there are no invisible ghosts and race start never overrides
+    // a hidden widget.
 }
 
 extern "C" fn toggle_hud_hotkey(_userdata: *mut c_void) {
@@ -77,18 +78,10 @@ extern "C" fn toggle_hud_hotkey(_userdata: *mut c_void) {
 /// Flip every race-hud panel to the inverse of the timer's current visibility,
 /// so the whole HUD shows/hides together.
 fn toggle_all_panels() {
-    let visible = !honse_services::overlay_visible(TIMER_OVERLAY_ID);
-    honse_services::overlay_set_visible(TIMER_OVERLAY_ID, visible);
+    let visible = !overlay::is_visible(TIMER_OVERLAY_ID);
+    overlay::set_visible(TIMER_OVERLAY_ID, visible);
     for slot in 0..MAX_UMA_WIDGETS {
-        honse_services::overlay_set_visible(&uma_overlay_id(slot), visible);
-    }
-}
-
-extern "C" fn draw_control_page(ui: *mut c_void, _userdata: *mut c_void) {
-    // SAFETY: host passes its live `&mut egui::Ui` for this callback.
-    let ui = unsafe { ui_from_ptr(ui) };
-    if panic::catch_unwind(AssertUnwindSafe(|| draw_control_page_inner(ui))).is_err() {
-        hlog_error!(target: "race-hud", "draw_control_page panicked");
+        overlay::set_visible(&uma_overlay_id(slot), visible);
     }
 }
 
@@ -96,6 +89,14 @@ fn draw_control_page_inner(ui: &mut egui::Ui) {
     let tokens = Tokens::DEFAULT;
     ui.spacing_mut().item_spacing.y = 8.0;
     ui.label(egui::RichText::new("Race HUD").color(tokens.fg).size(16.0).strong());
+
+    ui.label(egui::RichText::new("Widgets (Alt+7 toggles the whole HUD):").color(tokens.fg_muted));
+    widget_toggle(ui, "Timer", TIMER_OVERLAY_ID);
+    for slot in 0..MAX_UMA_WIDGETS {
+        widget_toggle(ui, &format!("Uma {}", slot + 1), &uma_overlay_id(slot));
+    }
+
+    let _ = components::separator(ui);
     ui.label(
         egui::RichText::new("There is one draggable widget per uma slot. Choose which metrics each widget shows:")
             .color(tokens.fg_muted),
@@ -108,28 +109,18 @@ fn draw_control_page_inner(ui: &mut egui::Ui) {
     }
     ui.label(
         egui::RichText::new(
-            "Show/hide each uma widget from the Overlay tab (Race Hud Uma 1\u{2026}9). \
-             The HUD never changes a widget's visibility on its own, and your choices are saved.",
+            "The HUD never changes a widget's visibility on its own; a visible widget \
+             shows a placeholder card until a race assigns it.",
         )
         .color(tokens.fg_dim)
         .size(12.0),
     );
 }
 
-extern "C" fn draw_timer_overlay(ui: *mut c_void, _userdata: *mut c_void) {
-    // SAFETY: host passes its live `&mut egui::Ui` for this callback.
-    let ui = unsafe { ui_from_ptr(ui) };
-    if panic::catch_unwind(AssertUnwindSafe(|| draw_timer_inner(ui))).is_err() {
-        hlog_error!(target: "race-hud", "draw_timer_overlay panicked");
-    }
-}
-
-extern "C" fn draw_uma_overlay(ui: *mut c_void, userdata: *mut c_void) {
-    let slot = userdata as usize;
-    // SAFETY: host passes its live `&mut egui::Ui` for this callback.
-    let ui = unsafe { ui_from_ptr(ui) };
-    if panic::catch_unwind(AssertUnwindSafe(|| draw_uma_inner(ui, slot))).is_err() {
-        hlog_error!(target: "race-hud", "draw_uma_overlay panicked (slot {slot})");
+fn widget_toggle(ui: &mut egui::Ui, label: &str, id: &str) {
+    let mut visible = overlay::is_visible(id);
+    if ui.checkbox(&mut visible, label).changed() {
+        overlay::set_visible(id, visible);
     }
 }
 
