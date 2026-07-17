@@ -1,2 +1,3 @@
 {"_type":"plan","name":"spike-own-egui-overlay","status":"done","title":"Spike: in-plugin egui overlay via present callback","created_at":"2026-07-16T17:54:51.410Z","completed_at":"2026-07-16T19:12:34.753Z","initiative":"self-hosted-overlay"}
 {"_type":"plan","name":"fix-plugin-gameinit-bootstrap","status":"in-progress","title":"Fix plugin game-init bootstrap (hotkeys dead + tracking crash)","created_at":"2026-07-17T03:13:36.032Z","completed_at":null}
+{"_type":"plan","name":"productize-own-overlay","status":"in-progress","title":"Productize self-hosted overlay; decouple panels from surface window","created_at":"2026-07-17T04:54:42.718Z","completed_at":null,"initiative":"self-hosted-overlay"}

@@ -1,0 +1,7 @@
+{"_type":"meta","title":"Productize self-hosted overlay; decouple panels from surface window","plan_name":"productize-own-overlay","created_at":"2026-07-17T04:54:42.703Z"}
+{"_type":"task","id":"t-001","description":"Extract spike stack into honse-overlay (renderer, input, con","details":"","status":"pending","created_at":"2026-07-17T04:54:42.703Z","updated_at":"2026-07-17T04:54:42.703Z"}
+{"_type":"task","id":"t-002","description":"Own-context panel/window registry: chromeless areas, real-cl","details":"","status":"pending","created_at":"2026-07-17T04:54:42.703Z","updated_at":"2026-07-17T04:54:42.703Z"}
+{"_type":"task","id":"t-003","description":"Migrate honse-tracker panels + config UI onto honse-overlay;","details":"","status":"pending","created_at":"2026-07-17T04:54:42.703Z","updated_at":"2026-07-17T04:54:42.703Z"}
+{"_type":"task","id":"t-004","description":"Migrate race-hud overlays; retire surface.rs machinery when ","details":"","status":"pending","created_at":"2026-07-17T04:54:42.703Z","updated_at":"2026-07-17T04:54:42.703Z"}
+{"_type":"task","id":"t-005","description":"Drop/relax egui-rustc lockstep for UI once ui_from_ptr is go","details":"","status":"pending","created_at":"2026-07-17T04:54:42.703Z","updated_at":"2026-07-17T04:54:42.703Z"}
+{"_type":"task","id":"t-006","description":"In-game gate: independent panels, real close, race HUD, edge","details":"","status":"pending","created_at":"2026-07-17T04:54:42.703Z","updated_at":"2026-07-17T04:54:42.703Z"}
