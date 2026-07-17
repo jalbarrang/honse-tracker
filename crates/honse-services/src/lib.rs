@@ -20,7 +20,7 @@ pub use events::{dispatch, dispatch_shutdown, dispatch_view_change, off, on};
 pub use frame::{install_frame_source, register_frame_job, FrameJob};
 pub use hosted_data::{gametora_data_dir, host_data_path, sync_all};
 pub use hotkeys::{register_hotkey, Chord, MOD_ALT, MOD_CTRL, MOD_SHIFT};
-pub use init::{init, InitOptions};
+pub use init::{init, is_game_ready, register_on_game_ready, GameReadyCallback, InitOptions};
 pub use scene_views::view_name;
 pub use surface::{
     overlay_set_visible, overlay_visible, register_menu_section, register_menu_section_with_icon, register_overlay,
@@ -28,7 +28,7 @@ pub use surface::{
     register_page, register_page_with_icon, register_panel, register_panel_chromeless, register_panel_chromeless_fixed,
     register_tab, set_overlay_visible, toggle_overlay, Surface,
 };
-pub use view_hook::install_view_hook;
+pub use view_hook::{install_view_poll, poll_view_change};
 
 /// Unregister a handle from hotkeys and/or surface registries (shared handle space).
 pub fn unregister(handle: u64) -> bool {

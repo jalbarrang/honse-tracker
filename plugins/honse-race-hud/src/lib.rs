@@ -84,10 +84,10 @@ fn plugin_init() -> bool {
     // Capability checks deleted: single-version world — EVENTS always available.
     let _ = tick::subscribe_events();
 
-    // IL2CPP race-scene hooks require the game runtime — install on game-initialized.
-    if let Some(edge) = edge_sdk::Sdk::try_get() {
-        let _ = edge.register_on_game_initialized(on_game_initialized, std::ptr::null_mut());
-    }
+    // IL2CPP race-scene hooks require the game runtime — install on game-ready.
+    // honse-services' present-driven signal, NOT edge's game-initialized (which
+    // never fires for load_libraries plugins at ui_scale==1.0).
+    honse_services::register_on_game_ready(on_game_initialized, std::ptr::null_mut());
 
     hlog_info!(target: "race-hud", "Race HUD ready");
     if let Some(sdk) = edge_sdk::Sdk::try_get() {

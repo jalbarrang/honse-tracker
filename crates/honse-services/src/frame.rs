@@ -28,12 +28,17 @@ pub fn register_frame_job(job: FrameJob) {
 /// # Safety
 /// Called by the host on the render thread; `userdata` is unused (null).
 unsafe extern "C" fn present_trampoline(_swapchain: *mut c_void, _userdata: *mut c_void) {
+    // First-present bootstrap: fire on-game-ready listeners + install the view
+    // poll once IL2CPP is up. No-op after the game-ready edge.
+    crate::init::poll_bootstrap();
     {
         let mut jobs = FRAME_JOBS.lock();
         for job in jobs.iter_mut() {
             job();
         }
     }
+    // View-change gate signal (SceneManager.GetCurrentViewId diff).
+    crate::view_hook::poll_view_change();
     dispatch_frame();
 }
 

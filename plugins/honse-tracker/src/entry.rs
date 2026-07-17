@@ -59,11 +59,11 @@ fn plugin_init() -> bool {
     // Event subscriptions (FRAME / VIEW_CHANGE / SHUTDOWN).
     hooks::subscribe_events();
 
-    // Tracker IL2CPP hooks + hosted-data sync on the same game-initialized path.
-    // Edge supports multiple game-initialized callbacks (list).
-    if let Some(edge) = edge_sdk::Sdk::try_get() {
-        let _ = edge.register_on_game_initialized(on_game_initialized, std::ptr::null_mut());
-    }
+    // Tracker IL2CPP hooks + hosted-data sync once the game runtime is ready.
+    // Uses honse-services' present-driven game-ready signal, NOT edge's
+    // register_on_game_initialized (which never fires for load_libraries plugins
+    // when ui_scale==1.0 — see honse_services::init docs).
+    honse_services::register_on_game_ready(on_game_initialized, std::ptr::null_mut());
 
     // Warm GameTora catalog off-thread (may be empty until sync completes).
     std::thread::spawn(|| {
