@@ -531,12 +531,10 @@ version = "0.1.0"
 dependencies = [
  "edge-sdk",
  "egui",
- "egui-directx11",
  "honse-services",
  "honse_ui",
  "log",
  "parking_lot",
- "windows",
 ]
 
 [[package]]
