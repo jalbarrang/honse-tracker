@@ -11,7 +11,7 @@ use crate::skill_shop_prefs::{cycle_sort_mode, prefs, set_prefs, sort_mode_label
 use std::sync::Mutex;
 
 use super::dimens;
-use super::overlay;
+use super::overlay_panels as overlay;
 
 /// Skill id awaiting a second-click confirm before the purchase fires.
 static CONFIRM: Mutex<Option<i32>> = Mutex::new(None);

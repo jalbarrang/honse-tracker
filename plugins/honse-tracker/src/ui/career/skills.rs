@@ -26,7 +26,7 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
         ui.label(RichText::new("No skills acquired yet").small().color(theme::FG_DIM));
     } else {
         // Single full-width column at the overlay's narrow width.
-        let w = super::super::overlay::content_width();
+        let w = super::super::overlay_panels::content_width();
         for (idx, s) in skills.iter().enumerate() {
             skill_card(ui, idx, s.master_id, s.level, &s.name, w);
             ui.add_space(4.0);
@@ -188,7 +188,7 @@ fn conditions(ui: &mut egui::Ui, snap: &CareerSnapshot) {
         return;
     }
     ui.add_space(dimens::z(dimens::GAP_LG));
-    let w = super::super::overlay::content_width();
+    let w = super::super::overlay_panels::content_width();
     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
     tui(ui, ui.id().with("career_conditions"))
         .reserve_width(w)

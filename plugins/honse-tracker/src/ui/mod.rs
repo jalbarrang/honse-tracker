@@ -1,12 +1,15 @@
-//! GUI rendering via the Hachimi plugin menu system.
+//! GUI rendering on the plugin's own egui context (`honse_services::overlay`).
 //!
-//! With API v9 the host hands plugins the real `egui::Ui`, so we draw with egui
-//! directly. Registers a Control Center tab and independent tracker overlay panels.
+//! Panels are chromeless, draggable, fully window-independent Areas; the
+//! Tracker config UI is a decorated window with a real close button, reopened
+//! from the hachimi menu ("Show Honse Tracker"). Nothing here touches host
+//! egui — no ABI lockstep applies to this UI.
 
 use std::ffi::c_void;
 use std::panic::{self, AssertUnwindSafe};
 
-use crate::compat::{egui, ui_from_ptr, Sdk};
+use crate::compat::{egui, Sdk};
+use honse_services::overlay;
 
 mod career;
 mod constants;
@@ -16,7 +19,7 @@ mod dimens;
 #[allow(dead_code)]
 mod icons;
 mod menu;
-mod overlay;
+mod overlay_panels;
 mod scenario;
 mod skill_shop_tab;
 pub(crate) mod textures;
@@ -35,7 +38,7 @@ pub(crate) struct TrackerPanel {
     pub(crate) id: &'static str,
     pub(crate) hotkey_id: &'static str,
     pub(crate) label: &'static str,
-    callback: edge_sdk::ffi::GuiMenuSectionCallback,
+    callback: fn(&mut egui::Ui),
 }
 
 pub(crate) const PANELS: [TrackerPanel; 6] = [
@@ -77,27 +80,28 @@ pub(crate) const PANELS: [TrackerPanel; 6] = [
     },
 ];
 
-/// Register the plugin's UI components with the Hachimi GUI.
+/// Register the plugin's UI components on the self-hosted overlay.
 pub fn register_ui() {
     let sdk = Sdk::get();
 
-    // Top-level Control Center tab (was an L1 page under the Plugins tab). The host
-    // already hands us a live `egui::Ui` inside its own native slot, and the page
-    // body is pure egui — so draw it directly.
-    sdk.register_tab(|ui| {
+    // Tracker config window: decorated, user-closable ([X] is respected), and
+    // reopenable via the auto-registered "Show Honse Tracker" hachimi-menu item.
+    overlay::register_window("tracker_config", "Honse Tracker", |ui| {
         if panic::catch_unwind(AssertUnwindSafe(|| menu::draw(ui))).is_err() {
-            hlog_error!("training-tracker tab draw PANICKED");
+            hlog_error!("training-tracker config window draw PANICKED");
         }
     });
 
-    let mut registered = 0;
     for panel in PANELS {
-        if sdk.register_panel_chromeless(panel.id, panel.callback, std::ptr::null_mut()) != 0 {
-            registered += 1;
-            crate::compat::set_overlay_visible_if_unset(panel.id, false);
-        } else {
-            hlog_warn!(target: "training-tracker", "L2 panel registration declined by host: {}", panel.id);
-        }
+        // Chromeless panel on our own context — completely independent of any
+        // window; toggling it never opens anything else.
+        let body = panel.callback;
+        let panel_label = panel.label;
+        overlay::register_panel(panel.id, move |ui| {
+            if panic::catch_unwind(AssertUnwindSafe(|| body(ui))).is_err() {
+                hlog_error!("draw_{panel_label}_overlay PANICKED");
+            }
+        });
 
         // Default chord (or the user's honseTrackerConfig.json override) —
         // config is loaded before register_ui in plugin_init.
@@ -133,7 +137,7 @@ pub fn register_ui() {
         std::ptr::null_mut(),
     );
 
-    hlog_info!(target: "training-tracker", "UI registered (L1 page + {registered} chromeless L2 panels)");
+    hlog_info!(target: "training-tracker", "UI registered (config window + 6 own-context panels)");
 }
 
 extern "C" fn toggle_tracking_hotkey(_userdata: *mut c_void) {
@@ -167,7 +171,7 @@ extern "C" fn toggle_tracking_hotkey(_userdata: *mut c_void) {
 extern "C" fn toggle_panel_hotkey(userdata: *mut c_void) {
     if panic::catch_unwind(|| {
         let id = panel_id_from_userdata(userdata);
-        Sdk::get().toggle_overlay(id)
+        overlay::toggle(id)
     })
     .is_err()
     {
@@ -177,10 +181,9 @@ extern "C" fn toggle_panel_hotkey(userdata: *mut c_void) {
 
 extern "C" fn toggle_all_hotkey(_userdata: *mut c_void) {
     if panic::catch_unwind(|| {
-        let sdk = Sdk::get();
-        let any_visible = constants::PANEL_IDS.iter().any(|id| sdk.overlay_visible(id));
+        let any_visible = constants::PANEL_IDS.iter().any(|id| overlay::is_visible(id));
         for id in constants::PANEL_IDS {
-            sdk.set_overlay_visible(id, !any_visible);
+            overlay::set_visible(id, !any_visible);
         }
     })
     .is_err()
@@ -198,34 +201,17 @@ fn panel_id_from_userdata(userdata: *mut c_void) -> &'static str {
         .unwrap_or(constants::TRAINING_OVERLAY_ID)
 }
 
-extern "C" fn draw_energy_overlay(ui: *mut c_void, _userdata: *mut c_void) {
-    // SAFETY: host passes its live `&mut egui::Ui` for this callback.
-    let ui = unsafe { ui_from_ptr(ui) };
-    if panic::catch_unwind(AssertUnwindSafe(|| {
-        overlay::draw_energy_standalone(ui, career::draw_energy_panel)
-    }))
-    .is_err()
-    {
-        hlog_error!("draw_energy_overlay PANICKED");
-    }
+fn draw_energy_overlay(ui: &mut egui::Ui) {
+    overlay_panels::draw_energy_standalone(ui, career::draw_energy_panel);
 }
 
-extern "C" fn draw_rank_overlay(ui: *mut c_void, _userdata: *mut c_void) {
-    // SAFETY: host passes its live `&mut egui::Ui` for this callback.
-    let ui = unsafe { ui_from_ptr(ui) };
-    if panic::catch_unwind(AssertUnwindSafe(|| {
-        overlay::draw_energy_standalone(ui, career::draw_rank_panel)
-    }))
-    .is_err()
-    {
-        hlog_error!("draw_rank_overlay PANICKED");
-    }
+fn draw_rank_overlay(ui: &mut egui::Ui) {
+    overlay_panels::draw_energy_standalone(ui, career::draw_rank_panel);
 }
 
-extern "C" fn draw_training_overlay(ui: *mut c_void, _userdata: *mut c_void) {
-    draw_overlay(
+fn draw_training_overlay(ui: &mut egui::Ui) {
+    overlay_panels::draw_panel(
         ui,
-        "training",
         constants::TRAINING_BASE_WIDTH,
         constants::TRAINING_FIXED_HEIGHT,
         false,
@@ -233,10 +219,9 @@ extern "C" fn draw_training_overlay(ui: *mut c_void, _userdata: *mut c_void) {
     );
 }
 
-extern "C" fn draw_bonds_overlay(ui: *mut c_void, _userdata: *mut c_void) {
-    draw_overlay(
+fn draw_bonds_overlay(ui: &mut egui::Ui) {
+    overlay_panels::draw_panel(
         ui,
-        "bonds",
         constants::BONDS_BASE_WIDTH,
         constants::BONDS_FIXED_HEIGHT,
         false,
@@ -244,10 +229,9 @@ extern "C" fn draw_bonds_overlay(ui: *mut c_void, _userdata: *mut c_void) {
     );
 }
 
-extern "C" fn draw_scenario_overlay(ui: *mut c_void, _userdata: *mut c_void) {
-    draw_overlay(
+fn draw_scenario_overlay(ui: &mut egui::Ui) {
+    overlay_panels::draw_panel(
         ui,
-        "scenario",
         constants::SCENARIO_BASE_WIDTH,
         constants::SCENARIO_FIXED_HEIGHT,
         false,
@@ -255,10 +239,9 @@ extern "C" fn draw_scenario_overlay(ui: *mut c_void, _userdata: *mut c_void) {
     );
 }
 
-extern "C" fn draw_shop_overlay(ui: *mut c_void, _userdata: *mut c_void) {
-    draw_overlay(
+fn draw_shop_overlay(ui: &mut egui::Ui) {
+    overlay_panels::draw_panel(
         ui,
-        "shop",
         constants::SHOP_BASE_WIDTH,
         constants::SHOP_FIXED_HEIGHT,
         false,
@@ -266,30 +249,11 @@ extern "C" fn draw_shop_overlay(ui: *mut c_void, _userdata: *mut c_void) {
     );
 }
 
-fn draw_overlay(
-    ui: *mut c_void,
-    name: &str,
-    base_width: f32,
-    fixed_height: Option<f32>,
-    chromeless: bool,
-    body: PanelBody,
-) {
-    // SAFETY: host passes its live `&mut egui::Ui` for this callback.
-    let ui = unsafe { ui_from_ptr(ui) };
-    if panic::catch_unwind(AssertUnwindSafe(|| {
-        overlay::draw_panel(ui, base_width, fixed_height, chromeless, body)
-    }))
-    .is_err()
-    {
-        hlog_error!("draw_{name}_overlay PANICKED");
-    }
-}
-
 /// Render the Training panel directly into a caller-provided `Ui`. Used by the
 /// desktop dev-harness to draw a representative tracker panel in eframe.
 #[cfg(feature = "dev-harness")]
 pub fn draw_overlay_for_harness(ui: &mut egui::Ui) {
-    overlay::draw_panel(
+    overlay_panels::draw_panel(
         ui,
         constants::TRAINING_BASE_WIDTH,
         constants::TRAINING_FIXED_HEIGHT,

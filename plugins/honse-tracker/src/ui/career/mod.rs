@@ -17,7 +17,7 @@ mod training;
 
 use crate::compat::egui;
 
-use super::overlay;
+use super::overlay_panels as overlay;
 use crate::memory_reader::CareerSnapshot;
 
 pub(super) fn draw_energy_panel(ui: &mut egui::Ui, snap: &CareerSnapshot) {

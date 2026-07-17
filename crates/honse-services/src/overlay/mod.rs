@@ -238,6 +238,15 @@ pub fn set_layout_file(file_name: &str) {
 
 /// Explicit-path variant (tests + callers that already resolved the dir).
 pub fn set_layout_path(path: PathBuf) {
+    // Flush pending layout changes when the plugin shuts down (DllMain detach
+    // dispatches SHUTDOWN before unload).
+    static SHUTDOWN_HOOKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if !SHUTDOWN_HOOKED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        extern "C" fn flush_on_shutdown(_event: u32, _data: *const std::ffi::c_void, _ud: *mut std::ffi::c_void) {
+            flush_layout();
+        }
+        crate::events::on(crate::event::SHUTDOWN, flush_on_shutdown, std::ptr::null_mut());
+    }
     let layout = match std::fs::read_to_string(&path) {
         Ok(text) => match serde_json::from_str::<Layout>(&text) {
             Ok(l) => l,

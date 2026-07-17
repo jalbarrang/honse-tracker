@@ -102,7 +102,7 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     theme::section_strip(ui, "Training", "");
     ui.add_space(4.0);
 
-    let width = super::super::overlay::content_width();
+    let width = super::super::overlay_panels::content_width();
     let stats = [snap.speed, snap.stamina, snap.power, snap.guts, snap.wiz];
     // Cells get a near-zero available width during taffy's measure pass, so egui
     // text would wrap one glyph per line. Force every label to extend instead.

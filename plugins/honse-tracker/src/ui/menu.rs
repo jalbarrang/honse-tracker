@@ -8,7 +8,7 @@ use egui_taffy::{taffy, tui, Tui, TuiBuilderLogic};
 
 use super::dimens;
 
-use super::overlay;
+use super::overlay_panels as overlay;
 use crate::build_profile::{self, Objective};
 use crate::class_dump;
 use crate::cm_model::{self, Strategy};

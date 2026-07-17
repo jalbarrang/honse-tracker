@@ -81,7 +81,7 @@ const C_RAINBOW: Color32 = Color32::from_rgb(0x9a, 0x8c, 0xff);
 pub(super) fn render(ui: &mut egui::Ui, rows: Vec<BondRow>) {
     log_rows_on_change(&rows);
 
-    let w = super::super::overlay::content_width();
+    let w = super::super::overlay_panels::content_width();
     let font = dimens::z(dimens::FONT_SM);
     let chip = dimens::z(dimens::ICON_LG);
     let row_gap = dimens::z(dimens::GAP_XS);

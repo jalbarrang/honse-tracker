@@ -9,7 +9,7 @@
 
 use std::ffi::{c_char, c_void, CStr};
 
-use edge_sdk::ffi::{GuiMenuCallback, GuiMenuSectionCallback};
+use edge_sdk::ffi::GuiMenuCallback;
 use edge_sdk::Sdk as EdgeSdk;
 
 // ── Re-exports so moved tracker files keep their `crate::compat::…` imports. ──
@@ -47,11 +47,6 @@ pub mod capability {
     pub const EVENTS: u64 = 1 << 2;
     pub const IL2CPP: u64 = 1 << 3;
     pub const DATA_PATHS: u64 = 1 << 4;
-}
-
-/// Overlay presentation flags (fork `legacy plugin ABI::overlay_flags`).
-pub mod overlay_flags {
-    pub use honse_services::surface::overlay_flags::*;
 }
 
 /// Event callback shape (fork `PluginEventFn`).
@@ -103,16 +98,6 @@ impl ApiVersion {
     pub const fn at_least(self, _min: i32) -> bool {
         true
     }
-}
-
-/// Cast a host-provided `Ui` pointer to a real [`egui::Ui`].
-///
-/// # Safety
-/// `ptr` must be the live `*mut egui::Ui` the host passed into the callback.
-#[must_use]
-pub unsafe fn ui_from_ptr<'a>(ptr: *mut c_void) -> &'a mut egui::Ui {
-    // SAFETY: same contract as edge_sdk::ui_from_ptr.
-    unsafe { edge_sdk::ui_from_ptr(ptr) }
 }
 
 /// Stateless façade over edge-sdk + honse-services. Obtained via [`Sdk::get`].
@@ -236,86 +221,24 @@ impl Sdk {
         honse_services::off(handle);
     }
 
-    // ── GUI registration ──
-
-    pub fn register_page(&self, callback: GuiMenuSectionCallback, userdata: *mut c_void) -> u64 {
-        // Services require a title; fork page had none. Fixed title — see PORT_NOTES.
-        honse_services::register_page("Training Tracker", callback, userdata)
-    }
-
-    pub fn register_tab<F>(&self, draw: F) -> u64
-    where
-        F: Fn(&mut egui::Ui) + Send + Sync + 'static,
-    {
-        type DrawFn = Box<dyn Fn(&mut egui::Ui) + Send + Sync>;
-        // Box the fat pointer so userdata is a thin `*mut c_void`.
-        let heap: *mut DrawFn = Box::into_raw(Box::new(Box::new(draw) as DrawFn));
-        extern "C" fn trampoline(ui: *mut c_void, userdata: *mut c_void) {
-            // SAFETY: userdata is the heap Box leaked in register_tab; ui is host-live.
-            let draw = unsafe { &*(userdata as *const DrawFn) };
-            let ui = unsafe { ui_from_ptr(ui) };
-            draw(ui);
-        }
-        honse_services::register_tab("Tracker", trampoline, heap as *mut c_void)
-    }
-
-    pub fn register_page_with_icon(
-        &self,
-        title: &str,
-        icon_uri: &str,
-        icon_bytes: &[u8],
-        callback: GuiMenuSectionCallback,
-        userdata: *mut c_void,
-    ) -> u64 {
-        // Services take a Rust closure; wrap the C callback.
-        let cb = callback;
-        let ud = userdata as usize;
-        let ok = honse_services::register_page_with_icon(title, Some(icon_uri), icon_bytes, move |ui| {
-            cb(ui as *mut egui::Ui as *mut c_void, ud as *mut c_void);
-        });
-        u64::from(ok)
-    }
-
-    pub fn register_menu_section(&self, callback: GuiMenuSectionCallback, userdata: *mut c_void) -> u64 {
-        EdgeSdk::get().register_menu_section(callback, userdata)
-    }
-
-    pub fn register_panel(&self, id: &str, callback: GuiMenuSectionCallback, userdata: *mut c_void) -> u64 {
-        honse_services::register_panel(id, callback, userdata)
-    }
-
-    pub fn register_overlay(&self, id: &str, callback: GuiMenuSectionCallback, userdata: *mut c_void) -> u64 {
-        honse_services::register_overlay(id, callback, userdata)
-    }
-
-    pub fn register_panel_chromeless(&self, id: &str, callback: GuiMenuSectionCallback, userdata: *mut c_void) -> u64 {
-        honse_services::register_panel_chromeless(id, callback, userdata)
-    }
-
-    pub fn register_panel_chromeless_fixed(
-        &self,
-        id: &str,
-        callback: GuiMenuSectionCallback,
-        userdata: *mut c_void,
-    ) -> u64 {
-        honse_services::register_panel_chromeless_fixed(id, callback, userdata)
-    }
+    // ── GUI: self-hosted overlay (honse_services::overlay, OUR egui context) ──
 
     pub fn set_overlay_visible(&self, id: &str, visible: bool) -> bool {
-        honse_services::set_overlay_visible(id, visible)
+        honse_services::overlay::set_visible(id, visible);
+        true
     }
 
     pub fn overlay_set_visible(&self, id: &str, visible: bool) -> bool {
-        honse_services::overlay_set_visible(id, visible)
+        self.set_overlay_visible(id, visible)
     }
 
     #[must_use]
     pub fn overlay_visible(&self, id: &str) -> bool {
-        honse_services::overlay_visible(id)
+        honse_services::overlay::is_visible(id)
     }
 
     pub fn toggle_overlay(&self, id: &str) -> bool {
-        honse_services::toggle_overlay(id)
+        honse_services::overlay::toggle(id)
     }
 
     pub fn register_hotkey(
@@ -332,7 +255,7 @@ impl Sdk {
 
     pub fn unregister(&self, handle: u64) -> bool {
         let a = honse_services::unregister(handle);
-        let b = honse_services::surface::unregister(handle);
+        let b = honse_services::overlay::unregister(handle);
         a || b
     }
 
@@ -369,6 +292,7 @@ pub(crate) fn cstr_to_string(ptr: *const c_char) -> Option<String> {
 }
 
 /// Set overlay visibility only if no prior value exists (fork host helper).
+#[allow(dead_code)]
 pub fn set_overlay_visible_if_unset(id: &str, visible: bool) {
-    honse_services::surface::set_overlay_visible_if_unset(id, visible);
+    honse_services::overlay::set_visible_if_unset(id, visible);
 }

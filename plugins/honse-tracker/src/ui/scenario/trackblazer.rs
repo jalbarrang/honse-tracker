@@ -7,7 +7,7 @@ use egui_taffy::{taffy, tui, Tui, TuiBuilderLogic, TuiContainerResponse};
 use crate::memory_reader;
 
 use crate::ui::dimens;
-use crate::ui::overlay;
+use crate::ui::overlay_panels as overlay;
 use crate::ui::util::worth_color;
 
 pub(super) fn draw(ui: &mut egui::Ui, shop: &memory_reader::TrackblazerShop) {

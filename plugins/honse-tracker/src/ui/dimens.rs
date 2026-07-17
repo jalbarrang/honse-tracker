@@ -7,12 +7,12 @@
 //! `overlay::apply_scale` scales the `text_styles` map; only explicit `.size(..)`
 //! and taffy `length(..)`/painted dimensions need `z`.
 //!
-//! Note: widths derived from [`super::overlay::content_width`] are already scaled
+//! Note: widths derived from [`super::overlay_panels::content_width`] are already scaled
 //! — do not wrap those in [`z`] again.
 
 /// Scale a base dimension / font size by the current overlay zoom.
 pub(super) fn z(base: f32) -> f32 {
-    base * super::overlay::scale()
+    base * super::overlay_panels::scale()
 }
 
 // ── Gaps & spacing ────────────────────────────────────────────────────────

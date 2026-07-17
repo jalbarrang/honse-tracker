@@ -71,7 +71,7 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     // Reserve the deterministic column width, not the (auto_sized-inflated)
     // available width — egui_taffy's reserve_*_width does set_min_width(), so a
     // huge value would force the header and the window wide.
-    let width = super::super::overlay::content_width();
+    let width = super::super::overlay_panels::content_width();
     tui(ui, ui.id().with("career_header"))
         .reserve_width(width)
         .style(taffy::Style {
@@ -241,7 +241,7 @@ pub(super) fn energy_standalone(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     let max_color = brighten(theme::FG_MUTED, 0.25);
 
     // Game-viewport-driven size (independent of the overlay zoom slider).
-    let vp = super::super::overlay::viewport_scale(ui);
+    let vp = super::super::overlay_panels::viewport_scale(ui);
     let font_size = (28.0 * vp).round();
 
     outlined_text(
@@ -262,7 +262,7 @@ pub(super) fn rank_standalone(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     let Some(ev) = snap.evaluation_value else { return };
 
     // Game-viewport-driven sizing (independent of the overlay zoom slider).
-    let vp = super::super::overlay::viewport_scale(ui);
+    let vp = super::super::overlay_panels::viewport_scale(ui);
     let badge = (40.0 * vp).round();
     let font_size = (28.0 * vp).round();
 

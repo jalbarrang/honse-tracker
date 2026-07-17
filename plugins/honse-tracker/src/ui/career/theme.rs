@@ -36,7 +36,7 @@ pub fn section_strip(ui: &mut Ui, label: &str, trailing: &str) {
     let height = (ui.text_style_height(&egui::TextStyle::Body) + 8.0).max(22.0);
     // Deterministic width (not ui.available_width(), which inflates under the
     // host's auto_sized window) so the strip can't grow the panel.
-    let width = super::super::overlay::content_width();
+    let width = super::super::overlay_panels::content_width();
     let _ = honse_ui::components::section_strip(ui, label, trailing, width, height);
 }
 
