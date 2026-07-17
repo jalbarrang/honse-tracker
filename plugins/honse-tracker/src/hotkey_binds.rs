@@ -33,14 +33,62 @@ pub struct HotkeyBind {
 /// Default chords: Alt+digit for panels (game ignores Alt+digit), Alt+0 for
 /// toggle-all, Alt+T for tracking. Order matches `ui::PANELS`.
 pub const DEFAULTS: [(&str, HotkeyBind); 8] = [
-    ("training-tracker.toggle_energy", HotkeyBind { mods: MOD_ALT, vk: 0x31 }), // Alt+1
-    ("training-tracker.toggle_training", HotkeyBind { mods: MOD_ALT, vk: 0x32 }), // Alt+2
-    ("training-tracker.toggle_bonds", HotkeyBind { mods: MOD_ALT, vk: 0x33 }),  // Alt+3
-    ("training-tracker.toggle_scenario", HotkeyBind { mods: MOD_ALT, vk: 0x34 }), // Alt+4
-    ("training-tracker.toggle_shop", HotkeyBind { mods: MOD_ALT, vk: 0x35 }),   // Alt+5
-    ("training-tracker.toggle_rank", HotkeyBind { mods: MOD_ALT, vk: 0x36 }),   // Alt+6
-    ("training-tracker.toggle_all", HotkeyBind { mods: MOD_ALT, vk: 0x30 }),    // Alt+0
-    ("training-tracker.toggle_tracking", HotkeyBind { mods: MOD_ALT, vk: 0x54 }), // Alt+T
+    (
+        "training-tracker.toggle_energy",
+        HotkeyBind {
+            mods: MOD_ALT,
+            vk: 0x31,
+        },
+    ), // Alt+1
+    (
+        "training-tracker.toggle_training",
+        HotkeyBind {
+            mods: MOD_ALT,
+            vk: 0x32,
+        },
+    ), // Alt+2
+    (
+        "training-tracker.toggle_bonds",
+        HotkeyBind {
+            mods: MOD_ALT,
+            vk: 0x33,
+        },
+    ), // Alt+3
+    (
+        "training-tracker.toggle_scenario",
+        HotkeyBind {
+            mods: MOD_ALT,
+            vk: 0x34,
+        },
+    ), // Alt+4
+    (
+        "training-tracker.toggle_shop",
+        HotkeyBind {
+            mods: MOD_ALT,
+            vk: 0x35,
+        },
+    ), // Alt+5
+    (
+        "training-tracker.toggle_rank",
+        HotkeyBind {
+            mods: MOD_ALT,
+            vk: 0x36,
+        },
+    ), // Alt+6
+    (
+        "training-tracker.toggle_all",
+        HotkeyBind {
+            mods: MOD_ALT,
+            vk: 0x30,
+        },
+    ), // Alt+0
+    (
+        "training-tracker.toggle_tracking",
+        HotkeyBind {
+            mods: MOD_ALT,
+            vk: 0x54,
+        },
+    ), // Alt+T
 ];
 
 static BINDS: Mutex<BTreeMap<&'static str, HotkeyBind>> = Mutex::new(BTreeMap::new());
@@ -150,27 +198,51 @@ mod tests {
         let mut overrides = BTreeMap::new();
         overrides.insert(
             "training-tracker.toggle_energy".to_owned(),
-            HotkeyBind { mods: MOD_CTRL, vk: 0x70 },
+            HotkeyBind {
+                mods: MOD_CTRL,
+                vk: 0x70,
+            },
         );
-        overrides.insert("training-tracker.no_such_action".to_owned(), HotkeyBind { mods: 0, vk: 1 });
+        overrides.insert(
+            "training-tracker.no_such_action".to_owned(),
+            HotkeyBind { mods: 0, vk: 1 },
+        );
         apply_overrides(&overrides);
         assert_eq!(
             effective("training-tracker.toggle_energy"),
-            HotkeyBind { mods: MOD_CTRL, vk: 0x70 }
+            HotkeyBind {
+                mods: MOD_CTRL,
+                vk: 0x70
+            }
         );
         // Unknown id is not inserted.
         assert_eq!(effective("training-tracker.no_such_action"), HotkeyBind::default());
         // Untouched action keeps its default.
         assert_eq!(
             effective("training-tracker.toggle_rank"),
-            HotkeyBind { mods: MOD_ALT, vk: 0x36 }
+            HotkeyBind {
+                mods: MOD_ALT,
+                vk: 0x36
+            }
         );
     }
 
     #[test]
     fn display_labels() {
-        assert_eq!(display(HotkeyBind { mods: MOD_ALT, vk: 0x31 }), "Alt+1");
-        assert_eq!(display(HotkeyBind { mods: MOD_CTRL | MOD_SHIFT, vk: 0x71 }), "Ctrl+Shift+F2");
+        assert_eq!(
+            display(HotkeyBind {
+                mods: MOD_ALT,
+                vk: 0x31
+            }),
+            "Alt+1"
+        );
+        assert_eq!(
+            display(HotkeyBind {
+                mods: MOD_CTRL | MOD_SHIFT,
+                vk: 0x71
+            }),
+            "Ctrl+Shift+F2"
+        );
         assert_eq!(display(HotkeyBind { mods: 0, vk: 0 }), "Unbound");
         assert_eq!(display(HotkeyBind { mods: 0, vk: 0x54 }), "T");
     }

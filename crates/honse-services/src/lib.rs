@@ -24,9 +24,8 @@ pub use init::{init, is_game_ready, register_on_game_ready, GameReadyCallback, I
 pub use scene_views::view_name;
 pub use surface::{
     overlay_set_visible, overlay_visible, register_menu_section, register_menu_section_with_icon, register_overlay,
-    set_surface_title,
     register_page, register_page_with_icon, register_panel, register_panel_chromeless, register_panel_chromeless_fixed,
-    register_tab, set_overlay_visible, toggle_overlay, Surface,
+    register_tab, set_overlay_visible, set_surface_title, toggle_overlay, Surface,
 };
 pub use view_hook::{install_view_poll, poll_view_change, set_view_poll_enabled};
 

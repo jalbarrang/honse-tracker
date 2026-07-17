@@ -245,7 +245,13 @@ pub fn register_menu_item(label: &str, on_click: impl FnMut() + Send + 'static) 
     let userdata = Box::into_raw(data) as *mut c_void;
     // SAFETY: label NUL-terminated for the call; trampoline + userdata are a
     // process-lifetime leak by design.
-    unsafe { f(label_c.as_ptr(), Some(menu_item_trampoline as GuiMenuCallback), userdata) }
+    unsafe {
+        f(
+            label_c.as_ptr(),
+            Some(menu_item_trampoline as GuiMenuCallback),
+            userdata,
+        )
+    }
 }
 
 extern "C" fn menu_section_trampoline(ui: *mut c_void, userdata: *mut c_void) {
