@@ -563,6 +563,7 @@ dependencies = [
  "chrono",
  "edge-sdk",
  "egui",
+ "egui-directx11",
  "log",
  "once_cell",
  "parking_lot",

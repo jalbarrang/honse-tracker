@@ -35,6 +35,11 @@ pub struct InitOptions {
     /// a distinct title — the surface is per-DLL, so two plugins with the same
     /// title produce two identically-named windows and menu items.
     pub surface_title: Option<String>,
+    /// File name (under edge's base dir) for self-hosted overlay layout
+    /// persistence (panel/window positions). Each plugin should pass a
+    /// distinct name (e.g. `"honseTrackerLayout.json"`); `None` disables
+    /// position persistence.
+    pub overlay_layout_file: Option<String>,
 }
 
 static GAME_READY: AtomicBool = AtomicBool::new(false);
@@ -48,6 +53,9 @@ static ON_GAME_READY: Lazy<Mutex<Vec<(usize, usize)>>> = Lazy::new(|| Mutex::new
 pub fn init(opts: InitOptions) {
     if let Some(title) = opts.surface_title {
         crate::surface::set_surface_title(&title);
+    }
+    if let Some(file) = opts.overlay_layout_file {
+        crate::overlay::set_layout_file(&file);
     }
     if Sdk::try_get().is_none() {
         log::warn!("honse-services::init called before Sdk init");

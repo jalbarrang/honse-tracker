@@ -27,7 +27,7 @@ pub fn register_frame_job(job: FrameJob) {
 ///
 /// # Safety
 /// Called by the host on the render thread; `userdata` is unused (null).
-unsafe extern "C" fn present_trampoline(_swapchain: *mut c_void, _userdata: *mut c_void) {
+unsafe extern "C" fn present_trampoline(swapchain: *mut c_void, _userdata: *mut c_void) {
     // First-present bootstrap: fire on-game-ready listeners + install the view
     // poll once IL2CPP is up. No-op after the game-ready edge.
     crate::init::poll_bootstrap();
@@ -40,6 +40,13 @@ unsafe extern "C" fn present_trampoline(_swapchain: *mut c_void, _userdata: *mut
     // View-change gate signal (SceneManager.GetCurrentViewId diff).
     crate::view_hook::poll_view_change();
     dispatch_frame();
+    // Self-hosted overlay render pass: AFTER frame jobs (hotkey toggles land
+    // this frame) and still BEFORE edge's own GUI pass (edge runs plugin
+    // present callbacks first, so our UI draws under edge's menu).
+    #[cfg(windows)]
+    crate::overlay::stack::on_present(swapchain);
+    #[cfg(not(windows))]
+    let _ = swapchain;
 }
 
 /// Register the edge present callback that drives the frame job list + FRAME events.

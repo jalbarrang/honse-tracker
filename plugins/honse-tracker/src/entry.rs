@@ -51,6 +51,7 @@ fn plugin_init() -> bool {
     // <title>" host-menu item, which register_ui creates.
     honse_services::init(honse_services::InitOptions {
         surface_title: Some("Honse Tracker".to_owned()),
+        overlay_layout_file: Some("honseTrackerLayout.json".to_owned()),
     });
 
     // Surface registrations (tabs / panels / hotkeys) — no IL2CPP required.

@@ -10,6 +10,7 @@ pub mod frame;
 pub mod hosted_data;
 pub mod hotkeys;
 pub mod init;
+pub mod overlay;
 pub mod scene_views;
 pub mod surface;
 pub mod view_hook;

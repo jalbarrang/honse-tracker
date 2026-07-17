@@ -35,6 +35,7 @@ fn plugin_init() -> bool {
     // "Show <title>" host-menu item, which register_ui creates.
     honse_services::init(honse_services::InitOptions {
         surface_title: Some("Honse Debug".to_owned()),
+        overlay_layout_file: Some("honseDebugLayout.json".to_owned()),
     });
 
     ui::register_ui();
