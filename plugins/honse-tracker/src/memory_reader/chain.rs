@@ -176,6 +176,9 @@ pub fn start_tracking() -> Result<(), &'static str> {
         let _ = CHAIN.set(chain); // ignore if race
     }
     TRACKING.store(true, Ordering::Relaxed);
+    // Arm the view-change gate only while we actually read memory (the poll is
+    // idle otherwise). This is what suspends reads during scene teardown.
+    honse_services::set_view_poll_enabled(true);
     hlog_info!("Memory-read tracking STARTED");
     crate::overlay_cache::request_refresh_immediate();
     Ok(())
@@ -184,6 +187,7 @@ pub fn start_tracking() -> Result<(), &'static str> {
 /// Stop tracking (overlay goes away, no more reads).
 pub fn stop_tracking() {
     TRACKING.store(false, Ordering::Relaxed);
+    honse_services::set_view_poll_enabled(false);
     hlog_info!("Memory-read tracking STOPPED");
 }
 

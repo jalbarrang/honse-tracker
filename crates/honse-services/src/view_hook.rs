@@ -21,6 +21,11 @@ use edge_sdk::Sdk;
 
 use crate::events::dispatch_view_change;
 
+/// Whether any consumer wants view-change events. Default off: the poll does a
+/// (cheap but non-free) IL2CPP singleton resolve + getter each frame, so we only
+/// pay it while something actually needs the gate (tracker while tracking, the
+/// debug viewer always). See `set_view_poll_enabled`.
+static POLL_ENABLED: AtomicBool = AtomicBool::new(false);
 static POLL_READY: AtomicBool = AtomicBool::new(false);
 static SCENE_MANAGER_KLASS: AtomicUsize = AtomicUsize::new(0);
 static GET_CURRENT_VIEW_ID_ADDR: AtomicUsize = AtomicUsize::new(0);
@@ -64,10 +69,24 @@ pub fn install_view_poll() {
     log::info!("honse-services: view-id poll installed (SceneManager.GetCurrentViewId)");
 }
 
+/// Enable or disable per-frame view-change polling for THIS plugin's instance.
+///
+/// Off by default so an idle plugin costs nothing. Enable it while you actually
+/// consume VIEW_CHANGE (e.g. the tracker turns it on in `start_tracking` and off
+/// in `stop_tracking`; the debug viewer leaves it on). Disabling resets the
+/// change baseline so re-enabling never dispatches a stale diff.
+pub fn set_view_poll_enabled(enabled: bool) {
+    POLL_ENABLED.store(enabled, Ordering::Release);
+    if !enabled {
+        LAST_VIEW_ID.store(-1, Ordering::Release);
+    }
+}
+
 /// Read the current view id and dispatch VIEW_CHANGE if it changed. Called every
-/// present tick by the frame source. No-op until [`install_view_poll`] succeeds.
+/// present tick by the frame source. No-op unless polling is enabled AND
+/// [`install_view_poll`] has resolved the getter.
 pub fn poll_view_change() {
-    if !POLL_READY.load(Ordering::Acquire) {
+    if !POLL_ENABLED.load(Ordering::Acquire) || !POLL_READY.load(Ordering::Acquire) {
         return;
     }
     let addr = GET_CURRENT_VIEW_ID_ADDR.load(Ordering::Acquire);

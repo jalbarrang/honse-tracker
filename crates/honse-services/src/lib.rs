@@ -28,7 +28,7 @@ pub use surface::{
     register_page, register_page_with_icon, register_panel, register_panel_chromeless, register_panel_chromeless_fixed,
     register_tab, set_overlay_visible, toggle_overlay, Surface,
 };
-pub use view_hook::{install_view_poll, poll_view_change};
+pub use view_hook::{install_view_poll, poll_view_change, set_view_poll_enabled};
 
 /// Unregister a handle from hotkeys and/or surface registries (shared handle space).
 pub fn unregister(handle: u64) -> bool {

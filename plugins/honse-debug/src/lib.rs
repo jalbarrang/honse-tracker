@@ -42,6 +42,10 @@ fn plugin_init() -> bool {
     // Capability checks deleted: single-version world — EVENTS always available.
     let _ = hooks::subscribe_events();
 
+    // The Debug Viewer's whole job is to show view transitions, so keep the
+    // view-id poll on for this (dev-only) plugin's instance.
+    honse_services::set_view_poll_enabled(true);
+
     // SPIKE (self-hosted-overlay initiative): own egui + DX11 renderer driven
     // from the edge present callback. Alt+9 toggles the demo window.
     #[cfg(windows)]
