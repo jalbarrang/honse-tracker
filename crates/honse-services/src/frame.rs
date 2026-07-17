@@ -1,8 +1,8 @@
 //! Per-frame job list driven by edge's present callback.
 //!
 //! `install_frame_source` registers one present callback that runs every job
-//! then dispatches `FRAME`. Later tasks (surface watchdog, hotkey poll) add
-//! jobs via [`register_frame_job`].
+//! (e.g. the hotkey poll), dispatches `FRAME`, then runs the self-hosted
+//! overlay render pass. Jobs are added via [`register_frame_job`].
 
 use std::ffi::c_void;
 

@@ -12,7 +12,6 @@ pub mod hotkeys;
 pub mod init;
 pub mod overlay;
 pub mod scene_views;
-pub mod surface;
 pub mod view_hook;
 
 pub use config::{HostedDataUrls, PluginConfig};
@@ -23,14 +22,9 @@ pub use hosted_data::{gametora_data_dir, host_data_path, sync_all};
 pub use hotkeys::{register_hotkey, Chord, MOD_ALT, MOD_CTRL, MOD_SHIFT};
 pub use init::{init, is_game_ready, register_on_game_ready, GameReadyCallback, InitOptions};
 pub use scene_views::view_name;
-pub use surface::{
-    overlay_set_visible, overlay_visible, register_menu_section, register_menu_section_with_icon, register_overlay,
-    register_page, register_page_with_icon, register_panel, register_panel_chromeless, register_panel_chromeless_fixed,
-    register_tab, set_overlay_visible, set_surface_title, toggle_overlay, Surface,
-};
 pub use view_hook::{install_view_poll, poll_view_change, set_view_poll_enabled};
 
-/// Unregister a handle from hotkeys and/or surface registries (shared handle space).
+/// Unregister a handle from the hotkey and/or overlay registries (shared handle space).
 pub fn unregister(handle: u64) -> bool {
     hotkeys::unregister(handle)
 }

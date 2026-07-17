@@ -46,11 +46,10 @@ fn plugin_init() -> bool {
     let sdk = Sdk::get();
     hachimi_telemetry::init(sdk.host_data_path("telemetry.json"));
 
-    // (2) Services init: view hook + frame source on game-initialized. Must run
-    // BEFORE register_ui: it names this plugin's surface window and "Show
-    // <title>" host-menu item, which register_ui creates.
+    // (2) Services init: frame source (drives the self-hosted overlay), the
+    // game-ready bootstrap, and overlay layout persistence. Must run BEFORE
+    // register_ui so saved panel/window positions are loaded first.
     honse_services::init(honse_services::InitOptions {
-        surface_title: Some("Honse Tracker".to_owned()),
         overlay_layout_file: Some("honseTrackerLayout.json".to_owned()),
     });
 

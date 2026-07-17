@@ -28,11 +28,10 @@ fn plugin_init() -> bool {
 
     state::init();
 
-    // Install view hook + frame source so VIEW_CHANGE / FRAME events fire.
-    // Must run BEFORE register_ui: it names this plugin's surface window and
-    // "Show <title>" host-menu item, which register_ui creates.
+    // Install frame source + view hook so VIEW_CHANGE / FRAME events fire and
+    // the self-hosted overlay renders. Must run BEFORE register_ui so saved
+    // window positions are loaded first.
     honse_services::init(honse_services::InitOptions {
-        surface_title: Some("Honse Debug".to_owned()),
         overlay_layout_file: Some("honseDebugLayout.json".to_owned()),
     });
 

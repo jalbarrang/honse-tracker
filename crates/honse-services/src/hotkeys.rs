@@ -17,7 +17,7 @@ use std::{
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 
-use crate::{next_handle, surface};
+use crate::next_handle;
 
 /// Modifier bit: Ctrl held.
 pub const MOD_CTRL: u8 = 1 << 0;
@@ -105,14 +105,14 @@ pub fn register_hotkey(
     handle
 }
 
-/// Remove a hotkey by handle. Also tries surface unregister (shared handle space).
+/// Remove a hotkey by handle. Also tries overlay unregister (shared handle space).
 pub fn unregister(handle: u64) -> bool {
     let mut hotkeys = HOTKEYS.lock();
     let before = hotkeys.len();
     hotkeys.retain(|h| h.handle != handle);
     let removed = hotkeys.len() != before;
     drop(hotkeys);
-    removed || surface::unregister(handle)
+    removed || crate::overlay::unregister(handle)
 }
 
 fn install_poll_job() {

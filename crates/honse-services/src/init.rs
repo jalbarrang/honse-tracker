@@ -30,11 +30,6 @@ pub type GameReadyCallback = unsafe extern "C" fn(*mut c_void);
 /// Options for [`init`].
 #[derive(Debug, Clone, Default)]
 pub struct InitOptions {
-    /// Title for this plugin's surface window and its "Show <title>" host-menu
-    /// item. `None` keeps the default ("Honse Tracker"). Each plugin should set
-    /// a distinct title — the surface is per-DLL, so two plugins with the same
-    /// title produce two identically-named windows and menu items.
-    pub surface_title: Option<String>,
     /// File name (under edge's base dir) for self-hosted overlay layout
     /// persistence (panel/window positions). Each plugin should pass a
     /// distinct name (e.g. `"honseTrackerLayout.json"`); `None` disables
@@ -47,13 +42,10 @@ static ON_GAME_READY: Lazy<Mutex<Vec<(usize, usize)>>> = Lazy::new(|| Mutex::new
 
 /// Arm this plugin's services: install the present-callback frame source now.
 ///
-/// The frame source drives frame jobs (hotkey polling, surface watchdog), the
-/// first-present bootstrap ([`poll_bootstrap`]), and the view-id poll. Call once
-/// from plugin `init()`.
+/// The frame source drives frame jobs (hotkey polling), the first-present
+/// bootstrap ([`poll_bootstrap`]), the view-id poll, and the self-hosted
+/// overlay render pass. Call once from plugin `init()`.
 pub fn init(opts: InitOptions) {
-    if let Some(title) = opts.surface_title {
-        crate::surface::set_surface_title(&title);
-    }
     if let Some(file) = opts.overlay_layout_file {
         crate::overlay::set_layout_file(&file);
     }

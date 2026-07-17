@@ -72,11 +72,10 @@ fn plugin_init() -> bool {
         hachimi_telemetry::init(None);
     }
 
-    // Install view hook + frame source (surface window renders every frame).
-    // Must run BEFORE register_ui: it names this plugin's surface window and
-    // "Show <title>" host-menu item, which register_ui creates.
+    // Services init: frame source (drives the self-hosted overlay), game-ready
+    // bootstrap, and overlay layout persistence. Must run BEFORE register_ui so
+    // saved widget positions are loaded first.
     honse_services::init(honse_services::InitOptions {
-        surface_title: Some("Race HUD".to_owned()),
         overlay_layout_file: Some("honseRaceHudLayout.json".to_owned()),
     });
 
