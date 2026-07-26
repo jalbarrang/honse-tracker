@@ -5,7 +5,7 @@
 #   Setup Rust toolchain       → Setup Rust toolchain (see TOOLCHAIN decision below)
 #   Build Release              → Build Release (no HMAC secret; see SECRET decision)
 #   (none)                     → Verify hachimi_init_v3 exports (authoritative Windows check)
-#   Create Release + Upload    → Create Release and Upload Asset (*.dll glob covers all three)
+#   Create Release + Upload    → Create Release and Upload Asset (*.dll glob covers the plugin)
 #
 # TOOLCHAIN decision: dtolnay/rust-toolchain does NOT auto-read rust-toolchain.toml
 # (confirmed against the action README / upstream issues). The toolchain is PINNED
@@ -68,9 +68,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $dlls = @(
-            "target/release/honse_tracker.dll",
-            "target/release/honse_race_hud.dll",
-            "target/release/honse_debug.dll"
+            "target/release/honse_tracker.dll"
           )
 
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -107,10 +105,10 @@ jobs:
           target_commitish: ${{ github.sha }}
           files: target/release/*.dll
           body: |
-            Plugin DLLs for Hachimi-Edge.
+            Plugin DLL for Hachimi-Edge.
 
-            **Compatibility contract:** built for **Hachimi-Edge v0.26.4**. All plugin UI renders on a self-hosted egui stack (statically linked; no egui types cross the plugin↔host boundary), so the DLLs only depend on Edge's stable C plugin ABI — no egui/rustc lockstep with the Edge binary is required for the shipped plugins.
+            **Compatibility contract:** built for **Hachimi-Edge v0.26.4**. The plugin UI renders on a self-hosted egui stack (statically linked; no egui types cross the plugin↔host boundary), so the DLL only depends on Edge's stable C plugin ABI — no egui/rustc lockstep with the Edge binary is required.
 
-            Install: place the three DLLs in the Honse game folder root and add them to `load_libraries` in `hachimi/config.json`.
+            Install: place the DLL in the Honse game folder root and add it to `load_libraries` in `hachimi/config.json`.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

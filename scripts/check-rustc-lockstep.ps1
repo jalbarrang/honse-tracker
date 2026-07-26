@@ -22,9 +22,7 @@ param(
     [string]$HostDll,
 
     [string[]]$PluginDlls = @(
-        "target/release/honse_tracker.dll",
-        "target/release/honse_race_hud.dll",
-        "target/release/honse_debug.dll"
+        "target/release/honse_tracker.dll"
     )
 )
 

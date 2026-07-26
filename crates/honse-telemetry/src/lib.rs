@@ -33,8 +33,6 @@ pub mod pb {
 pub enum Channel {
     Career,
     CareerExtras,
-    RaceLive,
-    RaceFull,
 }
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
@@ -77,8 +75,6 @@ pub fn channel_enabled(channel: Channel) -> bool {
     match channel {
         Channel::Career => ch.career,
         Channel::CareerExtras => ch.career_extras,
-        Channel::RaceLive => ch.race_live,
-        Channel::RaceFull => ch.race_full,
     }
 }
 
@@ -125,32 +121,16 @@ mod tests {
         let env = pb::Envelope {
             sent_at_ms: 123,
             seq: 7,
-            source: "race-hud".to_string(),
-            payload: Some(pb::envelope::Payload::RaceLiveFrame(pb::RaceLiveFrame {
-                elapsed: 1.5,
-                rows: vec![pb::RunnerRow {
-                    rank: 1,
-                    post: 3,
-                    name: "Test".to_string(),
-                    distance: 42.0,
-                    speed_raw: 2000,
-                    hp: 500,
-                    accel: 0.25,
-                    kakari: true,
-                    blocked: false,
-                    strategy: 2,
-                }],
-            })),
+            source: "training-tracker".to_string(),
+            payload: Some(pb::envelope::Payload::CareerSnapshot(pb::CareerSnapshot::default())),
         };
         let bytes = env.encode_to_vec();
         let back = pb::Envelope::decode(bytes.as_slice()).expect("decode");
         assert_eq!(back.seq, 7);
-        assert_eq!(back.source, "race-hud");
+        assert_eq!(back.source, "training-tracker");
         match back.payload.expect("payload") {
-            pb::envelope::Payload::RaceLiveFrame(f) => {
-                assert_eq!(f.rows.len(), 1);
-                assert_eq!(f.rows[0].post, 3);
-                assert!(f.rows[0].kakari);
+            pb::envelope::Payload::CareerSnapshot(snapshot) => {
+                assert_eq!(snapshot.current_turn, 0);
             }
             _ => panic!("wrong variant"),
         }

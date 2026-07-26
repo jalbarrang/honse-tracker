@@ -1,50 +1,44 @@
 # honse-tracker
 
-Plugins for [Hachimi-Edge](https://github.com/kairusds/Hachimi-Edge) that add training analytics, a race HUD, and a debug viewer for the Honse game.
+Plugin for [Hachimi-Edge](https://github.com/kairusds/Hachimi-Edge) that adds training analytics for the Honse game.
 
 | Plugin | DLL | Role |
 | --- | --- | --- |
 | **honse-tracker** | `honse_tracker.dll` | Training tracker overlay and analytics (career panels, recommendations, skill shop helpers). |
-| **honse-race-hud** | `honse_race_hud.dll` | Live per-runner heads-up display during races. |
-| **honse-debug** | `honse_debug.dll` | Development-only view-transition / debug feed (off unless you load it). |
 
 ## Compatibility (read this first)
 
-Each plugin release targets **one specific Hachimi-Edge release** — currently **v0.26.4**.
+Each release targets **one specific Hachimi-Edge release** — currently **v0.26.4**.
 
-All plugin UI renders on a **self-hosted egui stack** (`honse-services::overlay`): each plugin owns its egui context and an `egui-directx11` renderer driven from Edge's present callback, with input via a chained WndProc subclass. **No egui types cross the plugin↔host boundary**, so plugin UI does not require an egui-version or rustc lockstep with the Edge binary.
+The plugin UI renders on a **self-hosted egui stack** (`honse-services::overlay`): it owns its egui context and an `egui-directx11` renderer driven from Edge's present callback, with input via a chained WndProc subclass. **No egui types cross the plugin↔host boundary**, so the UI does not require an egui-version or rustc lockstep with the Edge binary.
 
-What still binds a plugin release to an Edge release is Edge's **C plugin ABI** (`hachimi_get_plugin_api`, present callbacks, menu items, notifications, IL2CPP helpers) — a stable-by-construction C surface. The historical egui/rustc lockstep only applies to `edge-sdk`'s *host-egui* entry points (`ui_from_ptr`, `show_window`, `register_menu_section*`), which no shipped plugin calls anymore. If you write a plugin that does call them, the old rule returns: build with Edge's exact egui (`=0.33.3` for v0.26.4) and the exact rustc used for the Edge binary (1.96.0; verify with `scripts/check-rustc-lockstep.ps1`).
+What still binds a release to an Edge release is Edge's **C plugin ABI** (`hachimi_get_plugin_api`, present callbacks, menu items, notifications, IL2CPP helpers) — a stable-by-construction C surface. The historical egui/rustc lockstep only applies to `edge-sdk`'s *host-egui* entry points (`ui_from_ptr`, `show_window`, `register_menu_section*`), which the shipped plugin does not call. If you write code that does call them, the old rule returns: build with Edge's exact egui (`=0.33.3` for v0.26.4) and the exact rustc used for the Edge binary (1.96.0; verify with `scripts/check-rustc-lockstep.ps1`).
 
-If the game crashes on boot with these DLLs loaded, first check that your Hachimi-Edge version matches the one named in the plugin release notes, and remove the honse DLLs from `load_libraries` to confirm the game boots without them.
+If the game crashes on boot with this DLL loaded, first check that your Hachimi-Edge version matches the one named in the release notes, and remove `honse_tracker.dll` from `load_libraries` to confirm the game boots without it.
 
 ## Installation
 
 1. Install Hachimi-Edge from [`https://github.com/kairusds/Hachimi-Edge/releases/latest`](https://github.com/kairusds/Hachimi-Edge/releases/latest).
-2. Download the three plugin DLLs from this repo's [`releases/latest`](https://github.com/jalbarrang/honse-tracker/releases/latest).
-3. Place `honse_tracker.dll`, `honse_race_hud.dll`, and (optionally) `honse_debug.dll` in the Honse game folder root — the same directory as the game executable.
-4. Open `hachimi/config.json` in that folder and add the DLLs to `load_libraries`:
+2. Download `honse_tracker.dll` from this repo's [`releases/latest`](https://github.com/jalbarrang/honse-tracker/releases/latest).
+3. Place `honse_tracker.dll` in the Honse game folder root — the same directory as the game executable.
+4. Open `hachimi/config.json` in that folder and add the DLL to `load_libraries`:
 
 ```json
 {
   "load_libraries": [
-    "honse_tracker.dll",
-    "honse_race_hud.dll",
-    "honse_debug.dll"
+    "honse_tracker.dll"
   ]
 }
 ```
 
-5. Launch the Honse game once. Edge auto-creates plugin configs under the `hachimi/` data directory (same folder as `config.json`):
+5. Launch the Honse game once. Edge auto-creates the plugin config under the `hachimi/` data directory (same folder as `config.json`):
    - `hachimi/honseTrackerConfig.json` — tracker settings + optional hosted-data URL overrides
-   - `hachimi/raceHudConfig.json` — which race-HUD metrics are shown
-   - (honse-debug has no persisted config)
 
 ## Configuration
 
 ### honse-tracker (`honseTrackerConfig.json`)
 
-Flattened tracker fields plus optional `hosted_data` URL overrides. Defaults match the structs in `plugins/honse-tracker/src/config.rs`, `recommend.rs`, `planner.rs`, and `build_profile.rs`:
+Flattened tracker fields plus optional `hosted_data` URL overrides. Defaults match the structs in `src/config.rs`, `recommend.rs`, `planner.rs`, and `build_profile.rs`:
 
 ```json
 {
@@ -103,7 +97,6 @@ Default bindings (tracker panels start hidden — toggle them with these or the 
 | `Alt+1` … `Alt+6` | Toggle Energy / Training / Bonds / Scenario / Shop / Rank panel |
 | `Alt+0` | Toggle all tracker panels |
 | `Alt+T` | Start/stop tracking |
-| `Alt+7` | Toggle Race HUD (timer + per-uma widgets) |
 
 Rebind the tracker actions in `honseTrackerConfig.json` under `"hotkeys"` (`mods`: Ctrl=1, Shift=2, Alt=4; `vk`: Windows virtual-key code, 0 = unbound; restart the game to apply):
 
@@ -118,16 +111,6 @@ Rebind the tracker actions in `honseTrackerConfig.json` under `"hotkeys"` (`mods
 
 Hotkeys fire only while the game window is foreground; they work with the menu closed.
 
-### honse-race-hud (`raceHudConfig.json`)
-
-```json
-{
-  "shown_metrics": 31
-}
-```
-
-`shown_metrics` is a bitmask of HP / Velocity / Acceleration / States / Recoveries (default `31` = all five shown). Toggle them from the in-game race-HUD controls; the plugin persists the mask.
-
 ## Data
 
 On game-initialized, honse-tracker syncs three hosted snapshots from the [hachimi-redux](https://github.com/jalbarrang/hachimi-redux) data repo into Edge's data directory:
@@ -138,7 +121,7 @@ On game-initialized, honse-tracker syncs three hosted snapshots from the [hachim
 | Tracker resources | `https://raw.githubusercontent.com/jalbarrang/hachimi-redux/main/data` | data-dir root (+ `.tracker_cache.json`) |
 | Career icons | `https://raw.githubusercontent.com/jalbarrang/hachimi-redux/main/data/icons` | `icons/` (+ `.icons_cache.json`) |
 
-These URLs are load-bearing for every deployed plugin. Renaming the data repo, the `main` branch, or the `data/` path breaks downloads until configs override them via `hosted_data`.
+These URLs are load-bearing for the deployed plugin. Renaming the data repo, the `main` branch, or the `data/` path breaks downloads until configs override them via `hosted_data`.
 
 ## Development
 
@@ -148,7 +131,7 @@ These URLs are load-bearing for every deployed plugin. Renaming the data repo, t
 cargo build --release
 ```
 
-Artifacts land at `target/release/honse_tracker.dll`, `honse_race_hud.dll`, and `honse_debug.dll` (on Windows).
+The artifact lands at `target/release/honse_tracker.dll` (on Windows).
 
 ### Deploy
 
@@ -160,7 +143,7 @@ $env:HACHIMI_GAME_DIR = "C:\path\to\game"   # optional override
 .\scripts\deploy-windows.ps1 -ConfigHint    # prints load_libraries JSON snippet
 ```
 
-The script copies only the three plugin DLLs into the game folder root. It never launches or kills the game. If a DLL is locked, close the Honse game and retry.
+The script copies only the plugin DLL into the game folder root. It never launches or kills the game. If the DLL is locked, close the Honse game and retry.
 
 ### EGUI LOCKSTEP RULE (host-egui entry points only)
 
@@ -181,6 +164,6 @@ Always run `hiker gen` before `cargo test` — the intent test includes the giti
 
 ### Honest losses vs the fork
 
-- **No hot-swap** — Edge loads plugins at startup only; restart the Honse game to reload a rebuilt DLL.
+- **No hot-swap** — Edge loads the plugin at startup only; restart the Honse game to reload a rebuilt DLL.
 - **No `menu_preview` harness** — future work; iterate against a live game session for now.
 - **Surface window jank** — the overlay surface is closable and reappears; known jank carried from the port.

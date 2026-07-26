@@ -1,11 +1,11 @@
-# Port notes — `plugins/honse-tracker`
+# Port notes — `honse-tracker`
 
 Living audit trail for the plan-3 port. Finalized in t-005.
 
 ## Files moved (t-001)
 
-- 67 `.rs` files from fork `training_tracker/` → `plugins/honse-tracker/src/` (`mod.rs` → `lib.rs`)
-- Assets → `plugins/honse-tracker/assets/` (`course_params.json`, `skill_grades.json`, `icons/`)
+- 67 `.rs` files from fork `training_tracker/` → `src/` (`mod.rs` → `lib.rs`)
+- Assets → `assets/` (`course_params.json`, `skill_grades.json`, `icons/`)
 - Path rename: `crate::core::modules::training_tracker::` → `crate::`
 - `include_bytes!` paths adjusted to `../../assets/icons/…`
 - Test asset paths: `CARGO_MANIFEST_DIR/assets/…`
@@ -67,7 +67,7 @@ Provider codes: `1` = edge-sdk, `2` = honse-services, `3` = local/shim (egui re-
 
 ## Fixtures (t-002)
 
-- Copied fork `veterans/*.json` → `plugins/honse-tracker/veterans/` and updated `evaluation::tests::validated_runners_match_exactly` path from `{manifest}/../../veterans` to `{manifest}/veterans` (layout adaptation only).
+- Copied fork `veterans/*.json` → `veterans/` and updated `evaluation::tests::validated_runners_match_exactly` path from `{manifest}/../../veterans` to `{manifest}/veterans` (layout adaptation only).
 
 ## Command hooks (t-003)
 

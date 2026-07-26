@@ -2,7 +2,7 @@
 //! renderer driven from edge's present callback, input via a WndProc subclass
 //! chained on top of edge's.
 //!
-//! Productized from the proven honse-debug spike (`own_overlay.rs`, GO verdict).
+//! Productized from the proven overlay spike that originally lived in the removed honse-debug plugin (`own_overlay.rs`, GO verdict).
 //! Invariants (spike FINDINGS, do not regress):
 //! - The backbuffer RTV is created, used, unbound, and dropped inside ONE
 //!   Present. A cached RTV holds a backbuffer reference, `ResizeBuffers` fails,

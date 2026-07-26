@@ -7,18 +7,16 @@ package hachimi.telemetry.v1;
 message Envelope {
   uint64 sent_at_ms = 1; // epoch milliseconds at send time
   uint32 seq = 2;        // per-process monotonic sequence
-  string source = 3;     // "training-tracker" | "race-hud"
+  string source = 3;     // "training-tracker"
   oneof payload {
     CareerSnapshot career_snapshot = 10;
     CareerExtras career_extras = 11;
-    RaceLiveFrame race_live_frame = 12;
-    RaceFull race_full = 13;
   }
 }
 
 // ---------------------------------------------------------------------------
 // Career snapshot (training-tracker, ~2s cadence)
-// Mirrors plugins/training-tracker/src/memory_reader/snapshot.rs::CareerSnapshot
+// Mirrors src/memory_reader/snapshot.rs::CareerSnapshot
 // ---------------------------------------------------------------------------
 
 message Aptitudes {
@@ -141,65 +139,4 @@ message CareerExtras {
   // Player-reserved races (the in-game agenda), in deck order. Empty when none
   // are reserved or the data is unavailable.
   repeated ReservedRace reserved_races = 6;
-}
-
-// ---------------------------------------------------------------------------
-// Race live frame (race-hud, ~100ms cadence)
-// Mirrors plugins/honse-race-hud/src/state.rs::{LiveSnapshot, RunnerRow}
-// ---------------------------------------------------------------------------
-
-message RunnerRow {
-  uint32 rank = 1;
-  uint32 post = 2;
-  string name = 3;
-  float distance = 4;
-  uint32 speed_raw = 5; // x100 m/s
-  uint32 hp = 6;
-  float accel = 7;      // m/s^2
-  bool kakari = 8;      // temptation != 0
-  bool blocked = 9;     // block_front >= 0
-  // Game RunningStyle enum: 0 unknown, 1 Front (Nige), 2 Pace (Senko),
-  // 3 Late (Sashi), 4 End (Oikomi). Constant per runner across the race.
-  uint32 strategy = 10;
-}
-
-message RaceLiveFrame {
-  float elapsed = 1;
-  repeated RunnerRow rows = 2;
-}
-
-// ---------------------------------------------------------------------------
-// Full decoded race (race-hud, one-shot on capture)
-// Mirrors plugins/honse-race-hud/src/sim.rs::{RaceSummary, FrameData, RunnerSampleRaw}
-// ---------------------------------------------------------------------------
-
-message RaceSummary {
-  int32 version = 1;
-  int32 horse_num = 2;
-  int32 frame_count = 3;
-  int32 frame_size = 4;
-  int32 horse_frame_size = 5;
-  float distance_diff_max = 6;
-  float race_length_m = 7;
-}
-
-message RunnerSample {
-  float distance = 1;
-  uint32 lane = 2;
-  uint32 speed = 3;
-  uint32 hp = 4;
-  int32 temptation = 5;
-  int32 block_front = 6;
-}
-
-message RaceFrame {
-  float time = 1;
-  repeated RunnerSample runners = 2;
-}
-
-message RaceFull {
-  RaceSummary summary = 1;
-  repeated string names = 2;      // by horse index
-  repeated bool is_player = 3;    // HorseData.IsUser by horse index
-  repeated RaceFrame frames = 4;
 }

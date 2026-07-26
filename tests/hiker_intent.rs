@@ -6,4 +6,4 @@
 #![allow(clippy::nonminimal_bool)]
 #![allow(unused_parens)]
 
-include!("../../../.hiker-cache/rust/generated.rs");
+include!("../.hiker-cache/rust/generated.rs");

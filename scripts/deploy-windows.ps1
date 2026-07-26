@@ -3,13 +3,11 @@
     Copy release-built honse-tracker plugin DLLs into the Honse game folder.
 
 .DESCRIPTION
-    Copies only the three Edge plugin DLLs into the game folder root:
+    Copies the Edge plugin DLL into the game folder root:
       - target\release\honse_tracker.dll
-      - target\release\honse_race_hud.dll
-      - target\release\honse_debug.dll
 
     Does NOT deploy a core/proxy DLL (cri_mana_vpx.dll is Edge's job).
-    Does NOT hot-swap or talk IPC — restart the Honse game to reload plugins.
+    Does NOT hot-swap or talk IPC - restart the Honse game to reload the plugin.
     Does NOT launch or kill the game.
 
 .PARAMETER GameDir
@@ -48,26 +46,22 @@ $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $TargetDir = Join-Path $RepoRoot "target\release"
 
 $Plugins = @(
-    @{ Name = "honse_tracker.dll"; Hint = "cargo build --release -p honse-tracker" },
-    @{ Name = "honse_race_hud.dll"; Hint = "cargo build --release -p honse-race-hud" },
-    @{ Name = "honse_debug.dll";     Hint = "cargo build --release -p honse-debug" }
+    @{ Name = "honse_tracker.dll"; Hint = "cargo build --release -p honse-tracker" }
 )
 
 function Show-ConfigHint {
     Write-Host ""
-    Write-Host "Add the plugin DLLs to hachimi/config.json:" -ForegroundColor Cyan
+    Write-Host "Add the plugin DLL to hachimi/config.json:" -ForegroundColor Cyan
     Write-Host @'
 {
   "load_libraries": [
-    "honse_tracker.dll",
-    "honse_race_hud.dll",
-    "honse_debug.dll"
+    "honse_tracker.dll"
   ]
 }
 '@
     Write-Host ""
-    Write-Host "Place the DLLs in the Honse game folder root (same directory as the game exe)." -ForegroundColor DarkGray
-    Write-Host "Restart the Honse game after copying — Edge loads plugins at startup only." -ForegroundColor DarkGray
+    Write-Host "Place the DLL in the Honse game folder root (same directory as the game exe)." -ForegroundColor DarkGray
+    Write-Host "Restart the Honse game after copying - Edge loads the plugin at startup only." -ForegroundColor DarkGray
 }
 
 if ($ConfigHint) {
@@ -96,14 +90,7 @@ function Copy-WithRetry {
             $locked = $_.Exception.Message -match "being used by another process"
             if ($locked) {
                 if ($i -eq $maxAttempts) {
-                    Write-Error @"
-Cannot overwrite $Dest — the DLL is locked by the running Honse game.
-
-Close the Honse game, then re-run:
-  .\scripts\deploy-windows.ps1
-
-(This script never kills the game process.)
-"@
+                    Write-Error ("Cannot overwrite $Dest - the DLL is locked by the running Honse game.`n`nClose the Honse game, then re-run:`n  .\scripts\deploy-windows.ps1`n`n(This script never kills the game.)")
                 }
                 Write-Host "  Locked; retry $i/$maxAttempts after brief wait..." -ForegroundColor Yellow
                 Start-Sleep -Milliseconds 400
@@ -140,7 +127,7 @@ Set -GameDir or env:HACHIMI_GAME_DIR to your Honse game install folder.
 }
 
 Write-Host ""
-Write-Host "Deploying plugin DLLs to: $GameDir" -ForegroundColor Green
+Write-Host "Deploying plugin DLL to: $GameDir" -ForegroundColor Green
 Write-Host ""
 
 foreach ($p in $Plugins) {

@@ -1,9 +1,6 @@
 //! Background publisher: a bounded queue drained by one sender thread.
 //!
-//! `publish()` is called from the Unity main thread and from race hooks, so it
-//! must never block. It encodes + enqueues onto a `SyncSender` (drop-on-full) and
-//! returns immediately. The sender thread performs the blocking HTTP POSTs and
-//! applies a backoff window after a failure so a dead backend isn't hammered.
+//! `publish()` is called from the Unity main thread and plugin hooks, so it must never block. It encodes + enqueues onto a `SyncSender` (drop-on-full) and returns immediately. The sender thread performs the blocking HTTP POSTs and applies a backoff window after a failure so a dead backend isn't hammered.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
@@ -14,8 +11,7 @@ use std::time::{Duration, Instant};
 use crate::config::{Config, Endpoint};
 use crate::transport;
 
-/// Queue depth. Career snapshots are ~2s apart; race-live is 10Hz. 64 absorbs
-/// bursts without unbounded memory if the backend stalls.
+/// Queue depth. Career snapshots are ~2s apart, and other telemetry events may arrive in bursts. 64 absorbs bursts without unbounded memory if the backend stalls.
 const QUEUE_CAP: usize = 64;
 /// After a failed POST, drop everything for this long before retrying.
 const BACKOFF: Duration = Duration::from_secs(2);

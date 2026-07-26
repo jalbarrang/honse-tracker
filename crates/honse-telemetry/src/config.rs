@@ -14,10 +14,6 @@ pub struct Channels {
     pub career: bool,
     #[serde(default = "default_true")]
     pub career_extras: bool,
-    #[serde(default = "default_true")]
-    pub race_live: bool,
-    #[serde(default = "default_true")]
-    pub race_full: bool,
 }
 
 impl Default for Channels {
@@ -25,8 +21,6 @@ impl Default for Channels {
         Self {
             career: true,
             career_extras: true,
-            race_live: true,
-            race_full: true,
         }
     }
 }
@@ -118,7 +112,7 @@ mod tests {
         let cfg = Config::load(Path::new("/nonexistent/telemetry.json"));
         assert!(!cfg.enabled);
         assert_eq!(cfg.endpoint, "http://127.0.0.1:8716/ingest");
-        assert!(cfg.channels.career && cfg.channels.race_full);
+        assert!(cfg.channels.career && cfg.channels.career_extras);
     }
 
     #[test]
@@ -126,14 +120,14 @@ mod tests {
         let cfg: Config = serde_json::from_str(r#"{"enabled":true}"#).expect("parse");
         assert!(cfg.enabled);
         assert_eq!(cfg.endpoint, "http://127.0.0.1:8716/ingest");
-        assert!(cfg.channels.race_live);
+        assert!(cfg.channels.career_extras);
     }
 
     #[test]
     fn channels_partial_override() {
-        let cfg: Config = serde_json::from_str(r#"{"channels":{"race_full":false}}"#).expect("parse");
+        let cfg: Config = serde_json::from_str(r#"{"channels":{"career_extras":false}}"#).expect("parse");
         assert!(cfg.channels.career);
-        assert!(!cfg.channels.race_full);
+        assert!(!cfg.channels.career_extras);
     }
 
     #[test]

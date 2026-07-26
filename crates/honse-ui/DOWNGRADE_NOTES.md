@@ -52,4 +52,4 @@ Verified against `taffy-0.7.7` (pulled by `egui_taffy 0.10.0`):
 | `taffy::GridTemplateComponent<String>` | `taffy::TrackSizingFunction` | `taffy-0.7.7/src/style/mod.rs` `grid_template_columns: GridTrackVec<TrackSizingFunction>`; `GridTemplateComponent` appears only in taffy ≥0.9 |
 | `auto()` / `fr(1.0)` / `length(...)` in column vecs | unchanged (still coerce via `TaffyAuto` / `FromFlex` / `FromLength` impls on `TrackSizingFunction`) | `taffy-0.7.7/src/style/grid.rs` `impl TaffyAuto for TrackSizingFunction`, `impl FromFlex for TrackSizingFunction` |
 
-Files: `plugins/honse-tracker/src/ui/menu.rs`, `plugins/honse-tracker/src/ui/scenario/trackblazer.rs`.
+Files: `src/ui/menu.rs`, `src/ui/scenario/trackblazer.rs`.
