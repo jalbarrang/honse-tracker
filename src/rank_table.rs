@@ -1,4 +1,4 @@
-//! Career evaluation (評価点) → rank-badge label table.
+//! Career evaluation (Rating) → rank-badge label table.
 //!
 //! The training-screen evaluation value maps to a badge tier on the full
 //! G → LS24 ladder. Thresholds mirror UmaTools' `RATING_BADGE_MINIMA`

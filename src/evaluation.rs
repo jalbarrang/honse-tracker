@@ -1,4 +1,4 @@
-//! Self-computed career evaluation (評価点) estimate.
+//! Self-computed career evaluation (Rating) estimate.
 //!
 //! The game does not expose the overall evaluation live (it is computed at career
 //! result in native code), so we reproduce it — validated to ~0.3% against a real
@@ -230,7 +230,7 @@ pub fn compute(stats: [i32; 5], apt: &Aptitudes, star: i32, skills: &[AcquiredSk
     let b = compute_with(table, stats, apt, star, skills);
 
     // One-time breakdown on the first *settled* frame (skills loaded) so the total
-    // can be checked against the game's 評価点 and the unique bonus is confirmed.
+    // can be checked against the game's Rating and the unique bonus is confirmed.
     // Frame 1 often has raw stats only (skill list not yet populated); skip it.
     static LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     if (b.skills > 0 || b.unique > 0) && !LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {

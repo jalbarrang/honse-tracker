@@ -78,16 +78,9 @@ pub fn assigned(a: &Assignment) -> bool {
 
 #[allow(dead_code)]
 mod bond_progress;
-#[allow(dead_code)]
-mod build_profile;
 mod career_meta;
 mod chara_effects;
 mod class_dump;
-#[allow(dead_code)]
-mod cm_model;
-mod config;
-#[allow(dead_code)]
-mod course_data;
 mod deck_bonuses;
 mod diagnostics;
 mod eval_data;
@@ -96,15 +89,7 @@ mod gametora_data;
 mod hooks;
 mod memory_reader;
 mod overlay_cache;
-#[allow(dead_code)]
-mod planner;
-#[allow(dead_code)]
-mod race_context;
 mod rank_table;
-#[allow(dead_code)]
-mod recommend;
-#[allow(dead_code)]
-mod stat_targets;
 mod telemetry;
 
 /// Suspend the memory reader while a career command (training / rest / infirmary /

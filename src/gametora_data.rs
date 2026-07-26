@@ -353,8 +353,8 @@ pub fn skill(id: i64) -> Option<&'static Skill> {
     catalog().skills.get(&id)
 }
 
-/// A positive-recovery skill the player can plan to run: heal in **basis points**
-/// of max HP (the game's native unit; `cm_model` converts it to a stamina relief).
+/// A positive-recovery skill: heal in **basis points** of max HP (the game's
+/// native unit).
 #[derive(Debug, Clone)]
 pub struct RecoverySkill {
     pub id: i64,

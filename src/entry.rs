@@ -6,14 +6,11 @@ use edge_sdk::declare_plugin;
 use serde::{Deserialize, Serialize};
 
 use crate::compat::Sdk;
-use crate::{command_hooks, config, gametora_data, hooks};
+use crate::{command_hooks, gametora_data, hooks};
 
 /// On-disk plugin config (`honseTrackerConfig.json` under edge base dir).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct HonseTrackerFile {
-    /// Tracker feature settings (build profile, recommend, planner).
-    #[serde(flatten)]
-    tracker: config::PersistedConfigPublic,
     /// Hosted-data URL overrides.
     #[serde(default)]
     hosted_data: honse_services::HostedDataUrls,
@@ -32,21 +29,11 @@ fn plugin_init() -> bool {
         env!("CARGO_PKG_VERSION")
     );
 
-    // (1) Load tracker config via PluginConfig as honseTrackerConfig.json.
-    // Falls back to legacy training_config.json fields via flatten defaults.
-    let file_cfg = honse_services::PluginConfig::<HonseTrackerFile>::load("honseTrackerConfig.json");
-    if let Some(ref cfg) = file_cfg {
-        config::apply_persisted(&cfg.value.tracker);
-    } else {
-        // Sdk not ready for base_dir — try legacy path.
-        config::load();
-    }
-
     // Telemetry (fork gating: disabled unless telemetry.json enables it).
     let sdk = Sdk::get();
     hachimi_telemetry::init(sdk.host_data_path("telemetry.json"));
 
-    // (2) Services init: frame source and the game-ready bootstrap.
+    // (1) Services init: frame source and the game-ready bootstrap.
     honse_services::init(honse_services::InitOptions);
 
     // Event subscriptions (FRAME / VIEW_CHANGE / SHUTDOWN).
@@ -83,7 +70,7 @@ unsafe extern "C" fn on_game_initialized(_userdata: *mut c_void) {
         hlog_info!(target: "training-tracker", "Command-suspend hooks installed");
     }
 
-    // (3) Hosted-data sync_all on a background thread post-game-initialized.
+    // (2) Hosted-data sync_all on a background thread post-game-initialized.
     let urls = honse_services::PluginConfig::<HonseTrackerFile>::load("honseTrackerConfig.json")
         .map(|c| c.value.hosted_data)
         .unwrap_or_default();

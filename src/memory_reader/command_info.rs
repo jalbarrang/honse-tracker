@@ -28,6 +28,19 @@ use super::il2cpp::{
 const COMMAND_TYPE_TRAINING: i32 = 1;
 /// `Gallop.SingleModeDefine.ParameterType` values for the 5 main stats (Speed..Wiz).
 const STAT_PARAM_TYPES: [i32; 5] = [1, 2, 3, 4, 5];
+/// Bond value at which a support becomes friendship- (rainbow-) trainable.
+const RAINBOW_BOND_THRESHOLD: i32 = 80;
+
+/// Near-rainbow pressure `0..=1`: rises as the bond approaches the rainbow
+/// threshold, `0` once already rainbow (no further unlock).
+fn near_rainbow_pressure(bond: i32) -> f32 {
+    let b = bond.clamp(0, 100);
+    if b >= RAINBOW_BOND_THRESHOLD {
+        0.0
+    } else {
+        (b as f32 / RAINBOW_BOND_THRESHOLD as f32).clamp(0.0, 1.0)
+    }
+}
 
 /// One training facility's live preview (failure rate + stat gains).
 #[derive(Debug, Clone)]
@@ -39,9 +52,9 @@ pub struct CommandInfo {
     /// Per-stat gain [Speed, Stamina, Power, Guts, Wisdom].
     pub per_stat: [i32; 5],
     /// Near-rainbow bond pressure `0..=1` from the supports present on this
-    /// facility this turn (soft-OR of each non-guest partner's
-    /// [`crate::planner::near_rainbow_pressure`]). Drives the multi-turn bond
-    /// lookahead; `0` when no partner is near the rainbow threshold.
+    /// facility this turn (soft-OR of each non-guest partner's bond pressure).
+    /// Exposed through telemetry and partner-placement data; `0` when no partner
+    /// is near the rainbow threshold.
     pub bond_pressure: f32,
     /// Supports/guests on this facility: `(target_id, near-rainbow pressure, is_guest)`.
     pub partners: Vec<(i32, f32, bool)>,
@@ -176,7 +189,7 @@ unsafe fn read_training_horses(ti: *mut c_void) -> Vec<(i32, f32, bool)> {
             let is_guest = resolve_obj_method(horse, "get_IsGuest", 0).is_some_and(|m| call_bool(horse, m));
             let target_id = call_i32(eval, m_target_id);
             let bond = call_i32(eval, m_value);
-            out.push((target_id, crate::planner::near_rainbow_pressure(bond), is_guest));
+            out.push((target_id, near_rainbow_pressure(bond), is_guest));
         }
         out
     }
@@ -268,4 +281,22 @@ fn log_breakdown_on_change(command_id: i32, main: &[(i32, i32); 5], bonus2: &[(i
         bonus,
         b2
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn near_rainbow_pressure_peaks_just_below_threshold() {
+        assert_eq!(near_rainbow_pressure(0), 0.0);
+        assert!(near_rainbow_pressure(40) > near_rainbow_pressure(0));
+        assert!(near_rainbow_pressure(79) > near_rainbow_pressure(40));
+        assert_eq!(
+            near_rainbow_pressure(RAINBOW_BOND_THRESHOLD),
+            0.0,
+            "already rainbow ⇒ no unlock value"
+        );
+        assert_eq!(near_rainbow_pressure(95), 0.0);
+    }
 }

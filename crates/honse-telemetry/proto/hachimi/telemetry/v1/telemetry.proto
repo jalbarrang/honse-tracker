@@ -64,7 +64,7 @@ message CareerSnapshot {
   Aptitudes aptitudes = 20;
   int32 star = 21;
 
-  optional int32 evaluation_value = 22;         // self-computed 評価点
+  optional int32 evaluation_value = 22;         // self-computed Rating
 
   repeated int32 failure_rates = 23;            // per-facility, -1 = unknown
   repeated int32 stat_gains = 24;               // per-facility total gain

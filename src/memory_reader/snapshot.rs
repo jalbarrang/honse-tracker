@@ -60,7 +60,7 @@ pub struct CareerSnapshot {
     /// Card rarity / star (1–5); drives the unique-skill bonus multiplier.
     pub star: i32,
 
-    /// Self-computed overall evaluation estimate (評価点). Filled by overlay_cache.
+    /// Self-computed overall evaluation estimate (Rating). Filled by overlay_cache.
     /// Mapped to a rank-badge label via `crate::rank_table::rank_label`.
     pub evaluation_value: Option<i32>,
 
@@ -73,20 +73,20 @@ pub struct CareerSnapshot {
     pub stat_gains: [i32; 5],
 
     /// Per-facility, per-stat gain: outer = facility slot, inner = [Speed, Stamina,
-    /// Power, Guts, Wisdom] delta. Drives the projected-評価点 recommendation.
+    /// Power, Guts, Wisdom] delta. Exposed for telemetry and diagnostics.
     pub per_stat_gains: [[i32; 5]; 5],
 
     /// Per-facility near-rainbow bond pressure `0..=1` from the supports present on
-    /// each facility this turn (`TrainingHorseList` bond values →
-    /// `planner::near_rainbow_pressure`). Feeds the multi-turn bond lookahead.
+    /// each facility this turn (`TrainingHorseList` bond values → near-rainbow
+    /// pressure). Exposed through telemetry and partner-placement data.
     pub per_facility_bond_pressure: [f32; 5],
 
     /// `Evaluation.target_id` → (facility slot 0..4, per-character bond pressure).
     pub partner_placements: HashMap<i32, (usize, f32)>,
 
     /// Speed-slot training command id of the active scenario (e.g. 101 URA, 601
-    /// Unity Cup, 1101 Trackblazer). Identifies the scenario for the rest-vs-race
-    /// suggestion. `0` means unknown.
+    /// Unity Cup, 1101 Trackblazer). Identifies the active scenario. `0` means
+    /// unknown.
     pub scenario_command_base: i32,
 
     /// Active scenario id (`get_ScenarioId`). e.g. 4 = Trackblazer. `0` = unknown.
