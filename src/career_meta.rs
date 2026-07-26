@@ -8,7 +8,7 @@
 //!   (`stat-rank.ts` `rankLabelIconIndex`).
 //! - [`trainee_portrait_path`] / [`stat_icon_path`] — icon paths under `icons/`.
 //!
-//! Paths are relative to the staged `icons/` dir (see [`crate::ui::textures`]).
+//! Paths are relative to the staged `icons/` data directory.
 
 use crate::gametora_data;
 

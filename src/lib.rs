@@ -1,6 +1,6 @@
 //! Training Tracker — edge plugin port of the former in-core `training_tracker` module.
 //!
-//! Tracks training-facility visits and surfaces career analytics overlays/pages.
+//! Tracks training-facility visits and publishes career analytics data.
 //! Source moved near-verbatim against [`compat`], which bridges the old
 //! `legacy plugin SDK` surface to `edge-sdk` + `honse-services`. Plugin entry
 //! wiring lands in t-004 (`edge_sdk::declare_plugin!`).
@@ -94,10 +94,8 @@ mod eval_data;
 mod evaluation;
 mod gametora_data;
 mod hooks;
-pub(crate) mod hotkey_binds;
 mod memory_reader;
 mod overlay_cache;
-mod overlay_prefs;
 #[allow(dead_code)]
 mod planner;
 #[allow(dead_code)]
@@ -108,14 +106,6 @@ mod recommend;
 #[allow(dead_code)]
 mod stat_targets;
 mod telemetry;
-pub(crate) mod ui;
-
-/// Drop the Career-panel texture negative-cache. Crate-visible entry point for
-/// the hosted-data icon sync (`ICONS`), called after icons finish downloading so
-/// the panel picks them up without a restart.
-pub(crate) fn clear_icon_cache() {
-    ui::textures::clear_missing();
-}
 
 /// Suspend the memory reader while a career command (training / rest / infirmary /
 /// outing) plays out. Crate-visible entry point for the `SingleModeMainViewController`

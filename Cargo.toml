@@ -3,7 +3,6 @@ resolver = "2"
 members = [
     "crates/edge-sdk",
     "crates/honse-services",
-    "crates/honse-ui",
     "crates/honse-telemetry",
 ]
 
@@ -19,18 +18,10 @@ description = "Training Tracker edge plugin (ported from hachimi-redux in-core m
 name = "honse_tracker"
 crate-type = ["cdylib", "rlib"]
 
-[features]
-# Desktop preview harness (fork leftover cfg gates). Not enabled for the shipped cdylib.
-dev-harness = []
-
 [dependencies]
 edge-sdk = { path = "crates/edge-sdk" }
 honse-services = { path = "crates/honse-services" }
-honse_ui = { path = "crates/honse-ui" }
 hachimi_telemetry = { package = "honse-telemetry", path = "crates/honse-telemetry" }
-egui = { workspace = true }
-egui_extras = { workspace = true }
-egui_taffy = { workspace = true }
 log = { workspace = true }
 once_cell = { workspace = true }
 parking_lot = { workspace = true }
@@ -38,11 +29,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 blake3 = { workspace = true }
 chrono = { workspace = true }
-image = { version = "0.25.9", default-features = false, features = ["png"] }
-png = "0.17"
-fnv = "1.0"
-textwrap = "0.16"
-unicode-width = "0.1"
 
 [dev-dependencies]
 proptest = "1"
@@ -61,8 +47,6 @@ license = "GPL-3.0-or-later"
 [workspace.dependencies]
 # must match hachimi-edge Cargo.lock
 egui = { version = "=0.33.3", default-features = false, features = ["serde"] }
-egui_extras = { version = "=0.33.3", default-features = false, features = ["image"] }
-egui_taffy = "=0.10.0"
 log = "0.4"
 once_cell = "1.19"
 serde = { version = "1.0", features = ["derive"] }

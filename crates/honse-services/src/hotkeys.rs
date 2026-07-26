@@ -1,8 +1,8 @@
 //! Hotkey registry with GetAsyncKeyState polling (global, focus-independent).
 //!
 //! Fork reference: `hachimi-redux/.../plugin/hotkeys.rs` fires from a global
-//! WndProc hook. Edge has no WndProc plugin hook, and polling `egui::Context::input()`
-//! only sees keys when egui has focus (menu open) — wrong. Replacement: poll
+//! WndProc hook. Edge has no WndProc plugin hook, so polling host input state
+//! would only see keys while a host surface has focus. Replacement: poll
 //! `GetAsyncKeyState` for registered VK chords inside the present-callback job
 //! list (t-001), edge-triggered on down-transitions, gated on the game window
 //! being foreground.
@@ -105,14 +105,12 @@ pub fn register_hotkey(
     handle
 }
 
-/// Remove a hotkey by handle. Also tries overlay unregister (shared handle space).
+/// Remove a hotkey by handle.
 pub fn unregister(handle: u64) -> bool {
     let mut hotkeys = HOTKEYS.lock();
     let before = hotkeys.len();
     hotkeys.retain(|h| h.handle != handle);
-    let removed = hotkeys.len() != before;
-    drop(hotkeys);
-    removed || crate::overlay::unregister(handle)
+    hotkeys.len() != before
 }
 
 fn install_poll_job() {

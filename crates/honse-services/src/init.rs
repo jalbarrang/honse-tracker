@@ -29,13 +29,7 @@ pub type GameReadyCallback = unsafe extern "C" fn(*mut c_void);
 
 /// Options for [`init`].
 #[derive(Debug, Clone, Default)]
-pub struct InitOptions {
-    /// File name (under edge's base dir) for self-hosted overlay layout
-    /// persistence (panel/window positions). Each plugin should pass a
-    /// distinct name (e.g. `"honseTrackerLayout.json"`); `None` disables
-    /// position persistence.
-    pub overlay_layout_file: Option<String>,
-}
+pub struct InitOptions;
 
 static GAME_READY: AtomicBool = AtomicBool::new(false);
 static ON_GAME_READY: Lazy<Mutex<Vec<(usize, usize)>>> = Lazy::new(|| Mutex::new(Vec::new()));
@@ -43,12 +37,9 @@ static ON_GAME_READY: Lazy<Mutex<Vec<(usize, usize)>>> = Lazy::new(|| Mutex::new
 /// Arm this plugin's services: install the present-callback frame source now.
 ///
 /// The frame source drives frame jobs (hotkey polling), the first-present
-/// bootstrap ([`poll_bootstrap`]), the view-id poll, and the self-hosted
-/// overlay render pass. Call once from plugin `init()`.
-pub fn init(opts: InitOptions) {
-    if let Some(file) = opts.overlay_layout_file {
-        crate::overlay::set_layout_file(&file);
-    }
+/// bootstrap ([`poll_bootstrap`]), and the view-id poll. Call once from plugin
+/// `init()`.
+pub fn init(_opts: InitOptions) {
     if Sdk::try_get().is_none() {
         log::warn!("honse-services::init called before Sdk init");
         return;

@@ -1,20 +1,17 @@
 //! Compatibility shim for the training-tracker plugin.
 //!
 //! Re-implements the SDK surface the tracker was authored against, delegating to
-//! `edge_sdk::Sdk` (IL2CPP / hooking / notifications / menu sections / data_path)
-//! and `honse_services` (events, overlays/panels/tabs, hotkeys, gametora, view_name).
+//! `edge_sdk::Sdk` (IL2CPP / hooking / notifications / data_path) and
+//! `honse_services` (events, hotkeys, gametora, view_name).
 //!
 //! Public surface matches the fork `training_tracker/compat.rs` (`rg -n 'pub (unsafe )?fn'`).
 //! Method → provider mapping is recorded in `PORT_NOTES.md` for hiker facts (t-005).
 
 use std::ffi::{c_char, c_void, CStr};
 
-use edge_sdk::ffi::GuiMenuCallback;
 use edge_sdk::Sdk as EdgeSdk;
 
 // ── Re-exports so moved tracker files keep their `crate::compat::…` imports. ──
-pub use ::egui;
-
 // Fork ABI used `type Il2CppClass = c_void` (and friends). Keep that so moved
 // tracker code that casts through `*mut c_void` compiles without churn. Casts
 // to/from edge-sdk's opaque FFI structs happen only inside Sdk methods.
@@ -221,44 +218,6 @@ impl Sdk {
         honse_services::off(handle);
     }
 
-    // ── GUI: self-hosted overlay (honse_services::overlay, OUR egui context) ──
-
-    pub fn set_overlay_visible(&self, id: &str, visible: bool) -> bool {
-        honse_services::overlay::set_visible(id, visible);
-        true
-    }
-
-    pub fn overlay_set_visible(&self, id: &str, visible: bool) -> bool {
-        self.set_overlay_visible(id, visible)
-    }
-
-    #[must_use]
-    pub fn overlay_visible(&self, id: &str) -> bool {
-        honse_services::overlay::is_visible(id)
-    }
-
-    pub fn toggle_overlay(&self, id: &str) -> bool {
-        honse_services::overlay::toggle(id)
-    }
-
-    pub fn register_hotkey(
-        &self,
-        id: &str,
-        label: &str,
-        default_mods: u8,
-        default_vk: u16,
-        callback: GuiMenuCallback,
-        userdata: *mut c_void,
-    ) -> u64 {
-        honse_services::register_hotkey(id, label, default_mods, default_vk, callback, userdata)
-    }
-
-    pub fn unregister(&self, handle: u64) -> bool {
-        let a = honse_services::unregister(handle);
-        let b = honse_services::overlay::unregister(handle);
-        a || b
-    }
-
     // ── Host services ──
 
     pub fn show_notification(&self, message: &str) -> bool {
@@ -289,10 +248,4 @@ pub(crate) fn cstr_to_string(ptr: *const c_char) -> Option<String> {
     }
     // SAFETY: caller passes a valid NUL-terminated C string from il2cpp.
     unsafe { CStr::from_ptr(ptr) }.to_str().ok().map(ToOwned::to_owned)
-}
-
-/// Set overlay visibility only if no prior value exists (fork host helper).
-#[allow(dead_code)]
-pub fn set_overlay_visible_if_unset(id: &str, visible: bool) {
-    honse_services::overlay::set_visible_if_unset(id, visible);
 }

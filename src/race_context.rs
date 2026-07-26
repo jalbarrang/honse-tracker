@@ -7,8 +7,8 @@
 //!
 //! Discriminants follow the game / uma-sim convention so the icon-file basenames
 //! line up (`utx_ico_weather_0{n-1}`, `utx_txt_season_0{n-1}`,
-//! `utx_ico_timezone_0{icon}`). The icon assets are embedded by
-//! [`crate::ui::icons`].
+//! `utx_ico_timezone_0{icon}`). Consumers may use these names to resolve
+//! external icon assets.
 
 use serde::{Deserialize, Serialize};
 

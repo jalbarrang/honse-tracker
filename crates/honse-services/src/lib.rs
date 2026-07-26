@@ -10,7 +10,6 @@ pub mod frame;
 pub mod hosted_data;
 pub mod hotkeys;
 pub mod init;
-pub mod overlay;
 pub mod scene_views;
 pub mod view_hook;
 
@@ -24,7 +23,7 @@ pub use init::{init, is_game_ready, register_on_game_ready, GameReadyCallback, I
 pub use scene_views::view_name;
 pub use view_hook::{install_view_poll, poll_view_change, set_view_poll_enabled};
 
-/// Unregister a handle from the hotkey and/or overlay registries (shared handle space).
+/// Unregister a handle from the hotkey registry.
 pub fn unregister(handle: u64) -> bool {
     hotkeys::unregister(handle)
 }
@@ -36,7 +35,7 @@ pub fn sync_all_from_config(urls: &HostedDataUrls, notify: bool) {
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Shared monotonic handle allocator for event subscriptions and (later) GUI/hotkey regs.
+/// Shared monotonic handle allocator for event subscriptions and hotkey registrations.
 /// `0` is reserved for failure / unused.
 static HANDLE_COUNTER: AtomicU64 = AtomicU64::new(1);
 

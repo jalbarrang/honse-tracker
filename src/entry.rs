@@ -6,12 +6,12 @@ use edge_sdk::declare_plugin;
 use serde::{Deserialize, Serialize};
 
 use crate::compat::Sdk;
-use crate::{command_hooks, config, gametora_data, hooks, ui};
+use crate::{command_hooks, config, gametora_data, hooks};
 
 /// On-disk plugin config (`honseTrackerConfig.json` under edge base dir).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct HonseTrackerFile {
-    /// Tracker feature settings (build profile, recommend, planner, zoom).
+    /// Tracker feature settings (build profile, recommend, planner).
     #[serde(flatten)]
     tracker: config::PersistedConfigPublic,
     /// Hosted-data URL overrides.
@@ -46,15 +46,8 @@ fn plugin_init() -> bool {
     let sdk = Sdk::get();
     hachimi_telemetry::init(sdk.host_data_path("telemetry.json"));
 
-    // (2) Services init: frame source (drives the self-hosted overlay), the
-    // game-ready bootstrap, and overlay layout persistence. Must run BEFORE
-    // register_ui so saved panel/window positions are loaded first.
-    honse_services::init(honse_services::InitOptions {
-        overlay_layout_file: Some("honseTrackerLayout.json".to_owned()),
-    });
-
-    // Surface registrations (tabs / panels / hotkeys) — no IL2CPP required.
-    ui::register_ui();
+    // (2) Services init: frame source and the game-ready bootstrap.
+    honse_services::init(honse_services::InitOptions);
 
     // Event subscriptions (FRAME / VIEW_CHANGE / SHUTDOWN).
     hooks::subscribe_events();
@@ -96,8 +89,6 @@ unsafe extern "C" fn on_game_initialized(_userdata: *mut c_void) {
         .unwrap_or_default();
     std::thread::spawn(move || {
         honse_services::sync_all_from_config(&urls, true);
-        // Icons finished — drop negative cache so the Career panel picks them up.
-        crate::clear_icon_cache();
     });
 }
 

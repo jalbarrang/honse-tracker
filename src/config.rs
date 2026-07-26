@@ -13,15 +13,12 @@
 //! flat `stat_targets` field is kept for one-way migration into the default
 //! profile's `per_stat_target`.
 
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
 
-use crate::hotkey_binds::{self, HotkeyBind};
-use crate::{build_profile, overlay_prefs, planner, recommend};
+use crate::{build_profile, planner, recommend};
 use build_profile::BuildProfile;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PersistedConfigPublic {
     /// Legacy per-stat targets; migrated into the active profile when no
     /// `build_profile` is present (older configs).
@@ -34,8 +31,6 @@ pub struct PersistedConfigPublic {
     pub recommend: recommend::RecommendParams,
     #[serde(default)]
     pub planner: planner::PlannerParams,
-    #[serde(default = "overlay_prefs::default_zoom")]
-    pub overlay_zoom: f32,
     /// The active build profile (objective + targets + weights + course/strategy).
     #[serde(default)]
     pub build_profile: Option<BuildProfile>,
@@ -43,26 +38,6 @@ pub struct PersistedConfigPublic {
     /// is kept (ignored) so older config files still deserialize cleanly.
     #[serde(default, skip_serializing)]
     pub saved_profiles: Vec<BuildProfile>,
-    /// Hotkey chord overrides keyed by action id (see [`crate::hotkey_binds`]).
-    /// Persist writes the full effective map so every rebindable action is
-    /// visible in the JSON; missing/empty means "use the built-in defaults".
-    #[serde(default)]
-    pub hotkeys: BTreeMap<String, HotkeyBind>,
-}
-
-impl Default for PersistedConfigPublic {
-    fn default() -> Self {
-        Self {
-            stat_targets: [0; 5],
-            enabled_tabs: 0,
-            recommend: recommend::RecommendParams::default(),
-            planner: planner::PlannerParams::default(),
-            overlay_zoom: overlay_prefs::default_zoom(),
-            build_profile: None,
-            saved_profiles: Vec::new(),
-            hotkeys: BTreeMap::new(),
-        }
-    }
 }
 
 type PersistedConfig = PersistedConfigPublic;
@@ -89,8 +64,6 @@ pub fn apply_persisted(cfg: &PersistedConfigPublic) {
     let _ = cfg.enabled_tabs;
     recommend::set_params(cfg.recommend);
     planner::set_params(cfg.planner);
-    overlay_prefs::set_zoom(cfg.overlay_zoom);
-    hotkey_binds::apply_overrides(&cfg.hotkeys);
     let p = build_profile::active();
     hlog_info!(
         target: "training-tracker",
@@ -128,10 +101,8 @@ pub fn persist() {
         enabled_tabs: 0,
         recommend: recommend::params(),
         planner: planner::params(),
-        overlay_zoom: overlay_prefs::zoom(),
         build_profile: Some(active),
         saved_profiles: Vec::new(),
-        hotkeys: hotkey_binds::all(),
     };
     let Ok(bytes) = serde_json::to_vec_pretty(&cfg) else {
         return;

@@ -36,14 +36,18 @@ mod snapshot;
 mod story_events;
 mod support_deck;
 
-pub use chain::{get_chara_ptr, start_tracking, stop_tracking};
+#[allow(unused_imports)]
+pub use chain::start_tracking;
+pub use chain::{get_chara_ptr, stop_tracking};
 pub use eval_master::probe as probe_eval_master;
 pub use evaluations::{read_evaluations, EvaluationInfo};
+#[allow(unused_imports)]
 pub use presentation::mood_label;
 // Only referenced by a unit test now (the Training tab that used it was removed).
 #[allow(unused_imports)]
 pub use presentation::motivation_color;
 pub use reserve::{read_reserved_races, ReservedRace};
+#[allow(unused_imports)]
 pub use scenario::{ScenarioState, TrackblazerOwnedItem, TrackblazerShop, TrackblazerShopItem, Worth};
 pub(crate) use skill_points::read_skill_points;
 pub use skills::{read_acquired_skill_list, read_acquired_skills, AcquiredSkillInfo};
