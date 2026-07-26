@@ -10,26 +10,19 @@ use std::ffi::c_void;
 
 use crate::compat::{capability, event, Sdk};
 
-/// Fired once per rendered frame on the render thread (`data` is null). Drive the
-/// overlay-cache refresh here so career snapshots are read/published even when the
-/// tracker overlay (or any of its tabs) is not being drawn. The refresh itself is
-/// throttled to [`crate::overlay_cache::AUTO_REFRESH_INTERVAL_MS`] and is a no-op
-/// when tracking is off, so calling it every frame is cheap.
+/// Fired once per rendered frame on the render thread (`data` is null). Drive the career poll so snapshots are read and published even when no UI is being drawn. The refresh is throttled to [`crate::career_poll::AUTO_REFRESH_INTERVAL_MS`] and is a no-op when tracking is off.
 extern "C" fn on_frame(_event_id: u32, _data: *const c_void, _userdata: *mut c_void) {
-    crate::overlay_cache::maybe_request_refresh();
+    crate::career_poll::maybe_request_refresh();
 }
 
-/// Fired when the game changes view/scene. Record the transition so the overlay
-/// cache suspends its IL2CPP reads during the teardown/rebuild window: reading the
-/// Single Mode `HomeInfo`/`TurnInfo` objects mid-transition (e.g. right after the
-/// player clicks a training) races a use-after-free and crashes the game.
+/// Fired when the game changes view/scene. Record the transition so the career poll suspends its IL2CPP reads during the teardown/rebuild window: reading the Single Mode `HomeInfo`/`TurnInfo` objects mid-transition races a use-after-free and crashes the game.
 extern "C" fn on_view_change(_event_id: u32, _data: *const c_void, _userdata: *mut c_void) {
-    crate::overlay_cache::note_view_change();
+    crate::career_poll::note_view_change();
 }
 
 extern "C" fn on_shutdown(_event_id: u32, _data: *const c_void, _userdata: *mut c_void) {
     crate::memory_reader::stop_tracking();
-    crate::overlay_cache::shutdown();
+    crate::career_poll::shutdown();
     crate::command_hooks::uninstall();
     hachimi_telemetry::shutdown();
     hlog_info!("Shutdown: tracking stopped, hooks removed");

@@ -60,7 +60,7 @@ pub struct CareerSnapshot {
     /// Card rarity / star (1–5); drives the unique-skill bonus multiplier.
     pub star: i32,
 
-    /// Self-computed overall evaluation estimate (Rating). Filled by overlay_cache.
+    /// Self-computed overall evaluation estimate (Rating). Filled by career_poll.
     /// Mapped to a rank-badge label via `crate::rank_table::rank_label`.
     pub evaluation_value: Option<i32>,
 
@@ -296,7 +296,7 @@ fn read_snapshot_inner() -> Option<CareerSnapshot> {
         stat_caps,
         aptitudes,
         star,
-        // Filled by overlay_cache (self-computed via crate::evaluation).
+        // Filled by career_poll (self-computed via crate::evaluation).
         evaluation_value: None,
         failure_rates,
         stat_gains,

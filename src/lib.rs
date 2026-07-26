@@ -79,6 +79,7 @@ pub fn assigned(a: &Assignment) -> bool {
 #[allow(dead_code)]
 mod bond_progress;
 mod career_meta;
+mod career_poll;
 mod chara_effects;
 mod class_dump;
 mod deck_bonuses;
@@ -88,20 +89,19 @@ mod evaluation;
 mod gametora_data;
 mod hooks;
 mod memory_reader;
-mod overlay_cache;
 mod rank_table;
 mod telemetry;
 
 /// Suspend the memory reader while a career command (training / rest / infirmary /
 /// outing) plays out. Crate-visible entry point for the `SingleModeMainViewController`
-/// command-submit IL2CPP hooks. See `overlay_cache::suspend_reads`.
+/// command-submit IL2CPP hooks. See `career_poll::suspend_reads`.
 pub(crate) fn suspend_reads_for_command() {
-    overlay_cache::suspend_reads();
+    career_poll::suspend_reads();
 }
 
 /// Resume the memory reader once the command-select screen has been rebuilt.
 /// Crate-visible entry point for the `SingleModeMainViewController` command-select
-/// IL2CPP hooks. See `overlay_cache::resume_reads`.
+/// IL2CPP hooks. See `career_poll::resume_reads`.
 pub(crate) fn resume_reads_on_command_select() {
-    overlay_cache::resume_reads();
+    career_poll::resume_reads();
 }

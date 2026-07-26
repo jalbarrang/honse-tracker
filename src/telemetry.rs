@@ -1,5 +1,5 @@
 //! Conversions from the tracker's in-memory career state to telemetry protobuf,
-//! plus the publish entry point called from `overlay_cache::refresh_cache_cb`.
+//! plus the publish entry point called from `career_poll::refresh_career_cb`.
 //!
 //! Pure data mapping over already-read structs — no IL2CPP access here. Every
 //! call is a cheap no-op when telemetry is disabled or the channel is off.
@@ -14,8 +14,7 @@ use crate::memory_reader::{
 
 const SOURCE: &str = "training-tracker";
 
-/// Publish the career snapshot and extras. Called once per cache refresh after
-/// `CACHE` is populated. Each channel is gated independently.
+/// Publish the career snapshot and extras once per poll refresh. Each channel is gated independently.
 pub fn publish(
     snapshot: Option<&CareerSnapshot>,
     skills: &[AcquiredSkillInfo],

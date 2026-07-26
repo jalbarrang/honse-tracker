@@ -1,47 +1,28 @@
-//! Unified cache for overlay career data.
+//! Main-thread career polling and telemetry publication.
 //!
-//! All IL2CPP reads run on the Unity main thread on a ~2s cadence (or immediately
-//! when tracking starts). The render thread only clones from [`CACHE`].
+//! All IL2CPP reads run on the Unity main thread on a 500 ms cadence (or immediately when tracking starts). Refresh callbacks publish telemetry after safe reads.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-// Only the real (non-harness) refresh path schedules work on the host main thread.
-#[cfg(not(feature = "dev-harness"))]
 use crate::compat::Sdk;
 
 use crate::deck_bonuses;
-use crate::memory_reader::{self, AcquiredSkillInfo, CareerSnapshot, EvaluationInfo, FiredEvent};
+use crate::memory_reader::{self, EvaluationInfo, FiredEvent};
 
 /// Refresh interval while memory tracking is on (milliseconds).
 pub const AUTO_REFRESH_INTERVAL_MS: u64 = 500;
 
-#[derive(Default)]
-struct OverlayCache {
-    snapshot: Option<CareerSnapshot>,
-    skills: Vec<AcquiredSkillInfo>,
-    evaluations: Vec<EvaluationInfo>,
-    skill_points: Option<i32>,
-    /// Equipped `(deck slot, support_card_id)` map, captured once per career.
-    support_ids: Vec<(i32, i32)>,
-}
-
-static CACHE: Mutex<OverlayCache> = Mutex::new(OverlayCache {
-    snapshot: None,
-    skills: Vec::new(),
-    evaluations: Vec::new(),
-    skill_points: None,
-    support_ids: Vec::new(),
-});
+/// Equipped `(deck slot, support_card_id)` pairs from the previous poll.
+static PREV_SUPPORT_IDS: Mutex<Vec<(i32, i32)>> = Mutex::new(Vec::new());
 static PENDING: AtomicBool = AtomicBool::new(false);
 /// Wall-clock (ms) when the in-flight refresh was scheduled; drives the staleness
 /// watchdog so a callback scheduled but never run to completion can't wedge
-/// `PENDING` true and freeze the overlay on "Loading career data".
+/// `PENDING` true and freeze the polling loop.
 static PENDING_SINCE_MS: AtomicU64 = AtomicU64::new(0);
 static LAST_REFRESH_MS: AtomicU64 = AtomicU64::new(0);
 static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
-static CHARACTER_READY: AtomicBool = AtomicBool::new(false);
 
 /// If a scheduled refresh hasn't completed within this window, treat it as lost
 /// and allow a fresh one to be scheduled.
@@ -107,7 +88,7 @@ fn in_view_transition() -> bool {
 static SUSPEND_DEADLINE_MS: AtomicU64 = AtomicU64::new(0);
 
 /// Safety ceiling: if the command-select "resume" signal is somehow missed, reads
-/// auto-resume after this long so the overlay can't wedge on stale data forever.
+/// auto-resume after this long so polling can't wedge on stale data forever.
 /// Generously covers a full (un-skipped) training animation + asset reload.
 const SUSPEND_MAX_MS: u64 = 30_000;
 
@@ -140,17 +121,12 @@ fn reads_unsafe() -> bool {
     !crate::read_gate::reads_permitted(in_view_transition(), i64::from(reads_suspended()))
 }
 
-pub(crate) fn character_ready() -> bool {
-    CHARACTER_READY.load(AtomicOrdering::Relaxed)
-}
-
 pub(crate) fn reset_career_state() {
-    CHARACTER_READY.store(false, AtomicOrdering::Relaxed);
     EVAL_DIAG_LOGGED.store(false, AtomicOrdering::Relaxed);
     crate::bond_progress::clear();
     deck_bonuses::clear();
-    if let Ok(mut guard) = CACHE.lock() {
-        *guard = OverlayCache::default();
+    if let Ok(mut guard) = PREV_SUPPORT_IDS.lock() {
+        guard.clear();
     }
 }
 
@@ -176,20 +152,6 @@ fn elapsed_since_last_refresh_ms() -> u64 {
 }
 
 fn schedule_refresh() {
-    // The desktop dev-harness has no SDK / Unity main thread; data is injected once
-    // via `set_test_data`. Never schedule a real IL2CPP refresh there.
-    #[cfg(feature = "dev-harness")]
-    {
-        return;
-    }
-    #[cfg(not(feature = "dev-harness"))]
-    {
-        schedule_refresh_inner();
-    }
-}
-
-#[cfg(not(feature = "dev-harness"))]
-fn schedule_refresh_inner() {
     if SHUTTING_DOWN.load(AtomicOrdering::Acquire) {
         return;
     }
@@ -208,10 +170,10 @@ fn schedule_refresh_inner() {
         }
     }
     PENDING_SINCE_MS.store(now_ms(), AtomicOrdering::Relaxed);
-    Sdk::get().schedule_on_main_thread(refresh_cache_cb);
+    Sdk::get().schedule_on_main_thread(refresh_career_cb);
 }
 
-extern "C" fn refresh_cache_cb() {
+extern "C" fn refresh_career_cb() {
     if SHUTTING_DOWN.load(AtomicOrdering::Acquire) {
         PENDING.store(false, AtomicOrdering::Release);
         return;
@@ -219,9 +181,8 @@ extern "C" fn refresh_cache_cb() {
     // Run the (panic-prone) IL2CPP reads + telemetry behind a catch so a single
     // bad frame can never unwind across this `extern "C"` boundary nor wedge the
     // refresh loop. If we didn't reset PENDING here, a panic mid-callback would
-    // leave PENDING stuck `true`, blocking every future refresh and freezing the
-    // overlay on "Loading career data\u2026" (see the get_Character-null career-start
-    // window). PENDING/LAST_REFRESH are always restored, panic or not.
+    // leave PENDING stuck `true`, blocking every future refresh. PENDING/LAST_REFRESH
+    // are always restored, panic or not.
     // Defense in depth: a refresh scheduled just before a view change can still be
     // dispatched mid-transition. Bail before any IL2CPP read touches teardown-time
     // objects; the next throttled tick retries after the cooldown.
@@ -230,37 +191,34 @@ extern "C" fn refresh_cache_cb() {
         LAST_REFRESH_MS.store(now_ms(), AtomicOrdering::Relaxed);
         return;
     }
-    if let Err(e) = std::panic::catch_unwind(refresh_cache_inner) {
+    if let Err(e) = std::panic::catch_unwind(refresh_career_inner) {
         let msg = e
             .downcast_ref::<&str>()
             .map(|s| (*s).to_string())
             .or_else(|| e.downcast_ref::<String>().cloned())
             .unwrap_or_else(|| "<non-string panic>".to_string());
-        hlog_error!("refresh_cache_cb PANICKED: {msg} \u{2014} overlay refresh recovered for next frame");
+        hlog_error!("refresh_career_cb PANICKED: {msg} \u{2014} career refresh recovered for next frame");
     }
     LAST_REFRESH_MS.store(now_ms(), AtomicOrdering::Relaxed);
     PENDING.store(false, AtomicOrdering::Release);
 }
 
-fn refresh_cache_inner() {
-    // Tracking is fully manual: only the user's Start/Stop control (menu button or
-    // hotkey) toggles `TRACKING`. No automatic start/stop — a manual stop sticks.
+fn refresh_career_inner() {
+    // Tracking is currently manual: `TRACKING` determines whether memory reads run.
     if !memory_reader::TRACKING.load(AtomicOrdering::Relaxed) {
         return;
     }
 
     let Some(chara) = memory_reader::get_chara_ptr() else {
         // Tracking on but Character not ready yet (career setup window) — wait.
-        CHARACTER_READY.store(false, AtomicOrdering::Relaxed);
         return;
     };
-    CHARACTER_READY.store(true, AtomicOrdering::Relaxed);
 
     let mut snapshot = memory_reader::read_snapshot();
     let is_playing = snapshot.as_ref().is_some_and(|s| s.is_playing);
     if !is_playing {
-        // Not in a career (e.g. left to the lobby). Leave tracking as the user set
-        // it; just skip publishing until a career is active again.
+        // Not in a career (e.g. left to the lobby). Leave tracking unchanged and
+        // skip publishing until a career is active again.
         return;
     }
 
@@ -279,9 +237,11 @@ fn refresh_cache_inner() {
     // Deck change (new career / reshuffled deck) invalidates per-career progress and
     // the once-per-career deck-bonus capture. Detect by comparing to the prior deck.
     if is_playing {
-        let prev = CACHE.lock().ok().map(|g| g.support_ids.clone()).unwrap_or_default();
+        let deck_changed = PREV_SUPPORT_IDS.lock().ok().is_some_and(|prev| {
+            !prev.is_empty() && !support_ids.is_empty() && prev.as_slice() != support_ids.as_slice()
+        });
         // Require both non-empty so a transient empty read can't wipe progress mid-career.
-        if !prev.is_empty() && !support_ids.is_empty() && prev != support_ids {
+        if deck_changed {
             crate::bond_progress::clear();
             deck_bonuses::clear(); // re-captured below via try_capture
             EVAL_DIAG_LOGGED.store(false, AtomicOrdering::Relaxed);
@@ -312,29 +272,24 @@ fn refresh_cache_inner() {
         EVAL_DIAG_LOGGED.store(false, AtomicOrdering::Relaxed);
     }
 
-    // Player-reserved races (the in-game agenda) for telemetry only — not cached,
-    // since the overlay UI does not surface it. Cheap POD reads, career-gated.
+    // Player-reserved races (the in-game agenda) are read for telemetry only. These
+    // cheap POD reads are career-gated and are not retained between polls.
     let reserved_races = if is_playing {
         memory_reader::read_reserved_races()
     } else {
         Vec::new()
     };
 
-    // Populate the overlay cache FIRST, so the UI always has fresh data even if
-    // the side-channel telemetry below panics. Clone the bits telemetry needs.
-    let snap_for_pub = snapshot.clone();
-    if let Ok(mut guard) = CACHE.lock() {
-        guard.snapshot = snapshot;
-        guard.skills = skills.clone();
-        guard.evaluations = evaluations.clone();
-        guard.skill_points = skill_points;
-        guard.support_ids = support_ids.clone();
+    // Remember the deck before publishing so a telemetry failure cannot prevent
+    // deck-change detection on the next poll.
+    if let Ok(mut prev) = PREV_SUPPORT_IDS.lock() {
+        prev.clone_from(&support_ids);
     }
 
-    // Side-channel telemetry (no-op when disabled). Runs after the cache store so a
-    // telemetry failure can't stall the overlay; the outer catch_unwind contains it.
+    // Side-channel telemetry is a no-op when disabled; the outer catch_unwind
+    // contains any telemetry failure.
     crate::telemetry::publish(
-        snap_for_pub.as_ref(),
+        snapshot.as_ref(),
         &skills,
         &evaluations,
         skill_points,
@@ -392,7 +347,7 @@ fn log_career_diagnostic(evaluations: &[EvaluationInfo], support_ids: &[(i32, i3
     }
 }
 
-/// Throttled auto-refresh (call from render thread each overlay frame).
+/// Throttled auto-refresh called from the host frame callback.
 pub fn maybe_request_refresh() {
     // Manual only: refresh solely while the user has tracking on. Stopped = silent.
     if !memory_reader::TRACKING.load(AtomicOrdering::Relaxed) {
@@ -412,28 +367,6 @@ pub fn request_refresh_immediate() {
     schedule_refresh();
 }
 
-pub fn snapshot() -> Option<CareerSnapshot> {
-    CACHE.lock().ok().and_then(|g| g.snapshot.clone())
-}
-
-#[allow(dead_code)]
-pub fn skills() -> Vec<AcquiredSkillInfo> {
-    CACHE.lock().ok().map(|g| g.skills.clone()).unwrap_or_default()
-}
-
-pub fn evaluations() -> Vec<EvaluationInfo> {
-    CACHE.lock().ok().map(|g| g.evaluations.clone()).unwrap_or_default()
-}
-
-/// Equipped `(deck slot, support_card_id)` pairs for the active career.
-pub fn equipped_support_ids() -> Vec<(i32, i32)> {
-    CACHE.lock().ok().map(|g| g.support_ids.clone()).unwrap_or_default()
-}
-
-pub fn skill_points() -> Option<i32> {
-    CACHE.lock().ok().and_then(|g| g.skill_points)
-}
-
 /// Stop scheduling refreshes and bail out of any in-flight main-thread callback.
 /// Call from the plugin `SHUTDOWN` handler before the host frees the DLL.
 pub fn shutdown() {
@@ -444,29 +377,6 @@ pub fn shutdown() {
     LAST_VIEW_CHANGE_MS.store(0, AtomicOrdering::Release);
     SUSPEND_DEADLINE_MS.store(0, AtomicOrdering::Release);
     reset_career_state();
-}
-
-/// Inject fully-formed overlay data for the desktop dev-harness, bypassing all
-/// IL2CPP reads. The overlay's `snapshot()/skills()/evaluations()/...` accessors
-/// then return exactly this, so the UI can be rendered in a plain eframe window.
-#[cfg(feature = "dev-harness")]
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn set_test_data(
-    snapshot: CareerSnapshot,
-    skills: Vec<AcquiredSkillInfo>,
-    evaluations: Vec<EvaluationInfo>,
-    skill_points: Option<i32>,
-    support_ids: Vec<(i32, i32)>,
-) {
-    if let Ok(mut guard) = CACHE.lock() {
-        guard.snapshot = Some(snapshot);
-        guard.skills = skills;
-        guard.evaluations = evaluations;
-        guard.skill_points = skill_points;
-        guard.support_ids = support_ids;
-    }
-    // Mark a refresh as just-completed so the throttle never tries to schedule one.
-    LAST_REFRESH_MS.store(now_ms(), AtomicOrdering::Relaxed);
 }
 
 #[cfg(test)]

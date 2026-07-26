@@ -168,7 +168,7 @@ fn try_resolve() -> Result<ResolvedChain, &'static str> {
 // ---------------------------------------------------------------------------
 
 /// Attempt to resolve the IL2CPP method chain and begin tracking.
-/// Call from a UI button click.
+/// Call from the tracker lifecycle.
 pub fn start_tracking() -> Result<(), &'static str> {
     // Resolve chain if not already done
     if CHAIN.get().is_none() {
@@ -180,11 +180,11 @@ pub fn start_tracking() -> Result<(), &'static str> {
     // idle otherwise). This is what suspends reads during scene teardown.
     honse_services::set_view_poll_enabled(true);
     hlog_info!("Memory-read tracking STARTED");
-    crate::overlay_cache::request_refresh_immediate();
+    crate::career_poll::request_refresh_immediate();
     Ok(())
 }
 
-/// Stop tracking (overlay goes away, no more reads).
+/// Stop tracking and disable memory reads.
 pub fn stop_tracking() {
     TRACKING.store(false, Ordering::Relaxed);
     honse_services::set_view_poll_enabled(false);
