@@ -583,7 +583,6 @@ pub fn dump_skill_classes() {
     }
 
     dump_skill_tag_enum();
-    dump_live_skill_tags();
 
     hlog_info!("=== SKILL CLASS DIAGNOSTICS END ===");
 }
@@ -610,22 +609,4 @@ pub fn dump_skill_tag_enum() {
 
     hlog_info!("[SKILL TAG] Dumping Gallop.SkillTag enum fields:");
     dump_all_fields("SkillTag", tag_klass.cast(), &introspect);
-}
-
-/// Log tag IDs from the first few cached shop/tips skills when in a career.
-pub fn dump_live_skill_tags() {
-    let entries = crate::skill_shop::read_skill_shop();
-    if entries.is_empty() {
-        hlog_info!("[SKILL TAG] No shop entries to sample (not in career or no tips)");
-        return;
-    }
-    for entry in entries.iter().take(8) {
-        hlog_info!(
-            "[SKILL TAG] skill_id={} name={} tags={:?} filter_switch={}",
-            entry.skill_id,
-            entry.name,
-            entry.tags,
-            entry.filter_switch
-        );
-    }
 }

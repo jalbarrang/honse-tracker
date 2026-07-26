@@ -4,7 +4,7 @@ Plugin for [Hachimi-Edge](https://github.com/kairusds/Hachimi-Edge) that adds tr
 
 | Plugin | DLL | Role |
 | --- | --- | --- |
-| **honse-tracker** | `honse_tracker.dll` | Training tracker overlay and analytics (career panels, recommendations, skill shop helpers). |
+| **honse-tracker** | `honse_tracker.dll` | Training tracker overlay and analytics (career panels, recommendations). |
 
 ## Compatibility (read this first)
 
@@ -94,7 +94,7 @@ Default bindings (tracker panels start hidden — toggle them with these or the 
 
 | Chord | Action |
 | --- | --- |
-| `Alt+1` … `Alt+6` | Toggle Energy / Training / Bonds / Scenario / Shop / Rank panel |
+| `Alt+1` … `Alt+4`, `Alt+6` | Toggle Energy / Training / Bonds / Scenario / Rank panel |
 | `Alt+0` | Toggle all tracker panels |
 | `Alt+T` | Start/stop tracking |
 

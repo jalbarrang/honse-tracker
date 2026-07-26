@@ -61,7 +61,6 @@ Provider codes: `1` = edge-sdk, `2` = honse-services, `3` = local/shim (egui re-
 
 ## Other intentional deviations (t-002+)
 
-- Local `crate::il2cpp` shim for skill-shop purchase (`object_new`, `set_field_value`, `Array`, `Thread::schedule` → edge schedule_on_main_thread, `create_delegate`). Opaque FFI types → byte-offset layout (`K_IL2CPP_SIZE_OF_ARRAY=32`, delegate method_ptr @16 / invoke_impl @24).
 - `set_overlay_visible_if_unset` added to `honse_services::surface` (fork host helper).
 - `compat::{event, capability, overlay_flags}` local modules replace `hachimi_plugin_abi` imports (hiker `fork_abi_import`).
 
@@ -81,7 +80,7 @@ Provider codes: `1` = edge-sdk, `2` = honse-services, `3` = local/shim (egui re-
 
 - `edge_sdk::declare_plugin!` in `src/entry.rs` exports `hachimi_init_v3` (nm-confirmed).
 - Config: `PluginConfig<HonseTrackerFile>` as `honseTrackerConfig.json` (flatten of tracker fields + `hosted_data` URLs); legacy `training_config.json` still loadable via `config::load` fallback.
-- Game-initialized: services installs view hook + frame source; plugin registers a second callback for shop hooks → command hooks → background `sync_all`.
+- Game-initialized: services installs view hook + frame source; plugin installs command hooks → background `sync_all`.
 - Windows `DllMain` DETACH → `dispatch_shutdown`.
 - Hiker: `tests/hiker_intent.rs` includes generated.rs; SUT exports `read_gate`/`ReadState`/`Assignment`/`unique_provider`/`assigned`.
 - Falsification: inverted `read_gate` → `law_read_gate` FAILED; reverted → ok.
@@ -103,8 +102,6 @@ Provider codes: `1` = edge-sdk, `2` = honse-services, `3` = local/shim (egui re-
 1. Overlay appears in career
 2. View transitions don't crash
 3. **Training/rest/outing command submit doesn't crash** (command-suspend path)
-4. Skill shop tab loads
-5. Purchase flow works
-6. Hosted data syncs
-7. Hotkeys fire with menu closed
-8. Surface window reappears after being closed
+4. Hosted data syncs
+5. Hotkeys fire with menu closed
+6. Surface window reappears after being closed

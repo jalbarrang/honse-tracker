@@ -13,7 +13,6 @@ use crate::compat::Sdk;
 
 use crate::deck_bonuses;
 use crate::memory_reader::{self, AcquiredSkillInfo, CareerSnapshot, EvaluationInfo, FiredEvent};
-use crate::skill_shop::{self, SkillShopEntry};
 
 /// Refresh interval while memory tracking is on (milliseconds).
 pub const AUTO_REFRESH_INTERVAL_MS: u64 = 500;
@@ -23,7 +22,6 @@ struct OverlayCache {
     snapshot: Option<CareerSnapshot>,
     skills: Vec<AcquiredSkillInfo>,
     evaluations: Vec<EvaluationInfo>,
-    skill_shop: Vec<SkillShopEntry>,
     skill_points: Option<i32>,
     /// Equipped `(deck slot, support_card_id)` map, captured once per career.
     support_ids: Vec<(i32, i32)>,
@@ -33,7 +31,6 @@ static CACHE: Mutex<OverlayCache> = Mutex::new(OverlayCache {
     snapshot: None,
     skills: Vec::new(),
     evaluations: Vec::new(),
-    skill_shop: Vec::new(),
     skill_points: None,
     support_ids: Vec::new(),
 });
@@ -269,8 +266,7 @@ fn refresh_cache_inner() {
 
     let skills = memory_reader::read_acquired_skills();
     let evaluations = memory_reader::read_evaluations();
-    let skill_points = skill_shop::read_skill_points();
-    let skill_shop = skill_shop::read_skill_shop();
+    let skill_points = memory_reader::read_skill_points();
 
     // Equipped support-card ids: re-read every refresh (pure ObscuredInt field reads,
     // no Convert). Cheap, and avoids stale deck mapping when the game keeps SingleMode
@@ -331,7 +327,6 @@ fn refresh_cache_inner() {
         guard.snapshot = snapshot;
         guard.skills = skills.clone();
         guard.evaluations = evaluations.clone();
-        guard.skill_shop = skill_shop.clone();
         guard.skill_points = skill_points;
         guard.support_ids = support_ids.clone();
     }
@@ -342,7 +337,6 @@ fn refresh_cache_inner() {
         snap_for_pub.as_ref(),
         &skills,
         &evaluations,
-        &skill_shop,
         skill_points,
         &support_ids,
         &reserved_races,
@@ -436,10 +430,6 @@ pub fn equipped_support_ids() -> Vec<(i32, i32)> {
     CACHE.lock().ok().map(|g| g.support_ids.clone()).unwrap_or_default()
 }
 
-pub fn skill_shop() -> Vec<SkillShopEntry> {
-    CACHE.lock().ok().map(|g| g.skill_shop.clone()).unwrap_or_default()
-}
-
 pub fn skill_points() -> Option<i32> {
     CACHE.lock().ok().and_then(|g| g.skill_points)
 }
@@ -465,7 +455,6 @@ pub(crate) fn set_test_data(
     snapshot: CareerSnapshot,
     skills: Vec<AcquiredSkillInfo>,
     evaluations: Vec<EvaluationInfo>,
-    skill_shop: Vec<SkillShopEntry>,
     skill_points: Option<i32>,
     support_ids: Vec<(i32, i32)>,
 ) {
@@ -473,7 +462,6 @@ pub(crate) fn set_test_data(
         guard.snapshot = Some(snapshot);
         guard.skills = skills;
         guard.evaluations = evaluations;
-        guard.skill_shop = skill_shop;
         guard.skill_points = skill_points;
         guard.support_ids = support_ids;
     }

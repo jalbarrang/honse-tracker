@@ -82,7 +82,7 @@ message CareerSnapshot {
 }
 
 // ---------------------------------------------------------------------------
-// Career extras (training-tracker): skills, bonds, skill shop, deck
+// Career extras (training-tracker): skills, bonds, deck
 // ---------------------------------------------------------------------------
 
 message AcquiredSkill {
@@ -104,19 +104,6 @@ message Evaluation {
   optional float bond_pressure = 8;
 }
 
-message SkillShopEntry {
-  int32 skill_id = 1;
-  int32 group_id = 2;
-  int32 rarity = 3;
-  int32 hint_level = 4;
-  string name = 5;
-  int32 base_cost = 6;
-  bool is_learned = 7;
-  bool has_hint = 8;
-  repeated int32 tags = 9;
-  int32 filter_switch = 10;
-}
-
 message SupportSlot {
   int32 slot = 1;
   int32 support_card_id = 2;
@@ -131,9 +118,11 @@ message ReservedRace {
 }
 
 message CareerExtras {
+  reserved 3;
+  reserved "skill_shop";
+
   repeated AcquiredSkill skills = 1;
   repeated Evaluation evaluations = 2;
-  repeated SkillShopEntry skill_shop = 3;
   optional int32 skill_points = 4;
   repeated SupportSlot deck = 5;
   // Player-reserved races (the in-game agenda), in deck order. Empty when none

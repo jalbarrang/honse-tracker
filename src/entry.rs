@@ -6,7 +6,7 @@ use edge_sdk::declare_plugin;
 use serde::{Deserialize, Serialize};
 
 use crate::compat::Sdk;
-use crate::{command_hooks, config, gametora_data, hooks, shop_hooks, ui};
+use crate::{command_hooks, config, gametora_data, hooks, ui};
 
 /// On-disk plugin config (`honseTrackerConfig.json` under edge base dir).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -84,12 +84,8 @@ fn plugin_init() -> bool {
 
 /// Install IL2CPP hooks + kick hosted-data sync once the game runtime is up.
 ///
-/// Order matches the fork: shop visibility hooks, then command-suspend hooks.
-/// View hook is installed by `honse_services::init`'s own callback.
+/// The view hook is installed by `honse_services::init`'s own callback.
 unsafe extern "C" fn on_game_initialized(_userdata: *mut c_void) {
-    if shop_hooks::try_install_shop_hooks() {
-        hlog_info!(target: "training-tracker", "Skill shop visibility hooks installed");
-    }
     if command_hooks::install() {
         hlog_info!(target: "training-tracker", "Command-suspend hooks installed");
     }

@@ -1,9 +1,8 @@
 //! Default hotkey chords + config-file overrides.
 //!
 //! hachimi-redux had a host Hotkeys tab with persisted rebinds; edge has no such
-//! tab, so the port shipped every hotkey unbound (0/0) — 5 of 6 panels were
-//! unreachable. This module gives each action a sensible default chord and lets
-//! the user override it in `honseTrackerConfig.json` under `"hotkeys"`:
+//! tab, so this module gives each action a sensible default chord and lets the
+//! user override it in `honseTrackerConfig.json` under `"hotkeys"`:
 //!
 //! ```json
 //! { "hotkeys": { "training-tracker.toggle_energy": { "mods": 4, "vk": 49 } } }
@@ -32,7 +31,7 @@ pub struct HotkeyBind {
 
 /// Default chords: Alt+digit for panels (game ignores Alt+digit), Alt+0 for
 /// toggle-all, Alt+T for tracking. Order matches `ui::PANELS`.
-pub const DEFAULTS: [(&str, HotkeyBind); 8] = [
+pub const DEFAULTS: [(&str, HotkeyBind); 7] = [
     (
         "training-tracker.toggle_energy",
         HotkeyBind {
@@ -61,13 +60,6 @@ pub const DEFAULTS: [(&str, HotkeyBind); 8] = [
             vk: 0x34,
         },
     ), // Alt+4
-    (
-        "training-tracker.toggle_shop",
-        HotkeyBind {
-            mods: MOD_ALT,
-            vk: 0x35,
-        },
-    ), // Alt+5
     (
         "training-tracker.toggle_rank",
         HotkeyBind {

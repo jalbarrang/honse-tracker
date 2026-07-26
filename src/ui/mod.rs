@@ -21,7 +21,6 @@ mod icons;
 mod menu;
 mod overlay_panels;
 mod scenario;
-mod skill_shop_tab;
 pub(crate) mod textures;
 // Shared formatting/color helpers; several were consumed only by the removed
 // Training/Skills tabs but are kept for reuse.
@@ -41,7 +40,7 @@ pub(crate) struct TrackerPanel {
     callback: fn(&mut egui::Ui),
 }
 
-pub(crate) const PANELS: [TrackerPanel; 6] = [
+pub(crate) const PANELS: [TrackerPanel; 5] = [
     TrackerPanel {
         id: constants::ENERGY_OVERLAY_ID,
         hotkey_id: "training-tracker.toggle_energy",
@@ -65,12 +64,6 @@ pub(crate) const PANELS: [TrackerPanel; 6] = [
         hotkey_id: "training-tracker.toggle_scenario",
         label: "Scenario",
         callback: draw_scenario_overlay,
-    },
-    TrackerPanel {
-        id: constants::SHOP_OVERLAY_ID,
-        hotkey_id: "training-tracker.toggle_shop",
-        label: "Shop",
-        callback: draw_shop_overlay,
     },
     TrackerPanel {
         id: constants::RANK_OVERLAY_ID,
@@ -137,7 +130,7 @@ pub fn register_ui() {
         std::ptr::null_mut(),
     );
 
-    hlog_info!(target: "training-tracker", "UI registered (config window + 6 own-context panels)");
+    hlog_info!(target: "training-tracker", "UI registered (config window + 5 own-context panels)");
 }
 
 extern "C" fn toggle_tracking_hotkey(_userdata: *mut c_void) {
@@ -236,16 +229,6 @@ fn draw_scenario_overlay(ui: &mut egui::Ui) {
         constants::SCENARIO_FIXED_HEIGHT,
         false,
         scenario::draw,
-    );
-}
-
-fn draw_shop_overlay(ui: &mut egui::Ui) {
-    overlay_panels::draw_panel(
-        ui,
-        constants::SHOP_BASE_WIDTH,
-        constants::SHOP_FIXED_HEIGHT,
-        false,
-        |ui, _| skill_shop_tab::draw(ui),
     );
 }
 

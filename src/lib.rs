@@ -53,7 +53,6 @@ pub mod compat;
 
 mod command_hooks;
 mod entry;
-mod il2cpp;
 pub mod read_gate;
 
 pub use read_gate::{read_gate, ReadState};
@@ -106,20 +105,10 @@ mod race_context;
 mod rank_table;
 #[allow(dead_code)]
 mod recommend;
-mod shop_hooks;
-mod skill_shop;
-mod skill_shop_prefs;
 #[allow(dead_code)]
 mod stat_targets;
 mod telemetry;
 pub(crate) mod ui;
-
-/// Buy a career skill by id (affordability-gated, server-validated). Entry point
-/// for out-of-module callers (e.g. the IPC server). `level` is the target skill
-/// level (1 for normal skills). Returns the SP cost on success.
-pub(crate) fn buy_skill(skill_id: i32, level: i32) -> Result<i32, String> {
-    skill_shop::buy_skill(skill_id, level)
-}
 
 /// Drop the Career-panel texture negative-cache. Crate-visible entry point for
 /// the hosted-data icon sync (`ICONS`), called after icons finish downloading so

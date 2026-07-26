@@ -11,7 +11,6 @@ use crate::evaluation::Aptitudes;
 use crate::memory_reader::{
     AcquiredSkillInfo, CareerSnapshot, EvaluationInfo, ReservedRace, ScenarioState, TrackblazerShop,
 };
-use crate::skill_shop::SkillShopEntry;
 
 const SOURCE: &str = "training-tracker";
 
@@ -21,7 +20,6 @@ pub fn publish(
     snapshot: Option<&CareerSnapshot>,
     skills: &[AcquiredSkillInfo],
     evaluations: &[EvaluationInfo],
-    skill_shop: &[SkillShopEntry],
     skill_points: Option<i32>,
     support_ids: &[(i32, i32)],
     reserved_races: &[ReservedRace],
@@ -43,7 +41,6 @@ pub fn publish(
         let extras = extras_to_pb(
             skills,
             evaluations,
-            skill_shop,
             skill_points,
             support_ids,
             placements,
@@ -160,7 +157,6 @@ fn trackblazer_json(shop: &TrackblazerShop) -> serde_json::Value {
 fn extras_to_pb(
     skills: &[AcquiredSkillInfo],
     evaluations: &[EvaluationInfo],
-    skill_shop: &[SkillShopEntry],
     skill_points: Option<i32>,
     support_ids: &[(i32, i32)],
     partner_placements: Option<&std::collections::HashMap<i32, (usize, f32)>>,
@@ -192,21 +188,6 @@ fn extras_to_pb(
                     training_facility,
                     bond_pressure,
                 }
-            })
-            .collect(),
-        skill_shop: skill_shop
-            .iter()
-            .map(|e| pb::SkillShopEntry {
-                skill_id: e.skill_id,
-                group_id: e.group_id,
-                rarity: e.rarity,
-                hint_level: e.hint_level,
-                name: e.name.clone(),
-                base_cost: e.base_cost,
-                is_learned: e.is_learned,
-                has_hint: e.has_hint,
-                tags: e.tags.clone(),
-                filter_switch: e.filter_switch,
             })
             .collect(),
         skill_points,
@@ -268,7 +249,7 @@ mod tests {
                 program_id: 1002,
             },
         ];
-        let extras = extras_to_pb(&skills, &[], &[], Some(500), &[(1, 30001), (2, 30002)], None, &reserved);
+        let extras = extras_to_pb(&skills, &[], Some(500), &[(1, 30001), (2, 30002)], None, &reserved);
         assert_eq!(extras.skills.len(), 1);
         assert_eq!(extras.skills[0].master_id, 100);
         assert_eq!(extras.skill_points, Some(500));
