@@ -32,16 +32,22 @@ pub enum ScenarioState {
 /// Read scenario-specific state from the chara-data work object and the
 /// single-mode data object.
 /// `chara` is `WorkSingleModeCharaData`, `wsmd` is `WorkSingleModeData`.
-pub(super) fn read_scenario_state(chara: *mut c_void, wsmd: *mut c_void) -> Option<ScenarioState> {
-    // Try Trackblazer first.
-    // SAFETY: `chara` is a valid non-null IL2CPP object from the resolved chain.
-    if let Some(shop) = unsafe { trackblazer::read_shop(chara) } {
-        return Some(ScenarioState::Trackblazer(shop));
+/// `scenario_id` is the active scenario from `get_ScenarioId()`.
+pub(super) fn read_scenario_state(chara: *mut c_void, wsmd: *mut c_void, scenario_id: i32) -> Option<ScenarioState> {
+    // Dispatch on scenario_id to avoid false positives from work objects
+    // that exist but belong to a different scenario.
+    match scenario_id {
+        // Grand Live / Our Grand Concert (ScenarioId.Live)
+        3 => {
+            // SAFETY: `wsmd` is a valid non-null IL2CPP object.
+            unsafe { grand_live::read_performance(wsmd) }.map(ScenarioState::GrandLive)
+        }
+        // Trackblazer / Make a New Track (ScenarioId.Free)
+        4 => {
+            // SAFETY: `chara` is a valid non-null IL2CPP object.
+            unsafe { trackblazer::read_shop(chara) }.map(ScenarioState::Trackblazer)
+        }
+        // URA (1), Aoharu (2), Venus (5), or unknown — no scenario-specific state.
+        _ => None,
     }
-    // Try Grand Live.
-    // SAFETY: `wsmd` is a valid non-null IL2CPP object from the resolved chain.
-    if let Some(perf) = unsafe { grand_live::read_performance(wsmd) } {
-        return Some(ScenarioState::GrandLive(perf));
-    }
-    None
 }
