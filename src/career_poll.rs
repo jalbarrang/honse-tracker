@@ -138,8 +138,11 @@ fn view_settle_pending() -> bool {
         return false;
     }
     let elapsed = now_ms().saturating_sub(last);
-    if elapsed >= VIEW_SETTLE_TIMEOUT_MS {
-        // Safety timeout elapsed — auto-clear so captures aren't wedged.
+    if elapsed >= VIEW_SETTLE_TIMEOUT_MS && !reads_suspended() {
+        // Safety timeout elapsed AND no command is in flight — safe to auto-clear.
+        // If a command IS in flight (e.g. Concert cutscene), the timeout is
+        // suppressed: the command gate already blocks captures, and the settle
+        // gate will clear when SetupCommandSelectStart fires after the cutscene.
         VIEW_SETTLE_PENDING.store(false, AtomicOrdering::Release);
         hlog_warn!(target: "settle-diag", "view-settle gate TIMEOUT after {elapsed}ms — auto-cleared (SetupCommandSelectStart never fired)");
         return false;
