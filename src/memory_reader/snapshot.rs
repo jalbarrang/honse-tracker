@@ -308,7 +308,7 @@ fn read_snapshot_inner() -> Option<CareerSnapshot> {
         scenario_command_base,
         scenario_id,
         // SAFETY: `chara` is a valid non-null IL2CPP object from the resolved chain.
-        scenario_state: read_scenario_state(chara),
+        scenario_state: read_scenario_state(chara, wsmd),
         chara_effect_ids,
     })
 }

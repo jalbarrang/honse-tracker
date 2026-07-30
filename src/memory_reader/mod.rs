@@ -45,7 +45,10 @@ pub use presentation::mood_label;
 pub use presentation::motivation_color;
 pub use reserve::{read_reserved_races, ReservedRace};
 #[allow(unused_imports)]
-pub use scenario::{ScenarioState, TrackblazerOwnedItem, TrackblazerShop, TrackblazerShopItem, Worth};
+pub use scenario::{
+    GrandLivePerformance, ScenarioState, TrackblazerOwnedItem, TrackblazerShop, TrackblazerShopItem,
+    Worth,
+};
 pub(crate) use skill_points::read_skill_points;
 pub use skills::{read_acquired_skill_list, read_acquired_skills, AcquiredSkillInfo};
 pub use snapshot::{read_snapshot, CareerSnapshot};

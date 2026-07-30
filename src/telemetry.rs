@@ -9,7 +9,8 @@ use hachimi_telemetry::pb;
 
 use crate::evaluation::Aptitudes;
 use crate::memory_reader::{
-    AcquiredSkillInfo, CareerSnapshot, EvaluationInfo, ReservedRace, ScenarioState, TrackblazerShop,
+    AcquiredSkillInfo, CareerSnapshot, EvaluationInfo, GrandLivePerformance, ReservedRace,
+    ScenarioState, TrackblazerShop,
 };
 
 const SOURCE: &str = "training-tracker";
@@ -123,7 +124,20 @@ fn scenario_state_json(state: Option<&ScenarioState>) -> String {
     match state {
         None => String::new(),
         Some(ScenarioState::Trackblazer(shop)) => trackblazer_json(shop).to_string(),
+        Some(ScenarioState::GrandLive(perf)) => grand_live_json(perf).to_string(),
     }
+}
+
+#[allow(clippy::disallowed_methods)]
+fn grand_live_json(perf: &GrandLivePerformance) -> serde_json::Value {
+    serde_json::json!({
+        "type": "grand_live",
+        "dance": perf.dance,
+        "passion": perf.passion,
+        "vocal": perf.vocal,
+        "visual": perf.visual,
+        "mental": perf.mental,
+    })
 }
 
 #[allow(clippy::disallowed_methods)] // serde_json::json! expands to internal unwrap()

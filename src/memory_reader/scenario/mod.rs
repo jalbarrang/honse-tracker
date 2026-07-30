@@ -11,10 +11,12 @@
 
 use std::ffi::c_void;
 
+pub mod grand_live;
 mod items;
 mod master_shop;
 mod trackblazer;
 
+pub use grand_live::GrandLivePerformance;
 pub use items::Worth;
 pub use trackblazer::{TrackblazerOwnedItem, TrackblazerShop, TrackblazerShopItem};
 
@@ -23,12 +25,23 @@ pub use trackblazer::{TrackblazerOwnedItem, TrackblazerShop, TrackblazerShopItem
 pub enum ScenarioState {
     /// Trackblazer / Make a New Track — RaceCoin shop readout.
     Trackblazer(TrackblazerShop),
+    /// Grand Live / Our Grand Concert — performance points.
+    GrandLive(GrandLivePerformance),
 }
 
-/// Read scenario-specific state from the chara-data work object.
-/// Returns `None` for unsupported scenarios (e.g. URA Finale base scenario).
-/// `chara` is the `WorkSingleModeCharaData` object pointer.
-pub(super) fn read_scenario_state(chara: *mut c_void) -> Option<ScenarioState> {
+/// Read scenario-specific state from the chara-data work object and the
+/// single-mode data object.
+/// `chara` is `WorkSingleModeCharaData`, `wsmd` is `WorkSingleModeData`.
+pub(super) fn read_scenario_state(chara: *mut c_void, wsmd: *mut c_void) -> Option<ScenarioState> {
+    // Try Trackblazer first.
     // SAFETY: `chara` is a valid non-null IL2CPP object from the resolved chain.
-    unsafe { trackblazer::read_shop(chara) }.map(ScenarioState::Trackblazer)
+    if let Some(shop) = unsafe { trackblazer::read_shop(chara) } {
+        return Some(ScenarioState::Trackblazer(shop));
+    }
+    // Try Grand Live.
+    // SAFETY: `wsmd` is a valid non-null IL2CPP object from the resolved chain.
+    if let Some(perf) = unsafe { grand_live::read_performance(wsmd) } {
+        return Some(ScenarioState::GrandLive(perf));
+    }
+    None
 }
