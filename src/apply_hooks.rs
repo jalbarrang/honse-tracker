@@ -27,11 +27,13 @@ static mut ORIG_APPLY_LOAD: *mut c_void = std::ptr::null_mut();
 
 static INSTALLED: AtomicUsize = AtomicUsize::new(0);
 
-/// After any Apply hook: clear the settle gate and request a capture.
-/// The server response just wrote fresh state — safe to read immediately.
+/// After any Apply hook: request a capture but do NOT clear the settle gate.
+/// The server response wrote fresh field data, but asset unloading may still be
+/// in progress on other threads. The settle gate stays armed until
+/// `SetupCommandSelectStart` fires (the actual "UI rebuilt, assets stable" signal).
+/// The capture request is held and fires once all three gates open.
 fn on_applied(label: &str) {
-    hlog_info!(target: "settle-diag", "Apply hook fired: {label} — requesting capture");
-    crate::career_poll::clear_settle_gate();
+    hlog_info!(target: "settle-diag", "Apply hook fired: {label} — capture requested (settle gate unchanged)");
     crate::career_poll::request_capture();
 }
 
