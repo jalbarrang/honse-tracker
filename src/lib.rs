@@ -51,6 +51,7 @@
 #[macro_use]
 pub mod compat;
 
+mod apply_hooks;
 mod command_hooks;
 mod entry;
 pub mod read_gate;

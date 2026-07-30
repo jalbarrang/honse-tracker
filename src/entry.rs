@@ -6,7 +6,7 @@ use edge_sdk::declare_plugin;
 use serde::{Deserialize, Serialize};
 
 use crate::compat::Sdk;
-use crate::{class_dump, command_hooks, gametora_data, hooks};
+use crate::{apply_hooks, class_dump, command_hooks, gametora_data, hooks};
 
 /// On-disk plugin config (`honseTrackerConfig.json` under edge base dir).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -113,6 +113,9 @@ fn plugin_init() -> bool {
 unsafe extern "C" fn on_game_initialized(_userdata: *mut c_void) {
     if command_hooks::install() {
         hlog_info!(target: "training-tracker", "Command-suspend hooks installed");
+    }
+    if apply_hooks::install() {
+        hlog_info!(target: "training-tracker", "Apply response hooks installed");
     }
 
     // (2) Hosted-data sync_all on a background thread post-game-initialized.

@@ -209,6 +209,17 @@ pub(crate) fn command_select_settled() {
     request_capture();
 }
 
+/// Clear the view-settle gate without touching the command gate. Called by
+/// Apply hooks (`apply_hooks.rs`) after the game writes fresh state from a
+/// server response — the response itself proves objects are stable.
+pub(crate) fn clear_settle_gate() {
+    let was_pending = VIEW_SETTLE_PENDING.swap(false, AtomicOrdering::AcqRel);
+    if was_pending {
+        let held_ms = now_ms().saturating_sub(LAST_VIEW_CHANGE_MS.load(AtomicOrdering::Relaxed));
+        hlog_info!(target: "settle-diag", "view-settle gate CLEARED by Apply hook (held {held_ms}ms)");
+    }
+}
+
 /// Hold/coalesce a capture request. Never reads IL2CPP, never blocks — safe
 /// from any thread. The pump schedules it once both gates are open.
 pub(crate) fn request_capture() {
