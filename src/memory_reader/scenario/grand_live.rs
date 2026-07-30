@@ -3,18 +3,17 @@
 //! Path (all ObscuredInt backing fields — safe direct reads):
 //! ```text
 //! WorkSingleModeData.get_ScenarioLive() -> WorkSingleModeScenarioLive
-//!   ._performance -> PerformanceData (nested struct)
-//!     .<Dance>k__BackingField      -> ObscuredInt
-//!     .<Passion>k__BackingField    -> ObscuredInt
-//!     .<Vocal>k__BackingField      -> ObscuredInt
-//!     .<Visual>k__BackingField     -> ObscuredInt
-//!     .<Mental>k__BackingField     -> ObscuredInt  (displayed as "Comedy" in EN)
+//!   ._performance (PerformanceData value-type field, inline struct)
+//!     fields: Dance, Passion, Vocal, Visual, Mental (each ObscuredInt)
 //! ```
+//!
+//! PerformanceData is a value type (struct) stored inline in the parent object.
+//! We read the ObscuredInt fields directly from the parent using field offsets.
 
 use std::ffi::c_void;
 use std::sync::Mutex;
 
-use super::super::il2cpp::{call_obj, read_obscured_int_field, resolve_obj_method};
+use super::super::il2cpp::{call_obj, resolve_obj_method};
 
 /// Live performance points for the Grand Live scenario.
 #[derive(Debug, Clone, Default)]
@@ -28,12 +27,11 @@ pub struct GrandLivePerformance {
 }
 
 /// Read Grand Live performance points from `WorkSingleModeData`.
-/// Returns `None` if the Grand Live scenario is not active (`get_ScenarioLive` returns null).
+/// Returns `None` if the Grand Live scenario is not active.
 ///
 /// # Safety
 /// `wsmd` must be a valid non-null `WorkSingleModeData` IL2CPP object pointer.
 pub(in crate::memory_reader) unsafe fn read_performance(wsmd: *mut c_void) -> Option<GrandLivePerformance> {
-    // SAFETY: all calls operate on non-null IL2CPP objects verified by null checks.
     unsafe {
         let m_get_live = resolve_obj_method(wsmd, "get_ScenarioLive", 0)?;
         let live = call_obj(wsmd, m_get_live);
@@ -41,27 +39,20 @@ pub(in crate::memory_reader) unsafe fn read_performance(wsmd: *mut c_void) -> Op
             return None;
         }
 
-        let m_get_perf = resolve_obj_method(live, "get_Performance", 0)?;
-        let perf = call_obj(live, m_get_perf);
-        if perf.is_null() {
-            return None;
-        }
+        // PerformanceData is a value type. Use GetPerformance(enum) instead,
+        // which takes a Performance enum (int-backed) and returns the decrypted i32.
+        // Dance=0, Passion=1, Vocal=2, Visual=3, Mental=4
+        let m_get = resolve_obj_method(live, "GetPerformance", 1)?;
 
-        let sdk = crate::compat::Sdk::get();
-        let perf_klass = *(perf as *const *mut c_void);
-
-        let f_dance = sdk.get_field_from_name(perf_klass.cast(), "<Dance>k__BackingField")?;
-        let f_passion = sdk.get_field_from_name(perf_klass.cast(), "<Passion>k__BackingField")?;
-        let f_vocal = sdk.get_field_from_name(perf_klass.cast(), "<Vocal>k__BackingField")?;
-        let f_visual = sdk.get_field_from_name(perf_klass.cast(), "<Visual>k__BackingField")?;
-        let f_mental = sdk.get_field_from_name(perf_klass.cast(), "<Mental>k__BackingField")?;
+        let fp: extern "C" fn(*mut c_void, i32, *const c_void) -> i32 =
+            std::mem::transmute(super::super::il2cpp::method_ptr(m_get));
 
         let result = GrandLivePerformance {
-            dance: read_obscured_int_field(perf, f_dance.cast()),
-            passion: read_obscured_int_field(perf, f_passion.cast()),
-            vocal: read_obscured_int_field(perf, f_vocal.cast()),
-            visual: read_obscured_int_field(perf, f_visual.cast()),
-            mental: read_obscured_int_field(perf, f_mental.cast()),
+            dance: fp(live, 0, m_get),
+            passion: fp(live, 1, m_get),
+            vocal: fp(live, 2, m_get),
+            visual: fp(live, 3, m_get),
+            mental: fp(live, 4, m_get),
         };
         log_on_change(&result);
         Some(result)
