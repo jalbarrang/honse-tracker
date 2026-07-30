@@ -5,7 +5,10 @@
 //!
 //! Two jobs (view-cooldown does NOT cover this path — see fork doc comment):
 //! 1. Suspend IL2CPP reads on command submit (`*SendCommandAsync`).
-//! 2. Resume on command-select rebuild (`SetupCommandSelectStart*`).
+//! 2. Announce the settled turn on command-select rebuild
+//!    (`SetupCommandSelectStart*`) — strictly AFTER the original ran, so the
+//!    Single Mode objects are fully rebuilt before the read gate reopens and a
+//!    capture is requested.
 //!
 //! ABI trap: both `*SendCommandAsync` return an `IEnumerator` (`*mut Il2CppObject`).
 //! The hook MUST forward the trampoline's return value — a void hook leaves
@@ -34,7 +37,7 @@ fn suspend_reads() {
 }
 
 #[inline]
-fn resume_reads() {
+fn announce_settled() {
     crate::resume_reads_on_command_select();
 }
 
@@ -59,9 +62,12 @@ extern "C" fn SendCommandAsync(
 ) -> *mut Il2CppObject {
     // TRAINING_COMMAND event dispatch dropped — no subscribers (PORT_NOTES).
     suspend_reads();
+    // t-001 diagnostic: logged after suspend so the line proves the command gate
+    // shut before the original ran. No turn read on submit edges.
+    crate::career_poll::diag_settle_edge("SendCommandAsync", "before_original", "command_submit", None, false);
     // SAFETY: trampoline written once during install; signature matches IL2CPP method.
     let orig: SendCommandAsyncFn = unsafe { std::mem::transmute(ORIG_SEND_COMMAND_ASYNC) };
-    orig(
+    let ret = orig(
         this,
         command_type,
         command_id,
@@ -69,7 +75,9 @@ extern "C" fn SendCommandAsync(
         select_id,
         on_success,
         on_error,
-    )
+    );
+    crate::career_poll::diag_settle_edge("SendCommandAsync", "after_original", "command_submit", None, false);
+    ret
 }
 
 type CommonSendCommandAsyncFn =
@@ -82,28 +90,82 @@ extern "C" fn CommonSendCommandAsync(
 ) -> *mut Il2CppObject {
     // Every command submit (rest / infirmary / outing / training) funnels here.
     suspend_reads();
+    // t-001 diagnostic: see SendCommandAsync.
+    crate::career_poll::diag_settle_edge(
+        "CommonSendCommandAsync",
+        "before_original",
+        "command_submit",
+        None,
+        false,
+    );
     // SAFETY: trampoline written once during install.
     let orig: CommonSendCommandAsyncFn = unsafe { std::mem::transmute(ORIG_COMMON_SEND_COMMAND_ASYNC) };
-    orig(this, command_type, command_id)
+    let ret = orig(this, command_type, command_id);
+    crate::career_poll::diag_settle_edge(
+        "CommonSendCommandAsync",
+        "after_original",
+        "command_submit",
+        None,
+        false,
+    );
+    ret
 }
 
 type SetupCommandSelectStartFn = extern "C" fn(this: *mut Il2CppObject, play_voice: bool, to_top: bool);
 
 extern "C" fn SetupCommandSelectStart(this: *mut Il2CppObject, play_voice: bool, to_top: bool) {
-    resume_reads();
+    // t-001 diagnostic: hook-entry state BEFORE the original runs — the matrix
+    // must show the command gate was still shut when the settle edge arrived
+    // (submit→settle bracketing).
+    crate::career_poll::diag_settle_edge(
+        "SetupCommandSelectStart",
+        "before_original",
+        "command_select_settled",
+        None,
+        false,
+    );
     // SAFETY: trampoline written once during install.
     let orig: SetupCommandSelectStartFn = unsafe { std::mem::transmute(ORIG_SETUP_COMMAND_SELECT_START) };
-    orig(this, play_voice, to_top)
+    orig(this, play_voice, to_top);
+    // Original-first ordering: only now are the Single Mode objects rebuilt.
+    // Announce the settled turn — reopen the command gate and hold a capture
+    // request; the capture itself runs deferred on a main-thread callback.
+    announce_settled();
+    // t-001 diagnostic: post-original settle edge — attempt a two-gate-checked
+    // turn read to prove this window is safe.
+    crate::career_poll::diag_settle_edge(
+        "SetupCommandSelectStart",
+        "after_original",
+        "command_select_settled",
+        None,
+        true,
+    );
 }
 
 type SetupCommandSelectStartStepTurnFn = extern "C" fn(this: *mut Il2CppObject, play_voice: bool);
 
 extern "C" fn SetupCommandSelectStartStepTurn(this: *mut Il2CppObject, play_voice: bool) {
-    resume_reads();
+    // t-001 diagnostic: see SetupCommandSelectStart.
+    crate::career_poll::diag_settle_edge(
+        "SetupCommandSelectStartStepTurn",
+        "before_original",
+        "command_select_settled",
+        None,
+        false,
+    );
     // SAFETY: trampoline written once during install.
     let orig: SetupCommandSelectStartStepTurnFn =
         unsafe { std::mem::transmute(ORIG_SETUP_COMMAND_SELECT_START_STEP_TURN) };
-    orig(this, play_voice)
+    orig(this, play_voice);
+    // Original-first: see SetupCommandSelectStart.
+    announce_settled();
+    crate::career_poll::diag_settle_edge(
+        "SetupCommandSelectStartStepTurn",
+        "after_original",
+        "command_select_settled",
+        None,
+        true,
+    );
 }
 
 /// Install the four command-flow hooks. Idempotent. Returns `true` if all four

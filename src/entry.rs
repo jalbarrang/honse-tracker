@@ -6,7 +6,7 @@ use edge_sdk::declare_plugin;
 use serde::{Deserialize, Serialize};
 
 use crate::compat::Sdk;
-use crate::{command_hooks, gametora_data, hooks};
+use crate::{class_dump, command_hooks, gametora_data, hooks};
 
 /// On-disk plugin config (`honseTrackerConfig.json` under edge base dir).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -30,8 +30,45 @@ fn plugin_init() -> bool {
     );
 
     // Telemetry (fork gating: disabled unless telemetry.json enables it).
+    // Misconfiguration fails visibly-disabled: the DLL never posts requests the
+    // sidecar would reject forever, and the token itself is never logged.
     let sdk = Sdk::get();
-    hachimi_telemetry::init(sdk.host_data_path("telemetry.json"));
+    let telem_path = sdk.host_data_path("telemetry.json").or_else(|| {
+        // Fallback: hachimi_get_data_path may not be exposed by this host version.
+        // Try base_dir (the hachimi/ folder next to the game exe).
+        let fallback = edge_sdk::Sdk::get().base_dir()?.join("telemetry.json");
+        if fallback.exists() {
+            hlog_info!(target: "training-tracker", "telemetry.json found via base_dir fallback: {}", fallback.display());
+            Some(fallback)
+        } else {
+            hlog_warn!(target: "training-tracker", "telemetry.json not found at data_path (unavailable) or base_dir ({})", fallback.display());
+            None
+        }
+    });
+    hlog_info!(target: "training-tracker", "Telemetry config path: {:?}", telem_path);
+    match hachimi_telemetry::init(telem_path) {
+        hachimi_telemetry::InitOutcome::Disabled => {
+            hlog_info!(target: "training-tracker", "Telemetry disabled (no telemetry.json or enabled=false)");
+        }
+        hachimi_telemetry::InitOutcome::Enabled { endpoint } => {
+            hlog_info!(target: "training-tracker", "Telemetry enabled \u{2192} {endpoint}");
+        }
+        hachimi_telemetry::InitOutcome::InvalidEndpoint(url) => {
+            hlog_error!(
+                target: "training-tracker",
+                "Telemetry stays OFF: telemetry.json endpoint is unusable: {url}"
+            );
+        }
+        hachimi_telemetry::InitOutcome::MissingToken(tried) => {
+            hlog_error!(
+                target: "training-tracker",
+                "Telemetry stays OFF: no auth token readable at {tried} \u{2014} run honse-dashboard once (it generates install.json), then restart the game"
+            );
+            sdk.show_notification(
+                "Training Tracker: telemetry off \u{2014} start honse-dashboard once, then restart the game",
+            );
+        }
+    }
 
     // (1) Services init: frame source and the game-ready bootstrap.
     honse_services::init(honse_services::InitOptions);
@@ -55,6 +92,14 @@ fn plugin_init() -> bool {
                 "GameTora catalog unavailable (no cache yet)"
             );
         }
+    });
+
+    // Register Hachimi menu button for IL2CPP class dump.
+    edge_sdk::gui::register_menu_item("Dump IL2CPP classes", || {
+        hlog_info!(target: "training-tracker", "IL2CPP class dump requested");
+        std::thread::spawn(|| {
+            class_dump::dump_all_classes();
+        });
     });
 
     hlog_info!(target: "training-tracker", "Training Tracker ready");

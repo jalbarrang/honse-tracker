@@ -81,7 +81,7 @@ mod bond_progress;
 mod career_meta;
 mod career_poll;
 mod chara_effects;
-mod class_dump;
+pub(crate) mod class_dump;
 mod deck_bonuses;
 mod diagnostics;
 mod eval_data;
@@ -94,14 +94,15 @@ mod telemetry;
 
 /// Suspend the memory reader while a career command (training / rest / infirmary /
 /// outing) plays out. Crate-visible entry point for the `SingleModeMainViewController`
-/// command-submit IL2CPP hooks. See `career_poll::suspend_reads`.
+/// command-submit IL2CPP hooks. See `career_poll::enter_command`.
 pub(crate) fn suspend_reads_for_command() {
-    career_poll::suspend_reads();
+    career_poll::enter_command();
 }
 
-/// Resume the memory reader once the command-select screen has been rebuilt.
-/// Crate-visible entry point for the `SingleModeMainViewController` command-select
-/// IL2CPP hooks. See `career_poll::resume_reads`.
+/// The command-select screen has been rebuilt (original ran): reopen the read
+/// gate and hold a settled-turn capture request. Crate-visible entry point for
+/// the `SingleModeMainViewController` command-select IL2CPP hooks. See
+/// `career_poll::command_select_settled`.
 pub(crate) fn resume_reads_on_command_select() {
-    career_poll::resume_reads();
+    career_poll::command_select_settled();
 }

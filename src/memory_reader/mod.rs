@@ -12,14 +12,12 @@
 //!
 //! Organized by concern, re-exported flatly so `memory_reader::*` call sites
 //! keep working:
-//! - `chain` — IL2CPP resolution, tracking lifecycle, `get_chara_ptr`
+//! - `chain` — lazy IL2CPP resolution, `get_chara_ptr`
 //! - `il2cpp` — low-level call/read primitives + `read_list_field`
 //! - `snapshot` — `CareerSnapshot` (stats, turns, training levels)
 //! - `skills` — acquired skills
 //! - `evaluations` — support-card friendship
 //! - `presentation` — motivation label/color mapping
-
-use std::sync::atomic::AtomicBool;
 
 mod chain;
 mod command_info;
@@ -36,9 +34,8 @@ mod snapshot;
 mod story_events;
 mod support_deck;
 
-#[allow(unused_imports)]
-pub use chain::start_tracking;
-pub use chain::{get_chara_ptr, stop_tracking};
+pub use chain::get_chara_ptr;
+pub(crate) use chain::{diag_read_current_turn, ensure_resolved};
 pub use eval_master::probe as probe_eval_master;
 pub use evaluations::{read_evaluations, EvaluationInfo};
 #[allow(unused_imports)]
@@ -54,6 +51,3 @@ pub use skills::{read_acquired_skill_list, read_acquired_skills, AcquiredSkillIn
 pub use snapshot::{read_snapshot, CareerSnapshot};
 pub use story_events::{read_fired_events, FiredEvent};
 pub use support_deck::read_equipped_support_ids;
-
-/// Whether the memory reader is actively tracking.
-pub static TRACKING: AtomicBool = AtomicBool::new(false);

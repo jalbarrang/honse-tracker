@@ -148,7 +148,9 @@ fn read_snapshot_inner() -> Option<CareerSnapshot> {
     // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
     let month = unsafe { call_i32(wsmd, chain.m_get_month) };
     // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
-    let current_turn = unsafe { call_i32(wsmd, chain.m_get_current_turn) };
+    // Read _totalTurnNum directly as ObscuredInt field. GetCurrentTurn() does
+    // master-data lookups and crashes when called during asset transitions.
+    let current_turn = unsafe { read_obscured_int_field(wsmd, chain.f_total_turn_num) };
     // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
     let total_races = unsafe { call_i32(wsmd, chain.m_get_total_races) };
     // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.

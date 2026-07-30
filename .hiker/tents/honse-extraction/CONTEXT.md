@@ -19,7 +19,7 @@ IL2CPP reads are permitted only when **both** independent gates are open:
 1. **View-transition cooldown** — `SceneManager.ChangeView` sets a cooldown so reads do not race a tearing-down view hierarchy.
 2. **Command-submit suspension** — `SingleModeMainViewController` command submission increments a suspend depth so reads do not race command-driven mutations.
 
-Collapsing these into one gate is the guarded-against shortcut: a use-after-free crash results if either mechanism is dropped. The future `career_poll` read-gate function (plan 3) must require both `view_cooldown_active == 0` and `command_suspend_depth == 0` before `permitted == 1`.
+Collapsing these into one gate is the guarded-against shortcut: a use-after-free crash results if either mechanism is dropped. The real decision point is `src/read_gate.rs::reads_permitted`, which requires both `view_cooldown_active == 0` and `command_suspend_depth == 0` before `permitted == 1`. Every consumer routes through it: the event-driven capture scheduler in `src/career_poll.rs` checks it both when pumping a held capture request (`take_schedule_slot`) and again inside the main-thread capture callback, and the settle diagnostics check it before any turn read. The law holds regardless of what *drives* captures (the interval poll was replaced by passive settle edges; the gate semantics did not change).
 
 ### Layering / lockstep
 
@@ -30,7 +30,7 @@ Collapsing these into one gate is the guarded-against shortcut: a use-after-free
 ## Code anchors
 
 - Compat partition list: `crates/edge-sdk/src/sdk.rs` module doc (t-003).
-- Future read-gate: `career_poll` (plan 3).
+- Read gate: `src/read_gate.rs` (law) consumed by `src/career_poll.rs` (event-driven capture scheduler + settle diagnostics).
 - Fork references (read-only): `apps/hachimi/src/il2cpp/hook/umamusume/SceneManager.rs`, `apps/hachimi/src/il2cpp/hook/umamusume/SingleModeMainViewController.rs`.
 
 ## Expressiveness boundary

@@ -2,3 +2,5 @@
 .hiker-cache/
 .DS_Store
 .taskman/
+
+target-verify/
