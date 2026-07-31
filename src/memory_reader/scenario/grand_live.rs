@@ -22,8 +22,29 @@ pub struct GrandLivePerformance {
     pub passion: i32,
     pub vocal: i32,
     pub visual: i32,
-    /// Called "Comedy" in EN, "Mental" internally.
+    /// Called "Composure" in EN, "Mental" internally.
     pub mental: i32,
+}
+
+/// `SingleModeScenarioLive.Performance` includes `None = 0`; token slots start at 1.
+#[derive(Debug, Clone, Copy)]
+#[repr(i32)]
+enum PerformanceKind {
+    Dance = 1,
+    Passion = 2,
+    Vocal = 3,
+    Visual = 4,
+    Mental = 5,
+}
+
+fn performance_from_getter(mut get: impl FnMut(i32) -> i32) -> GrandLivePerformance {
+    GrandLivePerformance {
+        dance: get(PerformanceKind::Dance as i32),
+        passion: get(PerformanceKind::Passion as i32),
+        vocal: get(PerformanceKind::Vocal as i32),
+        visual: get(PerformanceKind::Visual as i32),
+        mental: get(PerformanceKind::Mental as i32),
+    }
 }
 
 /// Read Grand Live performance points from `WorkSingleModeData`.
@@ -41,19 +62,13 @@ pub(in crate::memory_reader) unsafe fn read_performance(wsmd: *mut c_void) -> Op
 
         // PerformanceData is a value type. Use GetPerformance(enum) instead,
         // which takes a Performance enum (int-backed) and returns the decrypted i32.
-        // Dance=0, Passion=1, Vocal=2, Visual=3, Mental=4
+        // None=0, Dance=1, Passion=2, Vocal=3, Visual=4, Mental=5.
         let m_get = resolve_obj_method(live, "GetPerformance", 1)?;
 
         let fp: extern "C" fn(*mut c_void, i32, *const c_void) -> i32 =
             std::mem::transmute(super::super::il2cpp::method_ptr(m_get));
 
-        let result = GrandLivePerformance {
-            dance: fp(live, 0, m_get),
-            passion: fp(live, 1, m_get),
-            vocal: fp(live, 2, m_get),
-            visual: fp(live, 3, m_get),
-            mental: fp(live, 4, m_get),
-        };
+        let result = performance_from_getter(|kind| fp(live, kind, m_get));
         log_on_change(&result);
         Some(result)
     }
@@ -71,6 +86,31 @@ fn log_on_change(p: &GrandLivePerformance) {
     }
     hlog_info!(
         "Grand Live performance: Da={} Pa={} Vo={} Vi={} Co={}",
-        p.dance, p.passion, p.vocal, p.visual, p.mental
+        p.dance,
+        p.passion,
+        p.vocal,
+        p.visual,
+        p.mental
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn performance_tokens_use_enum_slots_one_through_five() {
+        let mut requested = Vec::new();
+        let performance = performance_from_getter(|kind| {
+            requested.push(kind);
+            kind * 10
+        });
+
+        assert_eq!(requested, vec![1, 2, 3, 4, 5]);
+        assert_eq!(performance.dance, 10);
+        assert_eq!(performance.passion, 20);
+        assert_eq!(performance.vocal, 30);
+        assert_eq!(performance.visual, 40);
+        assert_eq!(performance.mental, 50);
+    }
 }

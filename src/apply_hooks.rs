@@ -1,11 +1,9 @@
 //! Server-response hooks (`Gallop.WorkSingleModeData.Apply*`).
 //!
-//! These fire on the main thread immediately after the game writes fresh state
-//! from the server response into the working data objects. Hooking here gives
-//! the earliest safe capture point — objects are stable, fully written, and on
-//! the correct thread. Every hook calls the original first, then requests a
-//! capture with the view-settle gate cleared (the response itself proves the
-//! game is in a stable state).
+//! These fire after the game writes fresh server state into the working data.
+//! Fresh data is not a safe read window: asset teardown/reload can continue
+//! afterward. Every hook calls the original first, reports a typed lifecycle
+//! event, and holds a capture request. No Apply event permits IL2CPP reads.
 //!
 //! All hooked methods return `void` — no ABI return-value traps.
 
@@ -13,6 +11,7 @@ use std::ffi::c_void;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::compat::{Il2CppObject, Sdk};
+use crate::read_gate::ApplyEvent;
 
 // ── Trampolines ─────────────────────────────────────────────────────────────
 
@@ -27,14 +26,10 @@ static mut ORIG_APPLY_LOAD: *mut c_void = std::ptr::null_mut();
 
 static INSTALLED: AtomicUsize = AtomicUsize::new(0);
 
-/// After any Apply hook: request a capture but do NOT clear the settle gate.
-/// The server response wrote fresh field data, but asset unloading may still be
-/// in progress on other threads. The settle gate stays armed until
-/// `SetupCommandSelectStart` fires (the actual "UI rebuilt, assets stable" signal).
-/// The capture request is held and fires once all three gates open.
-fn on_applied(label: &str) {
-    hlog_info!(target: "settle-diag", "Apply hook fired: {label} — capture requested (settle gate unchanged)");
-    crate::career_poll::request_capture();
+/// Report fresh response data without claiming that assets or UI are stable.
+fn on_applied(label: &str, event: ApplyEvent) {
+    hlog_info!(target: "settle-diag", "Apply hook fired: {label} — lifecycle remains unreadable until UI completion");
+    crate::career_poll::apply_observed(event);
 }
 
 // ── Hook functions ──────────────────────────────────────────────────────────
@@ -45,7 +40,7 @@ type ApplyExecCommandFn = extern "C" fn(*mut Il2CppObject, usize, usize, usize, 
 extern "C" fn ApplyExecCommand(this: *mut Il2CppObject, a: usize, b: usize, c: usize, d: usize) {
     let orig: ApplyExecCommandFn = unsafe { std::mem::transmute(ORIG_APPLY_EXEC_COMMAND) };
     orig(this, a, b, c, d);
-    on_applied("ApplyExecCommand");
+    on_applied("ApplyExecCommand", ApplyEvent::ExecCommand);
 }
 
 // ApplyRaceEntry(SingleModeChara, SingleModeHomeInfo, SingleRaceStartInfo, SingleModeEventInfo[])
@@ -54,7 +49,7 @@ type ApplyRaceEntryFn = extern "C" fn(*mut Il2CppObject, usize, usize, usize, us
 extern "C" fn ApplyRaceEntry(this: *mut Il2CppObject, a: usize, b: usize, c: usize, d: usize) {
     let orig: ApplyRaceEntryFn = unsafe { std::mem::transmute(ORIG_APPLY_RACE_ENTRY) };
     orig(this, a, b, c, d);
-    on_applied("ApplyRaceEntry");
+    on_applied("ApplyRaceEntry", ApplyEvent::RaceEntry);
 }
 
 // ApplyRaceEnd(CharaRaceReward, SingleModeChara, SingleModeHomeInfo, UserMusic,
@@ -62,12 +57,19 @@ extern "C" fn ApplyRaceEntry(this: *mut Il2CppObject, a: usize, b: usize, c: usi
 type ApplyRaceEndFn = extern "C" fn(*mut Il2CppObject, usize, usize, usize, usize, usize, usize, usize, usize);
 
 extern "C" fn ApplyRaceEnd(
-    this: *mut Il2CppObject, a: usize, b: usize, c: usize, d: usize,
-    e: usize, f: usize, g: usize, h: usize,
+    this: *mut Il2CppObject,
+    a: usize,
+    b: usize,
+    c: usize,
+    d: usize,
+    e: usize,
+    f: usize,
+    g: usize,
+    h: usize,
 ) {
     let orig: ApplyRaceEndFn = unsafe { std::mem::transmute(ORIG_APPLY_RACE_END) };
     orig(this, a, b, c, d, e, f, g, h);
-    on_applied("ApplyRaceEnd");
+    on_applied("ApplyRaceEnd", ApplyEvent::RaceEnd);
 }
 
 // ApplyRaceOut(SingleModeChara, SingleModeHomeInfo, SingleModeEventInfo[])
@@ -76,20 +78,17 @@ type ApplyRaceOutFn = extern "C" fn(*mut Il2CppObject, usize, usize, usize);
 extern "C" fn ApplyRaceOut(this: *mut Il2CppObject, a: usize, b: usize, c: usize) {
     let orig: ApplyRaceOutFn = unsafe { std::mem::transmute(ORIG_APPLY_RACE_OUT) };
     orig(this, a, b, c);
-    on_applied("ApplyRaceOut");
+    on_applied("ApplyRaceOut", ApplyEvent::RaceOut);
 }
 
 // ApplyCheckEvent(SingleModeChara, SingleModeHomeInfo, SingleModeEventInfo[],
 //                 SuccessionEffectedFactor[], SingleModeRaceCondition[], SingleRaceStartInfo)
 type ApplyCheckEventFn = extern "C" fn(*mut Il2CppObject, usize, usize, usize, usize, usize, usize);
 
-extern "C" fn ApplyCheckEvent(
-    this: *mut Il2CppObject, a: usize, b: usize, c: usize,
-    d: usize, e: usize, f: usize,
-) {
+extern "C" fn ApplyCheckEvent(this: *mut Il2CppObject, a: usize, b: usize, c: usize, d: usize, e: usize, f: usize) {
     let orig: ApplyCheckEventFn = unsafe { std::mem::transmute(ORIG_APPLY_CHECK_EVENT) };
     orig(this, a, b, c, d, e, f);
-    on_applied("ApplyCheckEvent");
+    on_applied("ApplyCheckEvent", ApplyEvent::CheckEvent);
 }
 
 // ApplyContinue(SingleModeChara, SingleModeHomeInfo, SingleRaceStartInfo, SingleModeEventInfo[])
@@ -98,7 +97,7 @@ type ApplyContinueFn = extern "C" fn(*mut Il2CppObject, usize, usize, usize, usi
 extern "C" fn ApplyContinue(this: *mut Il2CppObject, a: usize, b: usize, c: usize, d: usize) {
     let orig: ApplyContinueFn = unsafe { std::mem::transmute(ORIG_APPLY_CONTINUE) };
     orig(this, a, b, c, d);
-    on_applied("ApplyContinue");
+    on_applied("ApplyContinue", ApplyEvent::Continue);
 }
 
 // ApplySingleModeStartResponse(SingleModeStartCommon)
@@ -107,7 +106,7 @@ type ApplyStartFn = extern "C" fn(*mut Il2CppObject, usize);
 extern "C" fn ApplyStart(this: *mut Il2CppObject, a: usize) {
     let orig: ApplyStartFn = unsafe { std::mem::transmute(ORIG_APPLY_START) };
     orig(this, a);
-    on_applied("ApplySingleModeStartResponse");
+    on_applied("ApplySingleModeStartResponse", ApplyEvent::CareerStart);
 }
 
 // ApplySingleModeLoadResponse(SingleModeLoadCommon)
@@ -116,7 +115,7 @@ type ApplyLoadFn = extern "C" fn(*mut Il2CppObject, usize);
 extern "C" fn ApplyLoad(this: *mut Il2CppObject, a: usize) {
     let orig: ApplyLoadFn = unsafe { std::mem::transmute(ORIG_APPLY_LOAD) };
     orig(this, a);
-    on_applied("ApplySingleModeLoadResponse");
+    on_applied("ApplySingleModeLoadResponse", ApplyEvent::CareerLoad);
 }
 
 // ── Installation ────────────────────────────────────────────────────────────
@@ -125,7 +124,7 @@ struct HookSpec {
     name: &'static str,
     arity: i32,
     hook_fn: *mut c_void,
-    trampoline: &'static mut *mut c_void,
+    trampoline: *mut *mut c_void,
     bit: usize,
 }
 
@@ -145,25 +144,76 @@ pub fn install() -> bool {
         return false;
     };
 
-    // SAFETY: static mut trampolines are written once here before hooks fire.
-    let specs: &mut [HookSpec] = unsafe {
-        &mut [
-            HookSpec { name: "ApplyExecCommand", arity: 4, hook_fn: ApplyExecCommand as *mut c_void, trampoline: &mut ORIG_APPLY_EXEC_COMMAND, bit: 1 },
-            HookSpec { name: "ApplyRaceEntry", arity: 4, hook_fn: ApplyRaceEntry as *mut c_void, trampoline: &mut ORIG_APPLY_RACE_ENTRY, bit: 2 },
-            HookSpec { name: "ApplyRaceEnd", arity: 8, hook_fn: ApplyRaceEnd as *mut c_void, trampoline: &mut ORIG_APPLY_RACE_END, bit: 4 },
-            HookSpec { name: "ApplyRaceOut", arity: 3, hook_fn: ApplyRaceOut as *mut c_void, trampoline: &mut ORIG_APPLY_RACE_OUT, bit: 8 },
-            HookSpec { name: "ApplyCheckEvent", arity: 6, hook_fn: ApplyCheckEvent as *mut c_void, trampoline: &mut ORIG_APPLY_CHECK_EVENT, bit: 16 },
-            HookSpec { name: "ApplyContinue", arity: 4, hook_fn: ApplyContinue as *mut c_void, trampoline: &mut ORIG_APPLY_CONTINUE, bit: 32 },
-            HookSpec { name: "ApplySingleModeStartResponse", arity: 1, hook_fn: ApplyStart as *mut c_void, trampoline: &mut ORIG_APPLY_START, bit: 64 },
-            HookSpec { name: "ApplySingleModeLoadResponse", arity: 1, hook_fn: ApplyLoad as *mut c_void, trampoline: &mut ORIG_APPLY_LOAD, bit: 128 },
-        ]
-    };
+    // Raw pointers avoid creating references to mutable statics; each target is
+    // written once below before its hook can fire.
+    let specs: &mut [HookSpec] = &mut [
+        HookSpec {
+            name: "ApplyExecCommand",
+            arity: 4,
+            hook_fn: ApplyExecCommand as *mut c_void,
+            trampoline: &raw mut ORIG_APPLY_EXEC_COMMAND,
+            bit: 1,
+        },
+        HookSpec {
+            name: "ApplyRaceEntry",
+            arity: 4,
+            hook_fn: ApplyRaceEntry as *mut c_void,
+            trampoline: &raw mut ORIG_APPLY_RACE_ENTRY,
+            bit: 2,
+        },
+        HookSpec {
+            name: "ApplyRaceEnd",
+            arity: 8,
+            hook_fn: ApplyRaceEnd as *mut c_void,
+            trampoline: &raw mut ORIG_APPLY_RACE_END,
+            bit: 4,
+        },
+        HookSpec {
+            name: "ApplyRaceOut",
+            arity: 3,
+            hook_fn: ApplyRaceOut as *mut c_void,
+            trampoline: &raw mut ORIG_APPLY_RACE_OUT,
+            bit: 8,
+        },
+        HookSpec {
+            name: "ApplyCheckEvent",
+            arity: 6,
+            hook_fn: ApplyCheckEvent as *mut c_void,
+            trampoline: &raw mut ORIG_APPLY_CHECK_EVENT,
+            bit: 16,
+        },
+        HookSpec {
+            name: "ApplyContinue",
+            arity: 4,
+            hook_fn: ApplyContinue as *mut c_void,
+            trampoline: &raw mut ORIG_APPLY_CONTINUE,
+            bit: 32,
+        },
+        HookSpec {
+            name: "ApplySingleModeStartResponse",
+            arity: 1,
+            hook_fn: ApplyStart as *mut c_void,
+            trampoline: &raw mut ORIG_APPLY_START,
+            bit: 64,
+        },
+        HookSpec {
+            name: "ApplySingleModeLoadResponse",
+            arity: 1,
+            hook_fn: ApplyLoad as *mut c_void,
+            trampoline: &raw mut ORIG_APPLY_LOAD,
+            bit: 128,
+        },
+    ];
 
     let mut mask = 0usize;
     for spec in specs.iter_mut() {
         if let Some(addr) = sdk.get_method_addr(klass, spec.name, spec.arity) {
             if let Some(tramp) = sdk.hook(addr, spec.hook_fn) {
-                *spec.trampoline = tramp;
+                // SAFETY: each raw pointer targets one trampoline static and is
+                // written only during single-threaded hook installation.
+                unsafe {
+                    *spec.trampoline = tramp;
+                }
                 mask |= spec.bit;
                 hlog_info!(target: "training-tracker", "apply_hooks: hooked {}", spec.name);
             } else {

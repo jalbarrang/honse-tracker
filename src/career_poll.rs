@@ -1,14 +1,13 @@
 //! Event-driven settled-turn capture and telemetry publication.
 //!
-//! There is no periodic career poll. Passive game edges (command-select
-//! rebuild hooks, view changes) *request* a capture; a per-frame atomic pump
-//! schedules the held request onto the Unity main thread only while both
-//! crash-safety gates are open. The main-thread callback rechecks the gates,
-//! resolves the IL2CPP chain lazily, reads one complete career state, and
+//! There is no periodic career poll. Passive game edges request a capture and
+//! advance one lifecycle state; a per-frame atomic pump schedules the held
+//! request onto the Unity main thread only in `CommandSelectActive`. The
+//! callback rechecks that state, resolves the IL2CPP chain lazily, and reads
 //! publishes exactly one atomic `SettledTurn` (content-deduplicated, with a
 //! stable capture id) through the bounded telemetry transport.
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering as AtomicOrdering};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -18,158 +17,66 @@ use crate::compat::Sdk;
 
 use crate::deck_bonuses;
 use crate::memory_reader::{self, EvaluationInfo, FiredEvent};
+use crate::read_gate::{ApplyEvent, CareerEvent, CareerState};
 
 /// Equipped `(deck slot, support_card_id)` pairs from the previous capture.
 static PREV_SUPPORT_IDS: Mutex<Vec<(i32, i32)>> = Mutex::new(Vec::new());
 static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 
 // ---------------------------------------------------------------------------
-// Crash-safety gates (unchanged semantics; see `read_gate`)
+// Event-driven career lifecycle (the only crash-safety authority)
 // ---------------------------------------------------------------------------
 
-/// Wall-clock (ms) of the most recent game view change (`event::VIEW_CHANGE`).
-/// While a view transition is in flight the game tears down and rebuilds the
-/// `WorkSingleModeData → HomeInfo → TurnInfoListDic` objects we walk, so reading
-/// them races a use-after-free and crashes the game (surfaces later in the game's
-/// own `HomeBgController.CreateBgModel`). We suspend all IL2CPP reads for a cooldown
-/// after each view change; intermediate transitions re-arm it. `0` means no change
-/// has been observed yet.
-static LAST_VIEW_CHANGE_MS: AtomicU64 = AtomicU64::new(0);
+/// One atomic lifecycle value replaces the former cooldown/deadline/pending
+/// gates. Unknown values decode as `Idle`, so corruption or a missed event fails
+/// closed. Only post-original UI completion hooks can enter the readable state.
+static LIFECYCLE_STATE: AtomicU8 = AtomicU8::new(CareerState::Idle as u8);
 
-/// How long after a view change to keep reads suspended. The training-click
-/// `ChangeViewSequence` (fade out → mass asset unload → BG rebuild → fade in) spans
-/// well under this window in practice; each intermediate `VIEW_CHANGE` refreshes the
-/// timestamp so a chained transition keeps reads suspended until it settles.
-const VIEW_TRANSITION_COOLDOWN_MS: u64 = 2000;
+#[must_use]
+fn lifecycle_state() -> CareerState {
+    CareerState::from_u8(LIFECYCLE_STATE.load(AtomicOrdering::Acquire))
+}
 
-/// Whether a view transition is pending confirmation from SetupCommandSelectStart.
-/// Set by note_view_change(); cleared by command_select_settled() or safety timeout.
-static VIEW_SETTLE_PENDING: AtomicBool = AtomicBool::new(false);
+/// Atomically apply one pure reducer event. Hooks can arrive on the Unity main,
+/// render, or response thread, so a compare/exchange loop preserves every edge.
+fn advance_lifecycle(event: CareerEvent) -> (CareerState, CareerState) {
+    let mut raw = LIFECYCLE_STATE.load(AtomicOrdering::Acquire);
+    loop {
+        let from = CareerState::from_u8(raw);
+        let to = crate::read_gate::transition(from, event);
+        match LIFECYCLE_STATE.compare_exchange_weak(raw, to as u8, AtomicOrdering::AcqRel, AtomicOrdering::Acquire) {
+            Ok(_) => {
+                hlog_info!(target: "settle-diag", "lifecycle {from:?} --{event:?}--> {to:?}");
+                return (from, to);
+            }
+            Err(observed) => raw = observed,
+        }
+    }
+}
 
-/// Safety ceiling: if SetupCommandSelectStart never fires after a view change
-/// (e.g. non-career views, menus), auto-clear the settle gate after this long.
-/// Must be longer than the longest observed post-race asset unload (~5-8s).
-const VIEW_SETTLE_TIMEOUT_MS: u64 = 15_000;
-
-/// Record that the game changed view. Called from the tracker's `VIEW_CHANGE`
-/// subscription (see `hooks.rs`). Suspends reads for [`VIEW_TRANSITION_COOLDOWN_MS`],
-/// arms the view-settle gate, and holds a capture request: once the transition
-/// settles (all three gates reopen) the pump captures the post-transition state.
-/// This is the passive edge that covers career entry/exit and race/story returns
-/// that never pass through the command-select hooks. Harmless outside a career —
-/// the capture callback no-ops when no career is active.
-pub fn note_view_change() {
-    LAST_VIEW_CHANGE_MS.store(now_ms(), AtomicOrdering::Relaxed);
-    VIEW_SETTLE_PENDING.store(true, AtomicOrdering::Release);
-    hlog_info!(target: "settle-diag", "view-settle gate ARMED — waiting for SetupCommandSelectStart or {VIEW_SETTLE_TIMEOUT_MS}ms timeout");
+/// Record a polled current-view change. A view identity can classify an unsafe
+/// phase but never opens reads; 1101 observed after a completion hook is treated
+/// as a delayed poll observation by the reducer.
+pub fn note_view_change(view_id: i32) {
+    let kind = crate::read_gate::classify_view(view_id);
+    advance_lifecycle(CareerEvent::ViewChanged(kind));
     request_capture();
 }
 
-/// Test/inspection helper: wall-clock ms of the last view change (`0` = none).
+/// Test/inspection helper for the single runtime lifecycle state.
 #[must_use]
-pub fn last_view_change_ms() -> u64 {
-    LAST_VIEW_CHANGE_MS.load(AtomicOrdering::Relaxed)
+pub fn current_lifecycle_state() -> CareerState {
+    lifecycle_state()
 }
 
-/// Test helper: whether the combined read gate currently blocks IL2CPP reads.
+/// Test helper: whether IL2CPP career reads currently fail closed.
 #[must_use]
 pub fn reads_currently_unsafe() -> bool {
     reads_unsafe()
 }
 
-/// Pure gate: is a view transition still within its cooldown window? `last == 0`
-/// (no view change observed) is never a transition.
-#[must_use]
-fn is_in_transition(now: u64, last: u64, cooldown_ms: u64) -> bool {
-    last != 0 && now.saturating_sub(last) < cooldown_ms
-}
-
-/// True while the most recent view change is still inside its cooldown window, i.e.
-/// the Single Mode objects may be mid-teardown and unsafe to read.
-fn in_view_transition() -> bool {
-    is_in_transition(
-        now_ms(),
-        LAST_VIEW_CHANGE_MS.load(AtomicOrdering::Relaxed),
-        VIEW_TRANSITION_COOLDOWN_MS,
-    )
-}
-
-/// Explicit read-suspend bracketing a career command (training / rest / infirmary /
-/// outing). Submitting a command kicks off a coroutine that hits the server, plays
-/// an animation, then unloads+rebuilds the Home scene (`Push/PopSceneResourceHash`)
-/// — all WITHOUT a `SceneManager.ChangeView`, so [`in_view_transition`] does not
-/// cover it. Reading `HomeInfo`/`TurnInfo` during this window races a use-after-free
-/// and crashes the game. The command-submit hooks call [`enter_command`]; the
-/// command-select rebuild hooks call [`command_select_settled`] after the original
-/// method ran. `0` = not suspended.
-static SUSPEND_DEADLINE_MS: AtomicU64 = AtomicU64::new(0);
-
-/// Safety ceiling: if the command-select "resume" signal is somehow missed, reads
-/// auto-resume after this long so the pump can't wedge on a shut gate forever.
-/// Generously covers a full (un-skipped) training animation + asset reload.
-const SUSPEND_MAX_MS: u64 = 30_000;
-
-/// Suspend IL2CPP reads until the command-select screen is rebuilt (or the safety
-/// deadline elapses). Called from the career command-submit IL2CPP hooks.
-/// Idempotent — a double submit merely refreshes the deadline.
-pub(crate) fn suspend_reads() {
-    SUSPEND_DEADLINE_MS.store(now_ms().saturating_add(SUSPEND_MAX_MS), AtomicOrdering::Relaxed);
-}
-
-/// Resume IL2CPP reads. Called once the Single Mode objects are freshly built
-/// and safe to read again.
-pub(crate) fn resume_reads() {
-    SUSPEND_DEADLINE_MS.store(0, AtomicOrdering::Relaxed);
-}
-
-/// True while a view change is pending confirmation AND the safety timeout has
-/// not elapsed. Auto-clears after [`VIEW_SETTLE_TIMEOUT_MS`] using
-/// [`LAST_VIEW_CHANGE_MS`] as the timer base so non-career views that never
-/// fire SetupCommandSelectStart don't wedge captures permanently.
-#[must_use]
-fn view_settle_pending() -> bool {
-    if !VIEW_SETTLE_PENDING.load(AtomicOrdering::Acquire) {
-        return false;
-    }
-    let last = LAST_VIEW_CHANGE_MS.load(AtomicOrdering::Relaxed);
-    if last == 0 {
-        // Defensive: pending without a recorded view change → clear.
-        VIEW_SETTLE_PENDING.store(false, AtomicOrdering::Release);
-        return false;
-    }
-    let elapsed = now_ms().saturating_sub(last);
-    if elapsed >= VIEW_SETTLE_TIMEOUT_MS {
-        // Safety timeout elapsed — clear the gate AND discard any pending
-        // capture request. The timeout exists for non-career views where
-        // SetupCommandSelectStart never fires; any queued capture from an
-        // Apply hook is stale and would read during asset transitions.
-        VIEW_SETTLE_PENDING.store(false, AtomicOrdering::Release);
-        CAPTURE_REQUESTED.store(false, AtomicOrdering::Release);
-        hlog_warn!(target: "settle-diag", "view-settle gate TIMEOUT after {elapsed}ms — auto-cleared + capture request discarded");
-        return false;
-    }
-    true
-}
-
-/// True while a command sequence is in flight (reads unsafe). Self-clears once the
-/// safety deadline passes so a missed resume can't suspend reads permanently.
-fn reads_suspended() -> bool {
-    let deadline = SUSPEND_DEADLINE_MS.load(AtomicOrdering::Relaxed);
-    deadline != 0 && now_ms() < deadline
-}
-
-/// Combined gate: no capture may run whenever the Single Mode objects may be
-/// unstable (mid view-transition, or a career command sequence is in flight).
-///
-/// Routes through [`crate::read_gate`] so the hiker property test constrains the
-/// real decision point (not a lookalike). Depth is 0/1 from the deadline flag —
-/// same open/closed semantics as the fork's suspend/resume bracketing.
 fn reads_unsafe() -> bool {
-    !crate::read_gate::reads_permitted(
-        in_view_transition(),
-        i64::from(reads_suspended()),
-        view_settle_pending(),
-    )
+    !crate::read_gate::reads_permitted(lifecycle_state())
 }
 
 // ---------------------------------------------------------------------------
@@ -177,46 +84,45 @@ fn reads_unsafe() -> bool {
 // ---------------------------------------------------------------------------
 
 /// Held capture request. Set by passive edges, consumed by the main-thread
-/// capture callback. Requests made while a gate is shut stay held (coalescing
-/// into one), so a settled turn is never dropped just because its edge fired
-/// inside an unsafe window.
+/// capture callback. Requests made outside `CommandSelectActive` stay held and
+/// coalesce until a post-original completion event permits one capture.
 static CAPTURE_REQUESTED: AtomicBool = AtomicBool::new(false);
 /// Whether a main-thread capture callback is currently scheduled/in flight.
 static CAPTURE_SCHEDULED: AtomicBool = AtomicBool::new(false);
-/// Wall-clock (ms) when the in-flight callback was scheduled; drives the
-/// staleness watchdog so a callback scheduled but never run to completion
-/// can't wedge `CAPTURE_SCHEDULED` true and freeze capturing.
+/// Wall-clock (ms) when the in-flight callback was scheduled; this repairs only
+/// scheduler bookkeeping and never changes lifecycle/read permission.
 static SCHEDULED_SINCE_MS: AtomicU64 = AtomicU64::new(0);
 
-/// If a scheduled capture hasn't completed within this window, treat it as lost
-/// and allow a fresh one to be scheduled.
+/// If a scheduled capture hasn't completed within this window, treat its slot
+/// as lost. This is not a read gate: the lifecycle is rechecked independently.
 const SCHEDULE_STALE_MS: u64 = 5000;
 
-/// A career command was submitted (training / rest / outing / infirmary /
-/// race...). Shuts the command gate idempotently; the matching settle edge
-/// reopens it.
+/// A career command was submitted before the original coroutine starts.
 pub(crate) fn enter_command() {
-    suspend_reads();
+    advance_lifecycle(CareerEvent::CommandSubmitted);
 }
 
-/// The command-select screen finished rebuilding (the original
-/// `SetupCommandSelectStart*` already ran): the turn has settled. Reopen the
-/// command gate, clear the view-settle gate, and hold a capture request for
-/// the pump.
-pub(crate) fn command_select_settled() {
-    let was_pending = VIEW_SETTLE_PENDING.swap(false, AtomicOrdering::AcqRel);
-    resume_reads();
-    if was_pending {
-        let held_ms = now_ms().saturating_sub(LAST_VIEW_CHANGE_MS.load(AtomicOrdering::Relaxed));
-        hlog_info!(target: "settle-diag", "view-settle gate CLEARED by SetupCommandSelectStart (held {held_ms}ms)");
-    }
+/// Observe fresh server data without claiming that assets or UI are stable.
+pub(crate) fn apply_observed(event: ApplyEvent) {
+    advance_lifecycle(CareerEvent::Applied(event));
     request_capture();
 }
 
+/// The command-select setup original returned; the UI is rebuilt and actionable.
+pub(crate) fn command_select_settled() {
+    advance_lifecycle(CareerEvent::CommandSelectCompleted);
+    request_capture();
+}
 
+/// Initial/resumed career command-view play-in completed. This is the settle
+/// edge for load paths that do not call `SetupCommandSelectStart*`.
+pub(crate) fn command_view_play_in_completed() {
+    advance_lifecycle(CareerEvent::CommandViewPlayInCompleted);
+    request_capture();
+}
 
 /// Hold/coalesce a capture request. Never reads IL2CPP, never blocks — safe
-/// from any thread. The pump schedules it once both gates are open.
+/// from any thread. The pump schedules it only in `CommandSelectActive`.
 pub(crate) fn request_capture() {
     if SHUTTING_DOWN.load(AtomicOrdering::Acquire) {
         return;
@@ -225,9 +131,8 @@ pub(crate) fn request_capture() {
 }
 
 /// Decide whether the pump should schedule the capture callback now, claiming
-/// the schedule slot when it does. Atomic bookkeeping only (plus the gate
-/// check) — the actual scheduling side effect stays in [`tick`] so this
-/// decision point is deterministic under test.
+/// the schedule slot when it does. Atomic bookkeeping plus one lifecycle check;
+/// the scheduling side effect stays in [`tick`] for deterministic tests.
 fn take_schedule_slot(now: u64) -> bool {
     if SHUTTING_DOWN.load(AtomicOrdering::Acquire) {
         return false;
@@ -235,8 +140,8 @@ fn take_schedule_slot(now: u64) -> bool {
     if !CAPTURE_REQUESTED.load(AtomicOrdering::Acquire) {
         return false;
     }
-    // Both crash-safety gates must be open before we even schedule; the
-    // callback rechecks on the main thread (defense in depth).
+    // Require the sole readable lifecycle before scheduling; the callback
+    // rechecks on the main thread (defense in depth).
     if reads_unsafe() {
         return false;
     }
@@ -252,15 +157,14 @@ fn take_schedule_slot(now: u64) -> bool {
     true
 }
 
-/// Per-frame atomic pump called from the host frame callback. Schedules the
-/// held capture request onto the Unity main thread once all three gates are open.
-/// No IL2CPP access and no career read happens here — a per-frame pump is
-/// allowed, a per-frame career read is not.
+/// Per-frame atomic pump called from the host frame callback. Schedules a held
+/// capture only in `CommandSelectActive`. No IL2CPP access or career read happens
+/// here — a per-frame atomic pump is allowed; a per-frame career read is not.
 ///
 /// Captures are event-driven only (settled-turn hooks + view-change edges).
 /// Periodic polling is intentionally absent: IL2CPP reads take ~80ms and asset
 /// unloading can start on another thread mid-read, so timer-based captures
-/// race use-after-free regardless of gate checks at schedule time.
+/// race use-after-free regardless of lifecycle checks at schedule time.
 pub fn tick() {
     if take_schedule_slot(now_ms()) {
         Sdk::get().schedule_on_main_thread(capture_settled_turn_cb);
@@ -382,16 +286,12 @@ extern "C" fn capture_settled_turn_cb() {
         CAPTURE_SCHEDULED.store(false, AtomicOrdering::Release);
         return;
     }
-    // Defense in depth: a capture scheduled just before a view change or a
-    // command submit can still be dispatched inside the unsafe window. Bail
-    // before any IL2CPP read touches teardown-time objects — the request stays
-    // held, and the pump reschedules once the gates reopen.
+    // Defense in depth: a callback scheduled just before a view change or
+    // command submit can arrive in a new unsafe state. Bail before any IL2CPP
+    // access; the held request waits for the next completion edge.
     if reads_unsafe() {
-        let vt = in_view_transition();
-        let cs = reads_suspended();
-        let vs = view_settle_pending();
-        hlog_debug!(target: "settle-diag",
-            "capture DEFERRED — gates: view_cooldown={vt} cmd_suspended={cs} settle_pending={vs}");
+        let state = lifecycle_state();
+        hlog_debug!(target: "settle-diag", "capture DEFERRED — lifecycle={state:?}");
         CAPTURE_SCHEDULED.store(false, AtomicOrdering::Release);
         return;
     }
@@ -417,6 +317,7 @@ extern "C" fn capture_settled_turn_cb() {
 /// mid-career is harmless — the sidecar groups careers by card/scenario/turn
 /// monotonicity, so a fresh epoch never splits a stored run.
 fn career_inactive() {
+    advance_lifecycle(CareerEvent::Reset);
     let mut guard = EPOCH.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let was_active = guard.take().is_some();
     drop(guard);
@@ -534,16 +435,12 @@ fn capture_settled_turn_inner() {
 // Schema (space-separated key=value, one line per edge):
 //   seq=<u64>        global edge counter — proves ordering across hooks/events
 //   t_ms=<u64>       unix wall-clock ms — coarse timing between edges
-//   hook=<name>      SendCommandAsync | CommonSendCommandAsync |
-//                    SetupCommandSelectStart | SetupCommandSelectStartStepTurn |
-//                    ViewChange
+//   hook=<name>      IL2CPP hook or ViewChange
 //   phase=<p>        before_original | after_original | event
-//   reason=<r>       command_submit | command_select_settled | view_change
-//   view_gate=<g>    open | cooldown   (view-transition gate at log time)
-//   cmd_gate=<g>     open | suspended  (command-suspend gate at log time)
-//   permitted=<0|1>  combined read_gate::reads_permitted at log time
-//   turn=<i32|na>    GetCurrentTurn — read ONLY when permitted=1 on a
-//                    post-original settle edge; na means "not read"
+//   reason=<r>       lifecycle edge reason
+//   state=<s>        single career lifecycle state at log time
+//   permitted=<0|1>  true only for CommandSelectActive
+//   turn=<i32|na>    read only on a permitted post-original completion edge
 //   view_id=<i32|na> VIEW_CHANGE payload (event edges only)
 //   thread=<id>      correlates edges to the Unity main thread
 // ---------------------------------------------------------------------------
@@ -558,32 +455,25 @@ fn format_diag_line(
     hook: &str,
     phase: &str,
     reason: &str,
-    view_cooldown_active: bool,
-    cmd_suspended: bool,
-    settle_pending: bool,
+    state: CareerState,
     permitted: bool,
     turn: Option<i32>,
     view_id: Option<i32>,
     thread: &str,
 ) -> String {
-    let view_gate = if view_cooldown_active { "cooldown" } else { "open" };
-    let cmd_gate = if cmd_suspended { "suspended" } else { "open" };
-    let settle_gate_str = if settle_pending { "pending" } else { "settled" };
     let turn = turn.map_or_else(|| "na".to_owned(), |t| t.to_string());
     let view_id = view_id.map_or_else(|| "na".to_owned(), |v| v.to_string());
     format!(
-        "seq={seq} t_ms={t_ms} hook={hook} phase={phase} reason={reason} view_gate={view_gate} cmd_gate={cmd_gate} settle_gate={settle_gate_str} permitted={} turn={turn} view_id={view_id} thread={thread}",
+        "seq={seq} t_ms={t_ms} hook={hook} phase={phase} reason={reason} state={state:?} permitted={} turn={turn} view_id={view_id} thread={thread}",
         u8::from(permitted)
     )
 }
 
 /// Log one settled-turn diagnostic edge.
 ///
-/// `try_read_turn` may be true only on post-original settle edges running on the
-/// Unity main thread (the `SetupCommandSelectStart*` hooks after the original
-/// returned). Even then the turn is read strictly behind the same two-gate check
-/// production reads use — an edge inside an unsafe window logs `turn=na` instead
-/// of reading.
+/// `try_read_turn` may be true only on post-original completion edges running
+/// on the Unity main thread. The turn read uses the same single-state check as
+/// production; every other lifecycle logs `turn=na`.
 pub(crate) fn diag_settle_edge(
     hook: &'static str,
     phase: &'static str,
@@ -592,10 +482,8 @@ pub(crate) fn diag_settle_edge(
     try_read_turn: bool,
 ) {
     let seq = DIAG_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
-    let view_cooldown_active = in_view_transition();
-    let cmd_suspended = reads_suspended();
-    let settle_pending = view_settle_pending();
-    let permitted = crate::read_gate::reads_permitted(view_cooldown_active, i64::from(cmd_suspended), settle_pending);
+    let state = lifecycle_state();
+    let permitted = crate::read_gate::reads_permitted(state);
     let turn = if try_read_turn && permitted {
         memory_reader::diag_read_current_turn()
     } else {
@@ -607,9 +495,7 @@ pub(crate) fn diag_settle_edge(
         hook,
         phase,
         reason,
-        view_cooldown_active,
-        cmd_suspended,
-        settle_pending,
+        state,
         permitted,
         turn,
         view_id,
@@ -696,9 +582,7 @@ pub fn shutdown() {
     CAPTURE_REQUESTED.store(false, AtomicOrdering::Release);
     CAPTURE_SCHEDULED.store(false, AtomicOrdering::Release);
     SCHEDULED_SINCE_MS.store(0, AtomicOrdering::Release);
-    LAST_VIEW_CHANGE_MS.store(0, AtomicOrdering::Release);
-    SUSPEND_DEADLINE_MS.store(0, AtomicOrdering::Release);
-    VIEW_SETTLE_PENDING.store(false, AtomicOrdering::Release);
+    LIFECYCLE_STATE.store(CareerState::Idle as u8, AtomicOrdering::Release);
     disarm_view_poll();
     if let Ok(mut guard) = EPOCH.lock() {
         *guard = None;
@@ -710,7 +594,7 @@ pub fn shutdown() {
 mod tests {
     use super::*;
 
-    /// Serializes tests that touch the module's global gate/schedule state.
+    /// Serializes tests that touch the module's global lifecycle/schedule state.
     static TEST_GUARD: Mutex<()> = Mutex::new(());
 
     /// Reset every global this module owns so each test starts from a clean,
@@ -720,9 +604,7 @@ mod tests {
         CAPTURE_REQUESTED.store(false, AtomicOrdering::Release);
         CAPTURE_SCHEDULED.store(false, AtomicOrdering::Release);
         SCHEDULED_SINCE_MS.store(0, AtomicOrdering::Release);
-        LAST_VIEW_CHANGE_MS.store(0, AtomicOrdering::Release);
-        SUSPEND_DEADLINE_MS.store(0, AtomicOrdering::Release);
-        VIEW_SETTLE_PENDING.store(false, AtomicOrdering::Release);
+        LIFECYCLE_STATE.store(CareerState::Idle as u8, AtomicOrdering::Release);
         VIEW_POLL_ARMED.store(false, AtomicOrdering::Release);
         *EPOCH.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = None;
     }
@@ -734,21 +616,19 @@ mod tests {
     }
 
     #[test]
-    fn transition_gate_open_only_within_cooldown() {
-        // No view change observed yet → never a transition.
-        assert!(!is_in_transition(10_000, 0, VIEW_TRANSITION_COOLDOWN_MS));
-        // Just changed → suspended.
-        assert!(is_in_transition(10_000, 10_000, VIEW_TRANSITION_COOLDOWN_MS));
-        // Inside the cooldown → still suspended.
-        assert!(is_in_transition(11_999, 10_000, VIEW_TRANSITION_COOLDOWN_MS));
-        // Exactly at / past the cooldown → reads resume.
-        assert!(!is_in_transition(12_000, 10_000, VIEW_TRANSITION_COOLDOWN_MS));
-        assert!(!is_in_transition(20_000, 10_000, VIEW_TRANSITION_COOLDOWN_MS));
+    fn lifecycle_starts_fail_closed_until_ui_completion() {
+        let _guard = lock();
+        assert_eq!(current_lifecycle_state(), CareerState::Idle);
+        assert!(reads_currently_unsafe());
+        command_view_play_in_completed();
+        assert_eq!(current_lifecycle_state(), CareerState::CommandSelectActive);
+        assert!(!reads_currently_unsafe());
     }
 
     #[test]
     fn requests_coalesce_into_one_schedule_slot() {
         let _guard = lock();
+        LIFECYCLE_STATE.store(CareerState::CommandSelectActive as u8, AtomicOrdering::Release);
         request_capture();
         request_capture(); // coalesces — still one held request
         assert!(take_schedule_slot(now_ms()), "first pump claims the slot");
@@ -761,20 +641,28 @@ mod tests {
     #[test]
     fn request_survives_unsafe_window_and_schedules_after_reopen() {
         let _guard = lock();
-        enter_command(); // command gate shuts
+        LIFECYCLE_STATE.store(CareerState::CommandSelectActive as u8, AtomicOrdering::Release);
+        enter_command();
         request_capture();
-        assert!(!take_schedule_slot(now_ms()), "no scheduling while a gate is shut");
+        assert!(
+            !take_schedule_slot(now_ms()),
+            "no scheduling outside the readable state"
+        );
         assert!(
             CAPTURE_REQUESTED.load(AtomicOrdering::Acquire),
             "the request is retained, not dropped"
         );
-        command_select_settled(); // gate reopens (also re-requests)
-        assert!(take_schedule_slot(now_ms()), "pump schedules once the gates open");
+        command_select_settled();
+        assert!(
+            take_schedule_slot(now_ms()),
+            "pump schedules once command select is active"
+        );
     }
 
     #[test]
     fn lost_schedule_slot_is_reclaimed_after_staleness_window() {
         let _guard = lock();
+        LIFECYCLE_STATE.store(CareerState::CommandSelectActive as u8, AtomicOrdering::Release);
         request_capture();
         let t0 = now_ms();
         assert!(take_schedule_slot(t0));
@@ -785,14 +673,16 @@ mod tests {
     }
 
     #[test]
-    fn double_submit_is_idempotent_and_settle_reopens_gate() {
+    fn double_submit_is_idempotent_and_settle_restores_active_state() {
         let _guard = lock();
-        assert!(!reads_currently_unsafe(), "both gates open initially");
+        command_view_play_in_completed();
+        assert!(!reads_currently_unsafe(), "completion enters the readable state");
         enter_command();
-        enter_command(); // double submit merely refreshes the deadline
-        assert!(reads_currently_unsafe(), "command gate shut");
+        enter_command();
+        assert_eq!(current_lifecycle_state(), CareerState::CommandInFlight);
+        assert!(reads_currently_unsafe());
         command_select_settled();
-        assert!(!reads_currently_unsafe(), "settle edge reopens the gate");
+        assert!(!reads_currently_unsafe(), "settle returns to the readable state");
         assert!(
             CAPTURE_REQUESTED.load(AtomicOrdering::Acquire),
             "settle holds a request"
@@ -813,22 +703,20 @@ mod tests {
     }
 
     #[test]
-    fn view_change_event_updates_timestamp_and_holds_request() {
+    fn view_change_event_moves_to_unsafe_state_and_holds_request() {
         let _guard = lock();
-        assert_eq!(last_view_change_ms(), 0);
+        command_view_play_in_completed();
+        CAPTURE_REQUESTED.store(false, AtomicOrdering::Release);
         // Subscribe the same handler the plugin uses, then dispatch VIEW_CHANGE
-        // on the services bus (same path as SceneManager hook → event bus).
+        // on the services bus (same path as the current-view poll).
         let _ = crate::hooks::subscribe_events();
-        honse_services::dispatch_view_change(42);
-        assert!(last_view_change_ms() > 0, "VIEW_CHANGE must update LAST_VIEW_CHANGE_MS");
+        honse_services::dispatch_view_change(1620);
+        assert_eq!(current_lifecycle_state(), CareerState::CutsceneActive);
         assert!(
             CAPTURE_REQUESTED.load(AtomicOrdering::Acquire),
-            "a view change holds a capture request for the settled state"
+            "a view change holds a capture request for the next settled state"
         );
-        assert!(
-            !take_schedule_slot(now_ms()),
-            "the cooldown gate holds the request until the transition settles"
-        );
+        assert!(!take_schedule_slot(now_ms()));
     }
 
     // ── epoch / dedup rules ────────────────────────────────────────────────
@@ -952,9 +840,7 @@ mod tests {
             "SetupCommandSelectStart",
             "after_original",
             "command_select_settled",
-            false,
-            false,
-            false,
+            CareerState::CommandSelectActive,
             true,
             Some(12),
             None,
@@ -962,21 +848,19 @@ mod tests {
         );
         assert_eq!(
             line,
-            "seq=7 t_ms=1234 hook=SetupCommandSelectStart phase=after_original reason=command_select_settled view_gate=open cmd_gate=open settle_gate=settled permitted=1 turn=12 view_id=na thread=ThreadId(1)"
+            "seq=7 t_ms=1234 hook=SetupCommandSelectStart phase=after_original reason=command_select_settled state=CommandSelectActive permitted=1 turn=12 view_id=na thread=ThreadId(1)"
         );
     }
 
     #[test]
-    fn diag_line_unsafe_window_shows_closed_gates_and_no_turn() {
+    fn diag_line_unsafe_window_shows_state_and_no_turn() {
         let line = format_diag_line(
             8,
             1300,
             "SendCommandAsync",
             "before_original",
             "command_submit",
-            true,
-            true,
-            false,
+            CareerState::CommandInFlight,
             false,
             None,
             None,
@@ -984,7 +868,7 @@ mod tests {
         );
         assert_eq!(
             line,
-            "seq=8 t_ms=1300 hook=SendCommandAsync phase=before_original reason=command_submit view_gate=cooldown cmd_gate=suspended settle_gate=settled permitted=0 turn=na view_id=na thread=ThreadId(1)"
+            "seq=8 t_ms=1300 hook=SendCommandAsync phase=before_original reason=command_submit state=CommandInFlight permitted=0 turn=na view_id=na thread=ThreadId(1)"
         );
     }
 
@@ -996,9 +880,7 @@ mod tests {
             "ViewChange",
             "event",
             "view_change",
-            true,
-            false,
-            true,
+            CareerState::AssetTransition,
             false,
             None,
             Some(1101),
@@ -1006,7 +888,7 @@ mod tests {
         );
         assert_eq!(
             line,
-            "seq=9 t_ms=1400 hook=ViewChange phase=event reason=view_change view_gate=cooldown cmd_gate=open settle_gate=pending permitted=0 turn=na view_id=1101 thread=ThreadId(2)"
+            "seq=9 t_ms=1400 hook=ViewChange phase=event reason=view_change state=AssetTransition permitted=0 turn=na view_id=1101 thread=ThreadId(2)"
         );
     }
 
@@ -1022,14 +904,17 @@ mod tests {
     }
 
     #[test]
-    fn suspend_resume_round_trip_closes_then_opens_gate() {
+    fn command_submit_and_settle_round_trip_lifecycle() {
         let _guard = lock();
-        assert!(!reads_currently_unsafe(), "both gates open → reads safe");
+        crate::reads_on_command_view_play_in_completed();
+        assert!(!reads_currently_unsafe());
 
         crate::suspend_reads_for_command();
-        assert!(reads_currently_unsafe(), "suspend must close the gate");
+        assert_eq!(current_lifecycle_state(), CareerState::CommandInFlight);
+        assert!(reads_currently_unsafe());
 
         crate::resume_reads_on_command_select();
-        assert!(!reads_currently_unsafe(), "resume must re-open the gate");
+        assert_eq!(current_lifecycle_state(), CareerState::CommandSelectActive);
+        assert!(!reads_currently_unsafe());
     }
 }

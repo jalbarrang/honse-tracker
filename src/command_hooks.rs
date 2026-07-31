@@ -3,12 +3,11 @@
 //! Port of the fork host file
 //! `apps/hachimi/src/il2cpp/hook/umamusume/SingleModeMainViewController.rs`.
 //!
-//! Two jobs (view-cooldown does NOT cover this path — see fork doc comment):
-//! 1. Suspend IL2CPP reads on command submit (`*SendCommandAsync`).
-//! 2. Announce the settled turn on command-select rebuild
-//!    (`SetupCommandSelectStart*`) — strictly AFTER the original ran, so the
-//!    Single Mode objects are fully rebuilt before the read gate reopens and a
-//!    capture is requested.
+//! Two jobs:
+//! 1. Move the lifecycle to `CommandInFlight` before command submission.
+//! 2. Announce an actionable command view strictly after either
+//!    `SetupCommandSelectStart*` or `OnCompletePlayInCommandView` returns. The
+//!    latter covers career start/resume paths that skip command-select setup.
 //!
 //! ABI trap: both `*SendCommandAsync` return an `IEnumerator` (`*mut Il2CppObject`).
 //! The hook MUST forward the trampoline's return value — a void hook leaves
@@ -27,6 +26,7 @@ static mut ORIG_SEND_COMMAND_ASYNC: *mut c_void = std::ptr::null_mut();
 static mut ORIG_COMMON_SEND_COMMAND_ASYNC: *mut c_void = std::ptr::null_mut();
 static mut ORIG_SETUP_COMMAND_SELECT_START: *mut c_void = std::ptr::null_mut();
 static mut ORIG_SETUP_COMMAND_SELECT_START_STEP_TURN: *mut c_void = std::ptr::null_mut();
+static mut ORIG_ON_COMPLETE_PLAY_IN_COMMAND_VIEW: *mut c_void = std::ptr::null_mut();
 
 /// Bitmask of installed hook fn addresses (for uninstall).
 static INSTALLED: AtomicUsize = AtomicUsize::new(0);
@@ -39,6 +39,11 @@ fn suspend_reads() {
 #[inline]
 fn announce_settled() {
     crate::resume_reads_on_command_select();
+}
+
+#[inline]
+fn announce_play_in_completed() {
+    crate::reads_on_command_view_play_in_completed();
 }
 
 type SendCommandAsyncFn = extern "C" fn(
@@ -62,8 +67,8 @@ extern "C" fn SendCommandAsync(
 ) -> *mut Il2CppObject {
     // TRAINING_COMMAND event dispatch dropped — no subscribers (PORT_NOTES).
     suspend_reads();
-    // t-001 diagnostic: logged after suspend so the line proves the command gate
-    // shut before the original ran. No turn read on submit edges.
+    // Diagnostic after the lifecycle moved to CommandInFlight proves reads were
+    // blocked before the original ran. No turn read on submit edges.
     crate::career_poll::diag_settle_edge("SendCommandAsync", "before_original", "command_submit", None, false);
     // SAFETY: trampoline written once during install; signature matches IL2CPP method.
     let orig: SendCommandAsyncFn = unsafe { std::mem::transmute(ORIG_SEND_COMMAND_ASYNC) };
@@ -114,9 +119,8 @@ extern "C" fn CommonSendCommandAsync(
 type SetupCommandSelectStartFn = extern "C" fn(this: *mut Il2CppObject, play_voice: bool, to_top: bool);
 
 extern "C" fn SetupCommandSelectStart(this: *mut Il2CppObject, play_voice: bool, to_top: bool) {
-    // t-001 diagnostic: hook-entry state BEFORE the original runs — the matrix
-    // must show the command gate was still shut when the settle edge arrived
-    // (submit→settle bracketing).
+    // Hook-entry diagnostic before the original: the lifecycle must still be
+    // unsafe until setup has completed.
     crate::career_poll::diag_settle_edge(
         "SetupCommandSelectStart",
         "before_original",
@@ -128,11 +132,11 @@ extern "C" fn SetupCommandSelectStart(this: *mut Il2CppObject, play_voice: bool,
     let orig: SetupCommandSelectStartFn = unsafe { std::mem::transmute(ORIG_SETUP_COMMAND_SELECT_START) };
     orig(this, play_voice, to_top);
     // Original-first ordering: only now are the Single Mode objects rebuilt.
-    // Announce the settled turn — reopen the command gate and hold a capture
-    // request; the capture itself runs deferred on a main-thread callback.
+    // Announce the settled turn and hold a capture request; the capture itself
+    // runs deferred on a main-thread callback.
     announce_settled();
-    // t-001 diagnostic: post-original settle edge — attempt a two-gate-checked
-    // turn read to prove this window is safe.
+    // Post-original diagnostic: attempt a lifecycle-checked turn read to prove
+    // this is the sole safe state.
     crate::career_poll::diag_settle_edge(
         "SetupCommandSelectStart",
         "after_original",
@@ -168,7 +172,31 @@ extern "C" fn SetupCommandSelectStartStepTurn(this: *mut Il2CppObject, play_voic
     );
 }
 
-/// Install the four command-flow hooks. Idempotent. Returns `true` if all four
+type OnCompletePlayInCommandViewFn = extern "C" fn(this: *mut Il2CppObject);
+
+extern "C" fn OnCompletePlayInCommandView(this: *mut Il2CppObject) {
+    crate::career_poll::diag_settle_edge(
+        "OnCompletePlayInCommandView",
+        "before_original",
+        "command_view_play_in_completed",
+        None,
+        false,
+    );
+    // SAFETY: trampoline written once during install; zero-argument instance
+    // signature confirmed in the current IL2CPP class dump.
+    let orig: OnCompletePlayInCommandViewFn = unsafe { std::mem::transmute(ORIG_ON_COMPLETE_PLAY_IN_COMMAND_VIEW) };
+    orig(this);
+    announce_play_in_completed();
+    crate::career_poll::diag_settle_edge(
+        "OnCompletePlayInCommandView",
+        "after_original",
+        "command_view_play_in_completed",
+        None,
+        true,
+    );
+}
+
+/// Install the five command-flow hooks. Idempotent. Returns `true` if all five
 /// methods resolved and hooked.
 pub fn install() -> bool {
     if INSTALLED.load(Ordering::Acquire) != 0 {
@@ -222,13 +250,22 @@ pub fn install() -> bool {
             ok |= 8;
         }
     }
+    if let Some(addr) = sdk.get_method_addr(klass, "OnCompletePlayInCommandView", 0) {
+        if let Some(tramp) = sdk.hook(addr, OnCompletePlayInCommandView as *mut c_void) {
+            // SAFETY: written once before hooks fire; trampoline from edge interceptor.
+            unsafe {
+                ORIG_ON_COMPLETE_PLAY_IN_COMMAND_VIEW = tramp;
+            }
+            ok |= 16;
+        }
+    }
 
-    if ok == 0b1111 {
+    if ok == 0b1_1111 {
         INSTALLED.store(ok, Ordering::Release);
-        hlog_info!(target: "training-tracker", "command_hooks: all four hooks installed");
+        hlog_info!(target: "training-tracker", "command_hooks: all five hooks installed");
         true
     } else {
-        hlog_warn!(target: "training-tracker", "command_hooks: partial install mask={ok:#06b}");
+        hlog_warn!(target: "training-tracker", "command_hooks: partial install mask={ok:#07b}");
         // Best-effort uninstall of whatever landed.
         uninstall();
         false
@@ -251,11 +288,15 @@ pub fn uninstall() {
     if mask & 8 != 0 {
         sdk.unhook(SetupCommandSelectStartStepTurn as *mut c_void);
     }
+    if mask & 16 != 0 {
+        sdk.unhook(OnCompletePlayInCommandView as *mut c_void);
+    }
     // SAFETY: hooks no longer fire once unhooked.
     unsafe {
         ORIG_SEND_COMMAND_ASYNC = std::ptr::null_mut();
         ORIG_COMMON_SEND_COMMAND_ASYNC = std::ptr::null_mut();
         ORIG_SETUP_COMMAND_SELECT_START = std::ptr::null_mut();
         ORIG_SETUP_COMMAND_SELECT_START_STEP_TURN = std::ptr::null_mut();
+        ORIG_ON_COMPLETE_PLAY_IN_COMMAND_VIEW = std::ptr::null_mut();
     }
 }

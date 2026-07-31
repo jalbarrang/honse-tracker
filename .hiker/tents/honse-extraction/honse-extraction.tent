@@ -17,15 +17,14 @@ law assigned(a) {
   a.provider <= 3
 }
 
-// ── 2. Crash-safety read gate ──
-// IL2CPP reads permitted only when BOTH independent gates are open:
-// view-transition cooldown AND command-submit suspension.
-sort ReadState { view_cooldown_active: Int, command_suspend_depth: Int, permitted: Int }
+// ── 2. Crash-safety lifecycle state ──
+// IL2CPP reads are permitted in exactly one state. The Rust enum uses
+// CommandSelectActive = 2; every other lifecycle value must fail closed.
+sort ReadState { lifecycle_state: Int, permitted: Int }
 
 relation read_gate(s: ReadState)
 law read_gate(s) {
-  s.permitted == 1 => s.view_cooldown_active == 0
-  s.permitted == 1 => s.command_suspend_depth == 0
+  s.permitted == 1 => s.lifecycle_state == 2
 }
 
 // ── 3. Layering / lockstep (structural; enforced via verify facts) ──

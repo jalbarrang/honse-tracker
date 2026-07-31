@@ -56,7 +56,10 @@ mod command_hooks;
 mod entry;
 pub mod read_gate;
 
-pub use read_gate::{read_gate, ReadState};
+pub use read_gate::{
+    classify_view, read_gate, read_state, reads_permitted, transition, ApplyEvent, CareerEvent, CareerState, ReadState,
+    ViewKind,
+};
 
 /// Hiker `Assignment` sort (compat method → provider). Used by generated property tests.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -93,17 +96,17 @@ mod memory_reader;
 mod rank_table;
 mod telemetry;
 
-/// Suspend the memory reader while a career command (training / rest / infirmary /
-/// outing) plays out. Crate-visible entry point for the `SingleModeMainViewController`
-/// command-submit IL2CPP hooks. See `career_poll::enter_command`.
+/// Mark a career command in flight before the original submit method runs.
 pub(crate) fn suspend_reads_for_command() {
     career_poll::enter_command();
 }
 
-/// The command-select screen has been rebuilt (original ran): reopen the read
-/// gate and hold a settled-turn capture request. Crate-visible entry point for
-/// the `SingleModeMainViewController` command-select IL2CPP hooks. See
-/// `career_poll::command_select_settled`.
+/// Mark command select actionable after the original setup method returned.
 pub(crate) fn resume_reads_on_command_select() {
     career_poll::command_select_settled();
+}
+
+/// Mark the initial/resumed command view actionable after play-in completed.
+pub(crate) fn reads_on_command_view_play_in_completed() {
+    career_poll::command_view_play_in_completed();
 }

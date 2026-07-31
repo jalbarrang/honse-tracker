@@ -112,7 +112,7 @@ fn plugin_init() -> bool {
 /// The view hook is installed by `honse_services::init`'s own callback.
 unsafe extern "C" fn on_game_initialized(_userdata: *mut c_void) {
     if command_hooks::install() {
-        hlog_info!(target: "training-tracker", "Command-suspend hooks installed");
+        hlog_info!(target: "training-tracker", "Career lifecycle hooks installed");
     }
     if apply_hooks::install() {
         hlog_info!(target: "training-tracker", "Apply response hooks installed");

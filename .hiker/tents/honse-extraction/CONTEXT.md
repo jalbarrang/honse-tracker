@@ -12,14 +12,11 @@ Every method of the fork's in-core `training_tracker/compat.rs` `Sdk` surface la
 
 This prevents the plan-drift failure mode where a method is claimed by both crates or by neither. The annotated method list in `crates/edge-sdk/src/sdk.rs` (t-003) is the source of truth for assignments; plan 3 materializes it as `facts.json` for hiker `unique_provider` / `assigned`.
 
-### Crash-safety read gate
+### Crash-safety career lifecycle
 
-IL2CPP reads are permitted only when **both** independent gates are open:
+IL2CPP reads are permitted in exactly one event-driven state: `CommandSelectActive` (integer value 2 in the Hiker sort). Command submission, Apply responses, view transitions, races, concerts, career loading, and idle/outside-career states all fail closed.
 
-1. **View-transition cooldown** — `SceneManager.ChangeView` sets a cooldown so reads do not race a tearing-down view hierarchy.
-2. **Command-submit suspension** — `SingleModeMainViewController` command submission increments a suspend depth so reads do not race command-driven mutations.
-
-Collapsing these into one gate is the guarded-against shortcut: a use-after-free crash results if either mechanism is dropped. The real decision point is `src/read_gate.rs::reads_permitted`, which requires both `view_cooldown_active == 0` and `command_suspend_depth == 0` before `permitted == 1`. Every consumer routes through it: the event-driven capture scheduler in `src/career_poll.rs` checks it both when pumping a held capture request (`take_schedule_slot`) and again inside the main-thread capture callback, and the settle diagnostics check it before any turn read. The law holds regardless of what *drives* captures (the interval poll was replaced by passive settle edges; the gate semantics did not change).
+The real decision point is `src/read_gate.rs::reads_permitted(CareerState)`. `src/read_gate.rs::transition` is the pure reducer; runtime hook events update one atomic lifecycle value in `src/career_poll.rs`. Only post-original `SetupCommandSelectStart*` and `OnCompletePlayInCommandView` events may enter the permitted state. Apply hooks report fresh data but cannot permit reads, and view ID 1101 is never itself a settle proof. The capture scheduler checks the same state both when claiming a schedule slot and immediately before any IL2CPP read.
 
 ### Layering / lockstep
 
