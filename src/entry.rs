@@ -62,11 +62,9 @@ fn plugin_init() -> bool {
         hachimi_telemetry::InitOutcome::MissingToken(tried) => {
             hlog_error!(
                 target: "training-tracker",
-                "Telemetry stays OFF: no auth token readable at {tried} \u{2014} run honse-dashboard once (it generates install.json), then restart the game"
+                "Telemetry stays OFF: no auth token readable at {tried}"
             );
-            sdk.show_notification(
-                "Training Tracker: telemetry off \u{2014} start honse-dashboard once, then restart the game",
-            );
+            sdk.show_notification("Training Tracker: telemetry off \u{2014} auth token unavailable");
         }
     }
 

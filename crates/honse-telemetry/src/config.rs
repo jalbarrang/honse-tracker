@@ -4,10 +4,8 @@
 //! Telemetry defaults to **disabled** so normal users are never affected. Every
 //! field is `#[serde(default)]` for forward/backward compatibility.
 //!
-//! Authentication: the sidecar owns the per-install bearer token. It generates
-//! it once and persists it as `auth_token` inside `install.json` under its data
-//! root (`%LOCALAPPDATA%\dreki-gg\honse-tracker\data`). This crate only *reads*
-//! that file — it never generates, rewrites, or logs the token.
+//! Authentication is optional. This crate reads `auth_token` from the
+//! configured `install.json`; it never generates, rewrites, or logs the token.
 
 use std::path::{Path, PathBuf};
 
@@ -31,11 +29,11 @@ impl Default for Channels {
 }
 
 /// Authentication settings. The token itself never lives in `telemetry.json`;
-/// only the location of the sidecar-owned `install.json` can be overridden.
+/// only the location of its `install.json` can be overridden.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Auth {
-    /// Path to the sidecar's `install.json` (the file holding `auth_token`).
-    /// `None` resolves the default sidecar data root under `%LOCALAPPDATA%`.
+    /// Path to the `install.json` file holding `auth_token`.
+    /// `None` resolves the default data root under `%LOCALAPPDATA%`.
     #[serde(default)]
     pub token_file: Option<PathBuf>,
 }
@@ -45,8 +43,7 @@ pub struct Config {
     /// Master switch. Default `false`.
     #[serde(default)]
     pub enabled: bool,
-    /// Sidecar ingest URL. Only `http://host:port/path` is supported (no TLS;
-    /// the sidecar binds loopback only).
+    /// Ingest URL. Only `http://host:port/path` is supported.
     #[serde(default = "default_endpoint")]
     pub endpoint: String,
     #[serde(default)]
@@ -86,17 +83,16 @@ impl Config {
     }
 
     /// The `install.json` this config reads the bearer token from: the explicit
-    /// `auth.token_file` override, else the default sidecar install file.
+    /// `auth.token_file` override, else the default install file.
     #[must_use]
     pub fn token_file(&self) -> Option<PathBuf> {
         self.auth.token_file.clone().or_else(default_token_file)
     }
 }
 
-/// Default sidecar install file:
-/// `%LOCALAPPDATA%\dreki-gg\honse-tracker\data\install.json` (the same path the
-/// dashboard's `platform::load_or_create_token` writes). `None` only when
-/// `LOCALAPPDATA` is unset.
+/// Default install file:
+/// `%LOCALAPPDATA%\dreki-gg\honse-tracker\data\install.json`. Returns `None`
+/// when `LOCALAPPDATA` is unset.
 #[must_use]
 pub fn default_token_file() -> Option<PathBuf> {
     let local = std::env::var_os("LOCALAPPDATA").filter(|v| !v.is_empty())?;
@@ -109,8 +105,8 @@ pub fn default_token_file() -> Option<PathBuf> {
     )
 }
 
-/// Read the per-install bearer token (`auth_token`) from a sidecar
-/// `install.json`. Returns `None` for a missing/unreadable file, malformed
+/// Read the per-install bearer token (`auth_token`) from `install.json`.
+/// Returns `None` for a missing/unreadable file, malformed
 /// JSON, or an absent/empty token. The token is never logged.
 #[must_use]
 pub fn load_token(path: &Path) -> Option<BearerToken> {

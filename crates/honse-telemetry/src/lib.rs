@@ -5,13 +5,9 @@
 //! [`shutdown`] from their `SHUTDOWN` handler. Everything is a cheap no-op when
 //! telemetry is disabled (the default).
 //!
-//! Transport is an authenticated HTTP POST of the protobuf-encoded
-//! [`pb::Envelope`] to the local `honse-dashboard` sidecar
-//! (`http://127.0.0.1:8716/v1/turns` by default) carrying the per-install
-//! bearer token that the sidecar generated into its `install.json`. When the
-//! config enables telemetry but the token cannot be read, telemetry stays
-//! **disabled** and [`init`] reports why — it never posts unauthenticated
-//! requests that the sidecar would reject forever.
+//! Transport sends the protobuf-encoded [`pb::Envelope`] to the configured
+//! local HTTP endpoint. Requests include a bearer token when the configured
+//! token file contains one.
 
 mod config;
 mod publisher;
@@ -78,9 +74,7 @@ pub fn init(cfg_path: Option<PathBuf>) -> InitOutcome {
     };
     // Auth is optional: if the token file is missing or unreadable, start
     // without a bearer token. The local Node server doesn't require auth.
-    let token = cfg
-        .token_file()
-        .and_then(|f| config::load_token(&f));
+    let token = cfg.token_file().and_then(|f| config::load_token(&f));
     publisher::start(endpoint, token);
     ENABLED.store(true, Ordering::Release);
     InitOutcome::Enabled {

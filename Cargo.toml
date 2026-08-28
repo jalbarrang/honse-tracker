@@ -1,7 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-    "apps/honse-dashboard",
     "crates/edge-sdk",
     "crates/honse-services",
     "crates/honse-telemetry",
