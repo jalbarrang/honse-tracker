@@ -27,6 +27,8 @@ use honse_services::overlay::{self, Anchor};
 use honse_services::PluginConfig;
 use serde::{Deserialize, Serialize};
 
+use super::egui;
+
 /// Pixels one arrow press moves a panel.
 const NUDGE: f32 = 4.0;
 
@@ -61,7 +63,7 @@ pub fn load_and_apply() {
             continue;
         };
         // `set_placement` is a no-op for an id that was never registered.
-        overlay::set_placement(id, anchor, egui_vec(placement.x, placement.y));
+        overlay::set_placement(id, anchor, egui::vec2(placement.x, placement.y));
         applied += 1;
     }
     if applied > 0 {
@@ -70,23 +72,15 @@ pub fn load_and_apply() {
     *LAYOUT.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(config);
 }
 
-fn egui_vec(x: f32, y: f32) -> super::egui::Vec2 {
-    super::egui::vec2(x, y)
-}
-
 /// Whether layout mode is on.
 #[must_use]
 pub fn is_active() -> bool {
     overlay::layout_selection().is_some()
 }
 
-fn panel_ids() -> Vec<&'static str> {
-    overlay::panel_ids()
-}
-
 /// The panel currently being edited.
 fn selected_id() -> Option<&'static str> {
-    let ids = panel_ids();
+    let ids = overlay::panel_ids();
     if ids.is_empty() {
         return None;
     }
@@ -114,7 +108,7 @@ pub fn select_next() {
     if !is_active() {
         return;
     }
-    let ids = panel_ids();
+    let ids = overlay::panel_ids();
     if ids.is_empty() {
         return;
     }
@@ -143,7 +137,7 @@ pub fn nudge(dx: f32, dy: f32) {
         return;
     };
     if let Some((anchor, offset)) = overlay::placement(id) {
-        let moved = egui_vec(offset.x + dx * NUDGE, offset.y + dy * NUDGE);
+        let moved = egui::vec2(offset.x + dx * NUDGE, offset.y + dy * NUDGE);
         overlay::set_placement(id, anchor, moved);
         // Read back: `set_placement` clamps, so this stores what actually took.
         if let Some((_, applied)) = overlay::placement(id) {
@@ -169,7 +163,7 @@ fn active_target() -> Option<&'static str> {
 }
 
 /// Persist one panel's position.
-fn save(id: &str, anchor: Anchor, offset: super::egui::Vec2) {
+fn save(id: &str, anchor: Anchor, offset: egui::Vec2) {
     let mut guard = LAYOUT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let Some(config) = guard.as_mut() else {
         return;

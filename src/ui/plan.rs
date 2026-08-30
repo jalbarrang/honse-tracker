@@ -12,12 +12,12 @@
 //! makes it a *planner* — you can commit to a window-4 song in Junior year and
 //! watch the shortfall from then on.
 //!
-//! # Scope
+//! # Three states, not two
 //!
-//! Planned is a wish list, not a ledger. Nothing here notices that you already
-//! own a song: `TotalMusicIdArray` gives owned music ids, but pairing those to
-//! catalogue entries needs a name↔id map we can only learn as songs appear on
-//! the tree. Until that exists, a bought song stays "planned".
+//! Owned is read, not chosen: `TotalMusicIdArray` gives the songs this run has
+//! learned. So a row is bought, planned, or skipped, and only the last two are
+//! yours to change — which is why totals count what you still need rather than
+//! what the plan costs.
 
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 
@@ -75,6 +75,12 @@ fn songs() -> Vec<&'static Song> {
     song_catalog::songs_in_window(active_window()).collect()
 }
 
+/// The cursor, clamped into `len`. The stored index can outlive the list it
+/// indexes — paging to a window with fewer songs leaves it past the end.
+fn cursor_in(len: usize) -> usize {
+    CURSOR.load(Ordering::Acquire).min(len.saturating_sub(1))
+}
+
 /// Move the cursor, wrapping at both ends so you cannot get stuck.
 pub fn move_cursor(delta: i32) {
     if !is_open() {
@@ -84,8 +90,7 @@ pub fn move_cursor(delta: i32) {
     if len == 0 {
         return;
     }
-    let current = CURSOR.load(Ordering::Acquire).min(len - 1) as i32;
-    let next = (current + delta).rem_euclid(len as i32);
+    let next = (cursor_in(len) as i32 + delta).rem_euclid(len as i32);
     CURSOR.store(next as usize, Ordering::Release);
 }
 
@@ -106,7 +111,7 @@ pub fn toggle_selected() {
         return;
     }
     let songs = songs();
-    let Some(song) = songs.get(CURSOR.load(Ordering::Acquire).min(songs.len().saturating_sub(1))) else {
+    let Some(song) = songs.get(cursor_in(songs.len())) else {
         return;
     };
     song_plan::toggle(song.id);
@@ -138,7 +143,7 @@ pub fn draw(ui: &mut egui::Ui) {
 fn body(ui: &mut egui::Ui) {
     let window = active_window();
     let songs = songs();
-    let cursor = CURSOR.load(Ordering::Acquire).min(songs.len().saturating_sub(1));
+    let cursor = cursor_in(songs.len());
     let cap = song_catalog::CONCERT_CAPS[usize::from(window - 1)];
 
     ui.horizontal(|ui| {

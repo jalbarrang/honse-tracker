@@ -129,11 +129,6 @@ impl Owned {
     pub fn has(&self, song_id: &str) -> bool {
         self.ids.contains(&song_id)
     }
-
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.ids.len()
-    }
 }
 
 /// The loaded plan. `None` until [`load`] runs, or if edge has no base dir —
@@ -183,11 +178,6 @@ fn edit(f: impl FnOnce(&mut SongPlanFile)) {
 #[must_use]
 pub fn is_planned(song_id: &str) -> bool {
     with_plan(|p| p.is_planned(song_id))
-}
-
-#[must_use]
-pub fn planned_cost(window: u8) -> TokenVector {
-    with_plan(|p| p.planned_cost(window))
 }
 
 #[must_use]
@@ -285,9 +275,9 @@ mod tests {
 
     #[test]
     fn unrecognised_song_names_are_dropped_not_guessed() {
-        let owned = Owned::from_names(["Here Comes Our Time", "Some Unreleased Song"]);
-        assert_eq!(owned.len(), 1);
-        assert!(owned.has("here-comes-our-time"));
+        let with_junk = Owned::from_names(["Here Comes Our Time", "Some Unreleased Song"]);
+        assert_eq!(with_junk, Owned::from_names(["Here Comes Our Time"]));
+        assert!(with_junk.has("here-comes-our-time"));
     }
 
     #[test]
