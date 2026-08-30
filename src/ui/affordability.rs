@@ -25,9 +25,6 @@ use honse_services::overlay::theme;
 use super::{egui, with_snapshot, Face};
 use crate::memory_reader::{GrandLivePerformance, GrandLiveSquare, PerformanceTokens, ScenarioState};
 
-/// Short token codes, in the same order as [`PerformanceTokens::labelled`].
-const SHORT: [&str; 5] = ["Da", "Pa", "Vo", "Vi", "Co"];
-
 /// Squares listed before the panel gives up and says how many more there are.
 /// The tree can offer more than fits a readable panel.
 const MAX_ROWS: usize = 8;
@@ -130,18 +127,7 @@ fn row(ui: &mut egui::Ui, square: &GrandLiveSquare, tokens: &PerformanceTokens) 
 
 /// Non-zero tokens as `Da32 Vi12`. Empty costs render as an em dash.
 fn cost_text(tokens: &PerformanceTokens) -> String {
-    let parts: Vec<String> = tokens
-        .labelled()
-        .iter()
-        .enumerate()
-        .filter(|(_, (_, v))| *v > 0)
-        .map(|(i, (_, v))| format!("{}{v}", SHORT[i]))
-        .collect();
-    if parts.is_empty() {
-        "\u{2014}".to_string()
-    } else {
-        parts.join(" ")
-    }
+    super::token_vector_text(tokens.to_vector())
 }
 
 #[cfg(test)]

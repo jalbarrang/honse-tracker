@@ -23,6 +23,8 @@ use crate::read_gate::CareerState;
 
 pub mod affordability;
 pub mod debug;
+pub mod keys;
+pub mod plan;
 pub mod performance;
 pub mod training;
 
@@ -195,8 +197,53 @@ pub fn install() {
     );
     // Registering is not enough: the view poll only runs while something wants
     // it, and the panel is on by default.
+    // Centre-left: the planner is a modal thing you open, read and close, so it
+    // gets the middle of the screen rather than sharing a corner.
+    overlay::register_panel(
+        "plan",
+        Anchor::TopLeft,
+        egui::vec2(overlay::theme::GAP, 300.0),
+        overlay::theme::WIDTH_WIDE,
+        plan::draw,
+    );
     debug::set_enabled(debug::is_enabled());
+    crate::song_plan::load();
+    keys::install();
     hlog_info!(target: "training-tracker", "Overlay: training + performance + lessons + debug panels registered");
+}
+
+/// Songs the current run has already learned, resolved to catalogue ids.
+///
+/// Empty outside a Grand Live run, and empty when nothing has been bought yet.
+#[must_use]
+pub fn owned_songs() -> crate::song_plan::Owned {
+    with_snapshot(|snapshot| match &snapshot.scenario_state {
+        Some(crate::memory_reader::ScenarioState::GrandLive(perf)) => {
+            crate::song_plan::Owned::from_names(perf.owned.iter().filter_map(|s| s.name.as_deref()))
+        }
+        _ => crate::song_plan::Owned::default(),
+    })
+    .unwrap_or_default()
+}
+
+/// Short performance-token codes, in `PerformanceTokens::labelled` order.
+/// Shared so the panels that print token vectors cannot disagree about them.
+pub const TOKEN_CODES: [&str; 5] = ["Da", "Pa", "Vo", "Vi", "Co"];
+
+/// Non-zero entries of a token vector as `Da32 Vi12`; an em dash when empty.
+#[must_use]
+pub fn token_vector_text(tokens: [i32; 5]) -> String {
+    let parts: Vec<String> = tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, &v)| v > 0)
+        .map(|(i, v)| format!("{}{v}", TOKEN_CODES[i]))
+        .collect();
+    if parts.is_empty() {
+        "\u{2014}".to_string()
+    } else {
+        parts.join(" ")
+    }
 }
 
 /// Re-export so panel modules and the plugin agree on one egui.

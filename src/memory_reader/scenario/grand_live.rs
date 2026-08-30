@@ -17,7 +17,7 @@ use crate::compat::Sdk;
 
 use super::super::il2cpp::{
     call_bool, call_bool_with_i32, call_i32, call_obj, call_obj_with_i32, read_i32_field, read_il2cpp_string,
-    read_obj_array, read_obscured_int_field, resolve_obj_method,
+    read_obj_array, read_obscured_int_array, read_obscured_int_field, resolve_obj_method,
 };
 
 /// One value per performance token.
@@ -32,6 +32,13 @@ pub struct PerformanceTokens {
 }
 
 impl PerformanceTokens {
+    /// Token values in the game's display order, for arithmetic against the
+    /// song catalogue's `TokenVector` (same order).
+    #[must_use]
+    pub const fn to_vector(self) -> [i32; 5] {
+        [self.dance, self.passion, self.vocal, self.visual, self.mental]
+    }
+
     /// Token values in the game's display order, paired with their EN labels.
     #[must_use]
     pub const fn labelled(&self) -> [(&'static str, i32); 5] {
@@ -63,6 +70,16 @@ pub struct GrandLiveSquare {
     pub affordable: bool,
 }
 
+/// A song already learned this run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OwnedSong {
+    /// `LiveId` — the music id, as stored in `TotalMusicIdArray`.
+    pub live_id: i32,
+    /// Localized name from `MasterSingleModeLiveSongList.GetWithLiveId`, or
+    /// `None` if the master row did not resolve.
+    pub name: Option<String>,
+}
+
 /// Live performance points for the Grand Live scenario.
 #[derive(Debug, Clone, Default)]
 pub struct GrandLivePerformance {
@@ -76,6 +93,9 @@ pub struct GrandLivePerformance {
     /// Squares on offer this turn. Empty when the tree is unavailable or the
     /// master data did not resolve.
     pub squares: Vec<GrandLiveSquare>,
+    /// Songs already learned, from `TotalMusicIdArray`. This is what turns the
+    /// planner from a wish list into a ledger.
+    pub owned: Vec<OwnedSong>,
 }
 
 impl PerformanceTokens {
@@ -165,8 +185,14 @@ pub(in crate::memory_reader) unsafe fn read_performance(wsmd: *mut c_void) -> Op
         });
 
         let squares = read_squares(live);
+        let owned = read_owned(live);
 
-        let result = GrandLivePerformance { tokens, caps, squares };
+        let result = GrandLivePerformance {
+            tokens,
+            caps,
+            squares,
+            owned,
+        };
         log_on_change(&result);
         Some(result)
     }
@@ -236,6 +262,60 @@ unsafe fn read_squares(live: *mut c_void) -> Vec<GrandLiveSquare> {
     }
 }
 
+/// Read the songs already learned this run.
+///
+/// `TotalMusicIdArray` holds `LiveId`s, which
+/// `MasterSingleModeLiveSongList.GetWithLiveId` turns into names directly — so
+/// a song can be identified without ever having been seen on the tree, which
+/// matters because buying one removes it from the offer.
+///
+/// # Safety
+/// `live` must be a valid non-null `WorkSingleModeScenarioLive`.
+unsafe fn read_owned(live: *mut c_void) -> Vec<OwnedSong> {
+    unsafe {
+        let Some(m_total) = resolve_obj_method(live, "get_TotalMusicIdArray", 0) else {
+            return Vec::new();
+        };
+        let array = call_obj(live, m_total);
+        if array.is_null() {
+            return Vec::new();
+        }
+        read_obscured_int_array(array)
+            .into_iter()
+            .filter(|&id| id > 0)
+            .map(|live_id| OwnedSong {
+                live_id,
+                name: music_name(live_id),
+            })
+            .collect()
+    }
+}
+
+/// Resolve a `LiveId` to its song name via `MasterSingleModeLiveSongList`.
+fn music_name(live_id: i32) -> Option<String> {
+    let mdm = super::master_shop::master_data_manager()?;
+    // SAFETY: `mdm` is the live MasterDataManager singleton; each call is a
+    // resolved getter on a pointer checked non-null before use.
+    unsafe {
+        let m_table = resolve_obj_method(mdm, "get_masterSingleModeLiveSongList", 0)?;
+        let table = call_obj(mdm, m_table);
+        if table.is_null() {
+            return None;
+        }
+        let m_get = resolve_obj_method(table, "GetWithLiveId", 1)?;
+        let row = call_obj_with_i32(table, m_get, live_id);
+        if row.is_null() {
+            return None;
+        }
+        let m_name = resolve_obj_method(row, "get_MusicName", 0)?;
+        let name = call_obj(row, m_name);
+        if name.is_null() {
+            return None;
+        }
+        read_il2cpp_string(name).filter(|s| !s.is_empty())
+    }
+}
+
 /// Look up a square's name and token cost in `MasterSingleModeLiveSquare`.
 ///
 /// The cost is stored as five `(PerfType, PerfValue)` pairs rather than one
@@ -282,8 +362,8 @@ fn master_square(square_id: i32) -> (Option<String>, PerformanceTokens) {
 /// it moves on its own schedule, and a jump in it explains a sudden change in
 /// what the panel says without any token having moved.
 fn log_on_change(p: &GrandLivePerformance) {
-    static LAST: Mutex<Option<(PerformanceTokens, PerformanceTokens)>> = Mutex::new(None);
-    let cur = (p.tokens, p.caps);
+    static LAST: Mutex<Option<(PerformanceTokens, PerformanceTokens, usize)>> = Mutex::new(None);
+    let cur = (p.tokens, p.caps, p.owned.len());
     if let Ok(mut guard) = LAST.lock() {
         if guard.as_ref() == Some(&cur) {
             return;
@@ -302,6 +382,15 @@ fn log_on_change(p: &GrandLivePerformance) {
         p.squares.len(),
         p.squares.iter().filter(|s| s.affordable).count()
     );
+    // Named individually: matching these to the catalogue is by name, so an
+    // unmatched song shows up here as the thing to compare against.
+    for song in &p.owned {
+        hlog_info!(
+            "Grand Live owned song: live_id={} name={:?}",
+            song.live_id,
+            song.name.as_deref().unwrap_or("<unresolved>")
+        );
+    }
 }
 
 #[cfg(test)]

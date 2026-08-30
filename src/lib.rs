@@ -94,6 +94,8 @@ mod gametora_data;
 mod hooks;
 mod memory_reader;
 mod rank_table;
+mod song_catalog;
+mod song_plan;
 mod telemetry;
 mod ui;
 

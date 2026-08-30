@@ -26,6 +26,20 @@ pub const MOD_SHIFT: u8 = 1 << 1;
 /// Modifier bit: Alt held.
 pub const MOD_ALT: u8 = 1 << 2;
 
+/// The leader every overlay binding is built on: **Ctrl+Shift**.
+///
+/// The game has text fields and its own shortcuts, so an overlay chord must
+/// never be something a player could type. Two constraints pick this:
+///
+/// - a bare key, or Shift alone, types characters — excluded by
+///   [`register_hotkey`]'s modifier requirement;
+/// - **Ctrl+Alt is AltGr on Windows.** On non-US layouts AltGr is how you type
+///   everyday characters — on a Spanish keyboard `AltGr+2` is `@` — so a
+///   Ctrl+Alt chord fires while the player types perfectly ordinary text.
+///
+/// Ctrl+Shift produces no characters on any layout, which leaves it free.
+pub const MOD_OVERLAY: u8 = MOD_CTRL | MOD_SHIFT;
+
 /// A key combination: modifier bits + primary virtual-key code.
 /// `vk == 0` means "unbound" and never matches.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -74,10 +88,24 @@ struct Registration {
 static HOTKEYS: Lazy<Mutex<Vec<Registration>>> = Lazy::new(|| Mutex::new(Vec::new()));
 static POLL_INSTALLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// Whether a modifier set is safe to bind against a game with text fields.
+///
+/// Requires Ctrl or Alt. A bare key, or Shift alone, is a character the player
+/// could be typing — `Shift+A` is just `A`. This is a floor, not a
+/// recommendation: prefer [`MOD_OVERLAY`], which also dodges AltGr.
+#[must_use]
+pub const fn mods_are_typable(mods: u8) -> bool {
+    mods & (MOD_CTRL | MOD_ALT) == 0
+}
+
 /// Register a hotkey matching compat `Sdk::register_hotkey`.
 ///
 /// Re-registering the same `id` replaces the old entry (fork semantics).
-/// Returns a non-zero handle, or 0 if `id` is empty.
+/// Returns a non-zero handle, or 0 if `id` is empty or the chord is one the
+/// player could type — see [`mods_are_typable`]. Refusing is deliberate: a
+/// binding that steals keystrokes from an in-game text field is worse than no
+/// binding, and silently registering it would surface as the game "eating"
+/// characters with no obvious cause.
 pub fn register_hotkey(
     id: &str,
     label: &str,
@@ -87,6 +115,13 @@ pub fn register_hotkey(
     userdata: *mut c_void,
 ) -> u64 {
     if id.is_empty() {
+        return 0;
+    }
+    if default_vk != 0 && mods_are_typable(default_mods) {
+        log::error!(
+            "honse-services: refusing hotkey '{id}' — mods {default_mods:#04b} need Ctrl or Alt, \
+             or the player cannot type"
+        );
         return 0;
     }
     install_poll_job();

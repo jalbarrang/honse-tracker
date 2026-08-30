@@ -21,7 +21,7 @@ pub use event::{EventFn, ViewChangeEvent, FRAME, SHUTDOWN, VIEW_CHANGE};
 pub use events::{dispatch, dispatch_shutdown, dispatch_view_change, off, on};
 pub use frame::{install_frame_source, register_frame_job, FrameJob};
 pub use hosted_data::{gametora_data_dir, host_data_path, sync_all};
-pub use hotkeys::{register_hotkey, Chord, MOD_ALT, MOD_CTRL, MOD_SHIFT};
+pub use hotkeys::{register_hotkey, Chord, MOD_ALT, MOD_CTRL, MOD_OVERLAY, MOD_SHIFT};
 pub use init::{init, is_game_ready, register_on_game_ready, GameReadyCallback, InitOptions};
 pub use scene_views::view_name;
 pub use view_hook::{
