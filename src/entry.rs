@@ -71,6 +71,11 @@ fn plugin_init() -> bool {
     // (1) Services init: frame source and the game-ready bootstrap.
     honse_services::init(honse_services::InitOptions);
 
+    // Overlay panels. Registration only — the first paint happens on the
+    // first present, and each panel decides for itself whether it has
+    // anything true to draw.
+    crate::ui::install();
+
     // Event subscriptions (FRAME / VIEW_CHANGE / SHUTDOWN).
     hooks::subscribe_events();
 
@@ -98,6 +103,13 @@ fn plugin_init() -> bool {
         std::thread::spawn(|| {
             class_dump::dump_all_classes();
         });
+    });
+
+    // Toggle for the screen/debug readout. `register_menu_item` is label +
+    // callback only, so it carries no egui types across the boundary and none of
+    // the ABI-lockstep rules apply.
+    edge_sdk::gui::register_menu_item("Toggle debug overlay", || {
+        crate::ui::debug::toggle();
     });
 
     hlog_info!(target: "training-tracker", "Training Tracker ready");

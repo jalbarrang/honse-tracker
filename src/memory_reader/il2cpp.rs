@@ -36,6 +36,15 @@ pub(super) unsafe fn call_bool(this: *mut c_void, mi: *const c_void) -> bool {
     fp(this, mi) != 0
 }
 
+/// Call an instance method that takes one `i32` arg and returns `bool`.
+/// Used for `WorkSingleModeScenarioLive.CanGetTreeSquare(squareId)`.
+#[inline]
+pub(super) unsafe fn call_bool_with_i32(this: *mut c_void, mi: *const c_void, arg: i32) -> bool {
+    // SAFETY: Transmuting IL2CPP MethodInfo pointer to callable function pointer.
+    let fp: extern "C" fn(*mut c_void, i32, *const c_void) -> u8 = unsafe { std::mem::transmute(method_ptr(mi)) };
+    fp(this, arg, mi) != 0
+}
+
 /// Call an instance method that takes one `i32` arg and returns `i32`.
 /// IL2CPP calling convention: `fn(this, arg1, method_info) -> i32`.
 #[inline]

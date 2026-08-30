@@ -9,8 +9,8 @@ use hachimi_telemetry::pb;
 
 use crate::evaluation::Aptitudes;
 use crate::memory_reader::{
-    AcquiredSkillInfo, CareerSnapshot, EvaluationInfo, GrandLivePerformance, ReservedRace,
-    ScenarioState, TrackblazerShop,
+    AcquiredSkillInfo, CareerSnapshot, EvaluationInfo, GrandLivePerformance, ReservedRace, ScenarioState,
+    TrackblazerShop,
 };
 
 const SOURCE: &str = "training-tracker";
@@ -132,11 +132,14 @@ fn scenario_state_json(state: Option<&ScenarioState>) -> String {
 fn grand_live_json(perf: &GrandLivePerformance) -> serde_json::Value {
     serde_json::json!({
         "type": "grand_live",
-        "dance": perf.dance,
-        "passion": perf.passion,
-        "vocal": perf.vocal,
-        "visual": perf.visual,
-        "mental": perf.mental,
+        "dance": perf.tokens.dance,
+        "passion": perf.tokens.passion,
+        "vocal": perf.tokens.vocal,
+        "visual": perf.tokens.visual,
+        "mental": perf.tokens.mental,
+        // The ceiling rises during a run, so a token value is only meaningful
+        // alongside the cap it was measured against.
+        "cap": perf.caps.dance,
     })
 }
 

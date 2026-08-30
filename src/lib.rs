@@ -57,8 +57,8 @@ mod entry;
 pub mod read_gate;
 
 pub use read_gate::{
-    classify_view, read_gate, read_state, reads_permitted, transition, ApplyEvent, CareerEvent, CareerState, ReadState,
-    ViewKind,
+    career_state_for_view, read_gate, read_state, reads_permitted, transition, ApplyEvent, CareerEvent, CareerState,
+    ReadState, View,
 };
 
 /// Hiker `Assignment` sort (compat method → provider). Used by generated property tests.
@@ -95,6 +95,7 @@ mod hooks;
 mod memory_reader;
 mod rank_table;
 mod telemetry;
+mod ui;
 
 /// Mark a career command in flight before the original submit method runs.
 pub(crate) fn suspend_reads_for_command() {

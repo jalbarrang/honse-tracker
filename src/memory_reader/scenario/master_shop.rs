@@ -46,7 +46,7 @@ unsafe impl Sync for StringTable {}
 static MASTER_DATA_KLASS: OnceLock<usize> = OnceLock::new();
 
 /// Resolve the `MasterDataManager` singleton object, or `None`.
-fn master_data_manager() -> Option<*mut c_void> {
+pub(super) fn master_data_manager() -> Option<*mut c_void> {
     let sdk = Sdk::get();
     let klass = *MASTER_DATA_KLASS.get_or_init(|| {
         sdk.get_assembly_image("umamusume.dll")

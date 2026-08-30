@@ -26,6 +26,13 @@ use crate::events::dispatch_view_change;
 /// pay it while something actually needs the gate (tracker while tracking, the
 /// debug viewer always). See `set_view_poll_enabled`.
 static POLL_ENABLED: AtomicBool = AtomicBool::new(false);
+/// Independent request to keep polling regardless of [`set_view_poll_enabled`].
+///
+/// The tracker enables the poll while tracking and disables it in
+/// `stop_tracking`. A diagnostic viewer wants view ids *outside* a career too —
+/// that is where the unnamed ids live — so it holds the poll open here instead
+/// of racing the tracker over one flag.
+static POLL_HOLD: AtomicBool = AtomicBool::new(false);
 static POLL_READY: AtomicBool = AtomicBool::new(false);
 static SCENE_MANAGER_KLASS: AtomicUsize = AtomicUsize::new(0);
 static GET_CURRENT_VIEW_ID_ADDR: AtomicUsize = AtomicUsize::new(0);
@@ -77,7 +84,33 @@ pub fn install_view_poll() {
 /// change baseline so re-enabling never dispatches a stale diff.
 pub fn set_view_poll_enabled(enabled: bool) {
     POLL_ENABLED.store(enabled, Ordering::Release);
-    if !enabled {
+    reset_baseline_if_idle();
+}
+
+/// Hold the poll open independently of [`set_view_poll_enabled`], for
+/// diagnostics that want view ids outside a career.
+pub fn set_view_poll_hold(hold: bool) {
+    POLL_HOLD.store(hold, Ordering::Release);
+    reset_baseline_if_idle();
+}
+
+/// Whether anything currently wants the poll to run.
+#[must_use]
+pub fn view_poll_active() -> bool {
+    POLL_ENABLED.load(Ordering::Acquire) || POLL_HOLD.load(Ordering::Acquire)
+}
+
+/// Last view id the poll observed, or `-1` if it has not run since the last
+/// time every consumer let go of it.
+#[must_use]
+pub fn current_view_id() -> i32 {
+    LAST_VIEW_ID.load(Ordering::Acquire)
+}
+
+/// Drop the change baseline once nobody is polling, so re-enabling never
+/// dispatches a stale diff. Kept until the *last* consumer leaves.
+fn reset_baseline_if_idle() {
+    if !view_poll_active() {
         LAST_VIEW_ID.store(-1, Ordering::Release);
     }
 }
@@ -86,7 +119,7 @@ pub fn set_view_poll_enabled(enabled: bool) {
 /// present tick by the frame source. No-op unless polling is enabled AND
 /// [`install_view_poll`] has resolved the getter.
 pub fn poll_view_change() {
-    if !POLL_ENABLED.load(Ordering::Acquire) || !POLL_READY.load(Ordering::Acquire) {
+    if !view_poll_active() || !POLL_READY.load(Ordering::Acquire) {
         return;
     }
     let addr = GET_CURRENT_VIEW_ID_ADDR.load(Ordering::Acquire);

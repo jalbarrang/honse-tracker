@@ -58,8 +58,8 @@ fn advance_lifecycle(event: CareerEvent) -> (CareerState, CareerState) {
 /// phase but never opens reads; 1101 observed after a completion hook is treated
 /// as a delayed poll observation by the reducer.
 pub fn note_view_change(view_id: i32) {
-    let kind = crate::read_gate::classify_view(view_id);
-    advance_lifecycle(CareerEvent::ViewChanged(kind));
+    let view = crate::read_gate::View::from_id(view_id);
+    advance_lifecycle(CareerEvent::ViewChanged(view));
     request_capture();
 }
 
@@ -166,9 +166,77 @@ fn take_schedule_slot(now: u64) -> bool {
 /// unloading can start on another thread mid-read, so timer-based captures
 /// race use-after-free regardless of lifecycle checks at schedule time.
 pub fn tick() {
-    if take_schedule_slot(now_ms()) {
+    let now = now_ms();
+    if take_schedule_slot(now) {
         Sdk::get().schedule_on_main_thread(capture_settled_turn_cb);
     }
+    if take_scenario_refresh_slot(now) {
+        Sdk::get().schedule_on_main_thread(refresh_scenario_cb);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Narrow light refresh (shop screens only)
+// ---------------------------------------------------------------------------
+
+/// Minimum gap between scenario refreshes. The read is small, but it is still
+/// an IL2CPP walk; a few times a second is far more than a human buying things
+/// needs, and keeps the exposure low.
+const SCENARIO_REFRESH_INTERVAL_MS: u64 = 400;
+
+static SCENARIO_REFRESH_SCHEDULED: AtomicBool = AtomicBool::new(false);
+static SCENARIO_REFRESH_AT_MS: AtomicU64 = AtomicU64::new(0);
+
+/// Whether the current screen is one where a scenario refresh is worth its
+/// risk: a shop where the player spends scenario currency and expects the
+/// numbers to move.
+///
+/// Deliberately narrow. This is the **only** place reads happen outside
+/// `CommandSelectActive`, so it names exact screens rather than a category —
+/// a category would silently widen as screens are catalogued.
+fn scenario_refresh_screen() -> bool {
+    matches!(
+        crate::read_gate::View::from_id(honse_services::current_view_id()),
+        crate::read_gate::View::GrandConcertTechniquesShop
+    )
+}
+
+/// Claim the refresh slot if the screen wants one and the interval has passed.
+fn take_scenario_refresh_slot(now: u64) -> bool {
+    if SHUTTING_DOWN.load(AtomicOrdering::Acquire) {
+        return false;
+    }
+    if !scenario_refresh_screen() {
+        // Left the screen: the cached scenario state is no longer known fresh.
+        crate::ui::clear_refresh_live();
+        return false;
+    }
+    // A career must still be active. `CareerMenu` is the state a shop screen
+    // puts us in; anything else means we are mid-transition and should wait.
+    if current_lifecycle_state() != CareerState::CareerMenu {
+        return false;
+    }
+    let last = SCENARIO_REFRESH_AT_MS.load(AtomicOrdering::Relaxed);
+    if now.saturating_sub(last) < SCENARIO_REFRESH_INTERVAL_MS {
+        return false;
+    }
+    if SCENARIO_REFRESH_SCHEDULED.swap(true, AtomicOrdering::AcqRel) {
+        return false; // one in flight
+    }
+    SCENARIO_REFRESH_AT_MS.store(now, AtomicOrdering::Relaxed);
+    true
+}
+
+extern "C" fn refresh_scenario_cb() {
+    // Re-check on the main thread: the screen can change between scheduling
+    // and running, and this is the check that actually protects the read.
+    if scenario_refresh_screen() && !SHUTTING_DOWN.load(AtomicOrdering::Acquire) {
+        match memory_reader::read_light_refresh() {
+            Some(refresh) => crate::ui::patch_light(&refresh),
+            None => crate::ui::clear_refresh_live(),
+        }
+    }
+    SCENARIO_REFRESH_SCHEDULED.store(false, AtomicOrdering::Release);
 }
 
 // ---------------------------------------------------------------------------
@@ -324,6 +392,7 @@ fn career_inactive() {
     if was_active {
         hlog_info!(target: "training-tracker", "career ended \u{2014} capture epoch closed");
     }
+    crate::ui::clear();
     reset_career_state();
     disarm_view_poll();
 }
@@ -377,6 +446,11 @@ fn capture_settled_turn_inner() {
     if let Some(s) = snapshot.as_mut() {
         let stats = [s.speed, s.stamina, s.power, s.guts, s.wiz];
         s.evaluation_value = crate::evaluation::compute(stats, &s.aptitudes, s.star, &skills);
+    }
+    // Hand the settled turn to the overlay before anything can fail: a
+    // telemetry problem must never cost the player their HUD.
+    if let Some(s) = snapshot.as_ref() {
+        crate::ui::publish(s);
     }
     log_career_diagnostic(&evaluations, &support_ids, &fired_events);
 
@@ -708,10 +782,13 @@ mod tests {
         command_view_play_in_completed();
         CAPTURE_REQUESTED.store(false, AtomicOrdering::Release);
         // Subscribe the same handler the plugin uses, then dispatch VIEW_CHANGE
-        // on the services bus (same path as the current-view poll).
+        // on the services bus (same path as the current-view poll). 1621 is the
+        // Concert View — an actual cutscene. (1620 next door is the Techniques
+        // Shop, which is a menu; which id means what is `read_gate`'s test.)
         let _ = crate::hooks::subscribe_events();
-        honse_services::dispatch_view_change(1620);
+        honse_services::dispatch_view_change(1621);
         assert_eq!(current_lifecycle_state(), CareerState::CutsceneActive);
+        assert!(!crate::read_gate::reads_permitted(current_lifecycle_state()));
         assert!(
             CAPTURE_REQUESTED.load(AtomicOrdering::Acquire),
             "a view change holds a capture request for the next settled state"
