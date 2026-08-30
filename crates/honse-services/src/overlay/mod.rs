@@ -52,6 +52,34 @@ pub enum Anchor {
 }
 
 impl Anchor {
+    /// All four, in the order layout mode cycles them.
+    pub const ALL: [Self; 4] = [Self::TopLeft, Self::TopRight, Self::BottomRight, Self::BottomLeft];
+
+    /// Stable name for config files — an index would renumber if the enum grew.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::TopLeft => "top-left",
+            Self::TopRight => "top-right",
+            Self::BottomLeft => "bottom-left",
+            Self::BottomRight => "bottom-right",
+        }
+    }
+
+    /// Parse [`Anchor::name`]. Unknown names fail rather than defaulting, so a
+    /// typo in a config surfaces instead of silently moving a panel.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|a| a.name() == name)
+    }
+
+    /// The next corner, clockwise from top-left.
+    #[must_use]
+    pub fn next(self) -> Self {
+        let i = Self::ALL.iter().position(|&a| a == self).unwrap_or(0);
+        Self::ALL[(i + 1) % Self::ALL.len()]
+    }
+
     const fn align(self) -> egui::Align2 {
         match self {
             Self::TopLeft => egui::Align2::LEFT_TOP,
@@ -79,10 +107,60 @@ struct Panel {
     offset: egui::Vec2,
     width: f32,
     draw: DrawFn,
+    /// Where registration put it, kept so layout mode can undo a move.
+    home: (Anchor, egui::Vec2),
 }
 
 static PANELS: Lazy<Mutex<Vec<Panel>>> = Lazy::new(|| Mutex::new(Vec::new()));
 static ENABLED: AtomicBool = AtomicBool::new(true);
+
+/// The panel layout mode is editing, or `None` when it is off.
+///
+/// Lives here rather than in the plugin because [`draw_panels`] is what has to
+/// outline the panels — the state and the thing it changes are one step apart.
+static LAYOUT_SELECTION: Lazy<Mutex<Option<&'static str>>> = Lazy::new(|| Mutex::new(None));
+
+/// Enter layout mode on a panel, or leave it with `None`.
+pub fn set_layout_selection(id: Option<&'static str>) {
+    *LAYOUT_SELECTION.lock() = id;
+}
+
+/// The panel layout mode is editing.
+#[must_use]
+pub fn layout_selection() -> Option<&'static str> {
+    *LAYOUT_SELECTION.lock()
+}
+
+/// Registered panel ids, in registration order.
+#[must_use]
+pub fn panel_ids() -> Vec<&'static str> {
+    PANELS.lock().iter().map(|p| p.id).collect()
+}
+
+/// Where a panel currently sits.
+#[must_use]
+pub fn placement(id: &str) -> Option<(Anchor, egui::Vec2)> {
+    PANELS.lock().iter().find(|p| p.id == id).map(|p| (p.anchor, p.offset))
+}
+
+/// Move a panel. Offsets are insets from the anchored corner, so they are
+/// clamped non-negative — a negative inset would push a panel off screen with
+/// no way to see it and drag it back.
+pub fn set_placement(id: &str, anchor: Anchor, offset: egui::Vec2) {
+    if let Some(panel) = PANELS.lock().iter_mut().find(|p| p.id == id) {
+        panel.anchor = anchor;
+        panel.offset = egui::vec2(offset.x.max(0.0), offset.y.max(0.0));
+    }
+}
+
+/// Put a panel back where registration placed it.
+pub fn reset_placement(id: &str) {
+    if let Some(panel) = PANELS.lock().iter_mut().find(|p| p.id == id) {
+        let (anchor, offset) = panel.home;
+        panel.anchor = anchor;
+        panel.offset = offset;
+    }
+}
 
 /// Register a panel. It renders every frame the overlay is enabled and its own
 /// draw closure chooses to put something on screen — a panel with nothing to
@@ -100,6 +178,7 @@ pub fn register_panel(
         offset,
         width,
         draw: Box::new(draw),
+        home: (anchor, offset),
     });
 }
 
@@ -237,22 +316,56 @@ fn paint_frame(swapchain: &windows::Win32::Graphics::Dxgi::IDXGISwapChain) -> wi
 
 #[cfg(windows)]
 fn draw_panels(ctx: &egui::Context, screen: egui::Rect) {
+    let selected = layout_selection();
     let mut panels = PANELS.lock();
     for panel in panels.iter_mut() {
         let anchor = panel.anchor;
         let width = panel.width;
+        let id = panel.id;
         let draw = &mut panel.draw;
-        egui::Area::new(egui::Id::new(("honse-overlay", panel.id)))
+        let response = egui::Area::new(egui::Id::new(("honse-overlay", id)))
             .anchor(anchor.align(), anchor.signed(panel.offset))
             .interactable(false)
             .constrain_to(screen)
             .show(ctx, |ui| {
                 ui.set_width(width);
+                if selected.is_some() {
+                    // Layout mode shows every panel, including ones with
+                    // nothing to say — you cannot place what you cannot see.
+                    ui.set_min_height(theme::LAYOUT_GHOST_HEIGHT);
+                }
                 // No chrome here: the panel paints its own via `chrome`, so a
                 // panel that returns early leaves nothing at all on screen.
                 draw(ui);
             });
+
+        if let Some(selected) = selected {
+            outline(ctx, id, response.response.rect, selected == id);
+        }
     }
+}
+
+/// Layout-mode decoration: box the panel and name it.
+#[cfg(windows)]
+fn outline(ctx: &egui::Context, id: &str, rect: egui::Rect, selected: bool) {
+    let painter = ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Foreground,
+        egui::Id::new(("honse-overlay-layout", id)),
+    ));
+    let colour = if selected { theme::ACCENT_BRIGHT } else { theme::TEXT_FAINT };
+    painter.rect_stroke(
+        rect.expand(2.0),
+        egui::CornerRadius::same(theme::RADIUS_PANEL),
+        egui::Stroke::new(if selected { 2.0 } else { 1.0 }, colour),
+        egui::StrokeKind::Outside,
+    );
+    painter.text(
+        rect.left_top() + egui::vec2(2.0, -4.0),
+        egui::Align2::LEFT_BOTTOM,
+        id,
+        theme::text::meta(),
+        colour,
+    );
 }
 
 #[cfg(test)]

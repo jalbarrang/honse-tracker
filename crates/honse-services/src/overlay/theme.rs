@@ -101,6 +101,10 @@ pub const GAP: f32 = 24.0;
 /// Opacity multiplier applied to the whole panel while holding.
 pub const HOLDING_OPACITY: f32 = 0.62;
 
+/// Minimum height a panel is given in layout mode, so one with nothing to draw
+/// still has a box you can select and move.
+pub const LAYOUT_GHOST_HEIGHT: f32 = 26.0;
+
 // ── type ────────────────────────────────────────────────────────────────────
 
 /// The type ramp, as roles rather than sizes.

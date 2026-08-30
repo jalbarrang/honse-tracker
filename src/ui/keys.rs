@@ -26,7 +26,10 @@ mod vk {
     pub const UP: u16 = 0x26;
     pub const RIGHT: u16 = 0x27;
     pub const DOWN: u16 = 0x28;
+    pub const TAB: u16 = 0x09;
+    pub const A: u16 = 0x41;
     pub const D: u16 = 0x44;
+    pub const L: u16 = 0x4C;
     pub const O: u16 = 0x4F;
     pub const P: u16 = 0x50;
     pub const R: u16 = 0x52;
@@ -50,28 +53,69 @@ extern "C" fn toggle_overlay(_: *mut std::ffi::c_void) {
     hlog_info!(target: "training-tracker", "Overlay: {}", if on { "shown" } else { "hidden" });
 }
 
-// The planner's navigation keys no-op while it is closed, so Ctrl+Shift+Space
-// outside it does nothing rather than something surprising.
+// The arrows and R are shared: layout mode owns them while it is on, the
+// planner otherwise, and neither when both are closed. Sharing rather than
+// binding more chords keeps the whole scheme inside Ctrl+Shift, and only one
+// of the two can be open at a time by construction.
+extern "C" fn nav_up(_: *mut std::ffi::c_void) {
+    if super::layout::is_active() {
+        super::layout::nudge(0.0, -1.0);
+    } else {
+        super::plan::move_cursor(-1);
+    }
+}
+extern "C" fn nav_down(_: *mut std::ffi::c_void) {
+    if super::layout::is_active() {
+        super::layout::nudge(0.0, 1.0);
+    } else {
+        super::plan::move_cursor(1);
+    }
+}
+extern "C" fn nav_left(_: *mut std::ffi::c_void) {
+    if super::layout::is_active() {
+        super::layout::nudge(-1.0, 0.0);
+    } else {
+        super::plan::change_window(-1);
+    }
+}
+extern "C" fn nav_right(_: *mut std::ffi::c_void) {
+    if super::layout::is_active() {
+        super::layout::nudge(1.0, 0.0);
+    } else {
+        super::plan::change_window(1);
+    }
+}
+extern "C" fn reset(_: *mut std::ffi::c_void) {
+    if super::layout::is_active() {
+        super::layout::reset_selected();
+    } else {
+        super::plan::reset_window();
+    }
+}
+
 extern "C" fn plan_toggle_open(_: *mut std::ffi::c_void) {
+    // Layout mode and the planner both own the arrows; opening one closes the
+    // other rather than leaving the keys ambiguous.
+    if super::layout::is_active() {
+        super::layout::toggle();
+    }
     super::plan::toggle_open();
-}
-extern "C" fn plan_up(_: *mut std::ffi::c_void) {
-    super::plan::move_cursor(-1);
-}
-extern "C" fn plan_down(_: *mut std::ffi::c_void) {
-    super::plan::move_cursor(1);
-}
-extern "C" fn plan_prev_window(_: *mut std::ffi::c_void) {
-    super::plan::change_window(-1);
-}
-extern "C" fn plan_next_window(_: *mut std::ffi::c_void) {
-    super::plan::change_window(1);
 }
 extern "C" fn plan_toggle_song(_: *mut std::ffi::c_void) {
     super::plan::toggle_selected();
 }
-extern "C" fn plan_reset(_: *mut std::ffi::c_void) {
-    super::plan::reset_window();
+
+extern "C" fn layout_toggle(_: *mut std::ffi::c_void) {
+    if super::plan::is_open() {
+        super::plan::toggle_open();
+    }
+    super::layout::toggle();
+}
+extern "C" fn layout_next_panel(_: *mut std::ffi::c_void) {
+    super::layout::select_next();
+}
+extern "C" fn layout_cycle_anchor(_: *mut std::ffi::c_void) {
+    super::layout::cycle_anchor();
 }
 
 const BINDINGS: &[Binding] = &[
@@ -94,28 +138,48 @@ const BINDINGS: &[Binding] = &[
         action: plan_toggle_open,
     },
     Binding {
-        id: "plan.up",
-        label: "Song planner: previous song",
+        id: "layout.toggle",
+        label: "Enter/leave layout mode",
+        vk: vk::L,
+        action: layout_toggle,
+    },
+    Binding {
+        id: "layout.next_panel",
+        label: "Layout mode: select the next panel",
+        vk: vk::TAB,
+        action: layout_next_panel,
+    },
+    Binding {
+        id: "layout.cycle_anchor",
+        label: "Layout mode: send the panel to the next corner",
+        vk: vk::A,
+        action: layout_cycle_anchor,
+    },
+    // Shared between layout mode and the planner. Repeating, because nudging a
+    // panel one step per press would mean fifty presses to cross the screen.
+    Binding {
+        id: "nav.up",
+        label: "Previous song / nudge panel up",
         vk: vk::UP,
-        action: plan_up,
+        action: nav_up,
     },
     Binding {
-        id: "plan.down",
-        label: "Song planner: next song",
+        id: "nav.down",
+        label: "Next song / nudge panel down",
         vk: vk::DOWN,
-        action: plan_down,
+        action: nav_down,
     },
     Binding {
-        id: "plan.prev_window",
-        label: "Song planner: previous concert",
+        id: "nav.left",
+        label: "Previous concert / nudge panel left",
         vk: vk::LEFT,
-        action: plan_prev_window,
+        action: nav_left,
     },
     Binding {
-        id: "plan.next_window",
-        label: "Song planner: next concert",
+        id: "nav.right",
+        label: "Next concert / nudge panel right",
         vk: vk::RIGHT,
-        action: plan_next_window,
+        action: nav_right,
     },
     Binding {
         id: "plan.toggle_song",
@@ -124,12 +188,16 @@ const BINDINGS: &[Binding] = &[
         action: plan_toggle_song,
     },
     Binding {
-        id: "plan.reset",
-        label: "Song planner: reset this concert to guide defaults",
+        id: "nav.reset",
+        label: "Reset this concert / this panel's position",
         vk: vk::R,
-        action: plan_reset,
+        action: reset,
     },
 ];
+
+/// Bindings that fire repeatedly while held. Only the nudge/cursor keys — a
+/// toggle that repeats is a toggle that flickers.
+const REPEATING: &[&str] = &["nav.up", "nav.down", "nav.left", "nav.right"];
 
 /// Register every binding. Called once from plugin init.
 pub fn install() {
@@ -140,11 +208,14 @@ pub fn install() {
             hlog_warn!(target: "training-tracker", "Hotkey '{}' was refused", b.id);
         } else {
             bound += 1;
+            if REPEATING.contains(&b.id) {
+                honse_services::hotkeys::set_repeat(handle, true);
+            }
         }
     }
     hlog_info!(
         target: "training-tracker",
-        "Hotkeys: {bound}/{} bound \u{2014} Ctrl+Shift+O overlay, +D debug, +P planner",
+        "Hotkeys: {bound}/{} bound \u{2014} Ctrl+Shift+O overlay, +D debug, +P planner, +L layout",
         BINDINGS.len()
     );
 }
@@ -167,6 +238,13 @@ mod tests {
                 assert_ne!(a.id, b.id, "duplicate binding id {}", a.id);
                 assert_ne!(a.vk, b.vk, "'{}' and '{}' share a key", a.id, b.id);
             }
+        }
+    }
+
+    #[test]
+    fn every_repeating_id_is_a_real_binding() {
+        for id in REPEATING {
+            assert!(BINDINGS.iter().any(|b| b.id == *id), "'{id}' repeats but is unbound");
         }
     }
 }

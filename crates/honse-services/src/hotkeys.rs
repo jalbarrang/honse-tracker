@@ -74,6 +74,13 @@ pub fn should_fire(was_down: bool, is_down: bool) -> bool {
 /// Compat `GuiMenuCallback` shape: `extern "C" fn(userdata)`.
 pub type HotkeyCallback = extern "C" fn(userdata: *mut c_void);
 
+/// Frames a repeating chord must be held before it starts repeating, and the
+/// gap between repeats after that. Counted in present ticks rather than
+/// milliseconds so the poll needs no clock — at 60fps this is roughly a
+/// 0.4s delay then 15 repeats a second, which matches typical key repeat.
+const REPEAT_DELAY_FRAMES: u32 = 24;
+const REPEAT_EVERY_FRAMES: u32 = 4;
+
 struct Registration {
     handle: u64,
     id: String,
@@ -83,6 +90,33 @@ struct Registration {
     callback: HotkeyCallback,
     userdata: usize,
     was_down: bool,
+    /// Whether holding the chord fires repeatedly. Off by default: a toggle
+    /// that repeats is a toggle that flickers.
+    repeat: bool,
+    held_frames: u32,
+}
+
+impl Registration {
+    /// Whether this frame should fire, given the chord's current state.
+    /// Advances the hold counter as a side effect.
+    fn tick(&mut self, is_down: bool) -> bool {
+        if !is_down {
+            self.was_down = false;
+            self.held_frames = 0;
+            return false;
+        }
+        let first = !self.was_down;
+        self.was_down = true;
+        if first {
+            self.held_frames = 0;
+            return true;
+        }
+        if !self.repeat {
+            return false;
+        }
+        self.held_frames += 1;
+        self.held_frames >= REPEAT_DELAY_FRAMES && (self.held_frames - REPEAT_DELAY_FRAMES).is_multiple_of(REPEAT_EVERY_FRAMES)
+    }
 }
 
 static HOTKEYS: Lazy<Mutex<Vec<Registration>>> = Lazy::new(|| Mutex::new(Vec::new()));
@@ -136,8 +170,25 @@ pub fn register_hotkey(
         callback,
         userdata: userdata as usize,
         was_down: false,
+        repeat: false,
+        held_frames: 0,
     });
     handle
+}
+
+/// Make a registered chord fire repeatedly while held.
+///
+/// For nudging things — a cursor, a panel position — where one press per step
+/// would mean fifty presses to cross the screen. Never for toggles.
+pub fn set_repeat(handle: u64, repeat: bool) -> bool {
+    let mut hotkeys = HOTKEYS.lock();
+    match hotkeys.iter_mut().find(|h| h.handle == handle) {
+        Some(h) => {
+            h.repeat = repeat;
+            true
+        }
+        None => false,
+    }
 }
 
 /// Remove a hotkey by handle.
@@ -191,6 +242,7 @@ pub fn poll_hotkeys(key_down: impl Fn(u16) -> bool, is_foreground: impl Fn() -> 
         // Reset edge state so a chord held while unfocused doesn't fire on refocus.
         for h in HOTKEYS.lock().iter_mut() {
             h.was_down = false;
+            h.held_frames = 0;
         }
         return;
     }
@@ -200,10 +252,9 @@ pub fn poll_hotkeys(key_down: impl Fn(u16) -> bool, is_foreground: impl Fn() -> 
         let mut hotkeys = HOTKEYS.lock();
         for h in hotkeys.iter_mut() {
             let is_down = chord_is_down(h.chord, &key_down);
-            if should_fire(h.was_down, is_down) {
+            if h.tick(is_down) {
                 to_fire.push((h.callback, h.userdata));
             }
-            h.was_down = is_down;
         }
     }
     for (callback, userdata) in to_fire {

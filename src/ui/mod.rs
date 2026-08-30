@@ -24,6 +24,7 @@ use crate::read_gate::CareerState;
 pub mod affordability;
 pub mod debug;
 pub mod keys;
+pub mod layout;
 pub mod plan;
 pub mod performance;
 pub mod training;
@@ -195,10 +196,8 @@ pub fn install() {
         300.0,
         debug::draw,
     );
-    // Registering is not enough: the view poll only runs while something wants
-    // it, and the panel is on by default.
-    // Centre-left: the planner is a modal thing you open, read and close, so it
-    // gets the middle of the screen rather than sharing a corner.
+    // Below the performance panel: the planner is a thing you open, read and
+    // close, so it does not need a corner of its own.
     overlay::register_panel(
         "plan",
         Anchor::TopLeft,
@@ -206,8 +205,11 @@ pub fn install() {
         overlay::theme::WIDTH_WIDE,
         plan::draw,
     );
+    // Registering is not enough: the view poll only runs while something wants
+    // it, and the debug panel is on by default.
     debug::set_enabled(debug::is_enabled());
     crate::song_plan::load();
+    layout::load_and_apply();
     keys::install();
     hlog_info!(target: "training-tracker", "Overlay: training + performance + lessons + debug panels registered");
 }
