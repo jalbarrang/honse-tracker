@@ -8,9 +8,10 @@
 //! view id -> View -> CareerState -> Face -> painting or not
 //! ```
 //!
-//! # It never hides
+//! # Off until asked for, then it never hides
 //!
-//! Unlike every real panel this one ignores [`Face::visible`]. A panel that
+//! It starts hidden — `Ctrl+Shift+D` brings it up — but once on it ignores
+//! [`Face::visible`], unlike every real panel. A panel that
 //! vanished exactly when you needed to know why it vanished would be useless,
 //! and the interesting screens are precisely the ones that hide the others.
 //!
@@ -30,7 +31,10 @@ use crate::read_gate::View;
 
 /// Whether the panel paints. Also drives the view poll, so that turning the
 /// panel on is enough to start observing ids outside a career.
-static ENABLED: AtomicBool = AtomicBool::new(true);
+///
+/// Off by default: this is a diagnostic, and it costs a poll nobody asked for.
+/// `Ctrl+Shift+D` brings it up.
+static ENABLED: AtomicBool = AtomicBool::new(false);
 
 /// Show or hide the panel, and hold the view poll open to match.
 pub fn set_enabled(enabled: bool) {

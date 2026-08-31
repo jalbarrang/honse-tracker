@@ -205,8 +205,8 @@ pub fn install() {
         overlay::theme::WIDTH_WIDE,
         plan::draw,
     );
-    // Registering is not enough: the view poll only runs while something wants
-    // it, and the debug panel is on by default.
+    // Keep the view poll's hold in step with the flag, whatever it starts as:
+    // the poll only runs while something wants it.
     debug::set_enabled(debug::is_enabled());
     crate::song_plan::load();
     layout::load_and_apply();
