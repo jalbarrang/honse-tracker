@@ -206,7 +206,6 @@ fn plan_block(
 /// Beyond this the footer is taller than the token list it hangs off.
 const MAX_OUTSTANDING: usize = 5;
 
-
 /// A label on the left and a token vector on the right, aligned with the song
 /// rows above so the columns read as one block.
 fn summary_row(ui: &mut egui::Ui, label: &str, value: String, colour: egui::Color32) {

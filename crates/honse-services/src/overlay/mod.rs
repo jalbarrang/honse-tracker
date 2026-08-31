@@ -512,7 +512,11 @@ fn outline(ctx: &egui::Context, id: &str, rect: egui::Rect, selected: bool) {
         egui::Order::Foreground,
         egui::Id::new(("honse-overlay-layout", id)),
     ));
-    let colour = if selected { theme::ACCENT_BRIGHT } else { theme::TEXT_FAINT };
+    let colour = if selected {
+        theme::ACCENT_BRIGHT
+    } else {
+        theme::TEXT_FAINT
+    };
     painter.rect_stroke(
         rect.expand(2.0),
         egui::CornerRadius::same(theme::RADIUS_PANEL),

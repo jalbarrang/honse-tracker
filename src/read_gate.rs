@@ -373,10 +373,7 @@ mod tests {
     #[test]
     fn no_screen_ever_grants_read_permission() {
         for view in all_views() {
-            assert!(
-                !reads_permitted(career_state_for_view(view)),
-                "{view:?} granted reads"
-            );
+            assert!(!reads_permitted(career_state_for_view(view)), "{view:?} granted reads");
             for state in STATES {
                 let next = transition(state, CareerEvent::ViewChanged(view));
                 // The one exception is the delayed observation of the training

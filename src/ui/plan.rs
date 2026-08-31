@@ -243,21 +243,15 @@ fn row(ui: &mut egui::Ui, song: &Song, selected: bool, owned: bool) -> egui::Res
                 .font(theme::text::row_label())
                 .color(theme::ACCENT_BRIGHT),
         );
-        ui.label(
-            egui::RichText::new(mark)
-                .font(theme::text::meta())
-                .color(mark_colour),
-        );
-        ui.label(
-            egui::RichText::new(song.name)
-                .font(theme::text::row_label())
-                .color(match (owned, planned, selected) {
-                    (true, _, _) => theme::TEXT_SECONDARY,
-                    (false, true, _) => theme::TEXT,
-                    (false, false, true) => theme::TEXT_SECONDARY,
-                    (false, false, false) => theme::TEXT_MUTED,
-                }),
-        );
+        ui.label(egui::RichText::new(mark).font(theme::text::meta()).color(mark_colour));
+        ui.label(egui::RichText::new(song.name).font(theme::text::row_label()).color(
+            match (owned, planned, selected) {
+                (true, _, _) => theme::TEXT_SECONDARY,
+                (false, true, _) => theme::TEXT,
+                (false, false, true) => theme::TEXT_SECONDARY,
+                (false, false, false) => theme::TEXT_MUTED,
+            },
+        ));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             // A bought song's cost is history; showing it invites re-adding it up.
             let (text, colour) = if owned {
@@ -278,11 +272,7 @@ fn row(ui: &mut egui::Ui, song: &Song, selected: bool, owned: bool) -> egui::Res
     if response.hovered() {
         ui.painter().set(
             highlight,
-            egui::epaint::RectShape::filled(
-                rect,
-                egui::CornerRadius::same(theme::RADIUS_ROW),
-                theme::ROW_HIGHLIGHT,
-            ),
+            egui::epaint::RectShape::filled(rect, egui::CornerRadius::same(theme::RADIUS_ROW), theme::ROW_HIGHLIGHT),
         );
     }
     response

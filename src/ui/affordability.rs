@@ -62,7 +62,11 @@ fn body(ui: &mut egui::Ui, perf: &GrandLivePerformance, face: Face) {
             ui.label(
                 egui::RichText::new(format!("{affordable}/{} affordable", perf.squares.len()))
                     .font(theme::text::meta())
-                    .color(if affordable > 0 { theme::ACCENT } else { theme::TEXT_FAINT }),
+                    .color(if affordable > 0 {
+                        theme::ACCENT
+                    } else {
+                        theme::TEXT_FAINT
+                    }),
             );
         });
     });

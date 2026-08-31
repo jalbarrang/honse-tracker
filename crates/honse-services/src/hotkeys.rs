@@ -115,7 +115,8 @@ impl Registration {
             return false;
         }
         self.held_frames += 1;
-        self.held_frames >= REPEAT_DELAY_FRAMES && (self.held_frames - REPEAT_DELAY_FRAMES).is_multiple_of(REPEAT_EVERY_FRAMES)
+        self.held_frames >= REPEAT_DELAY_FRAMES
+            && (self.held_frames - REPEAT_DELAY_FRAMES).is_multiple_of(REPEAT_EVERY_FRAMES)
     }
 }
 
@@ -209,7 +210,11 @@ pub fn chord_registered(vk: u16, mods: u8) -> bool {
 /// focused text field.
 #[must_use]
 pub fn any_chord_uses(mods: u8) -> bool {
-    mods != 0 && HOTKEYS.lock().iter().any(|h| h.chord.is_bound() && h.chord.mods == mods)
+    mods != 0
+        && HOTKEYS
+            .lock()
+            .iter()
+            .any(|h| h.chord.is_bound() && h.chord.mods == mods)
 }
 
 /// Remove a hotkey by handle.

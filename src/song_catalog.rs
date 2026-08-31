@@ -79,7 +79,13 @@ pub const SONGS: &[Song] = &[
         true,
     ),
     song("run-x-run", "Run n' Run!", 1, [14, 0, 0, 16, 14], true),
-    song("believe-in-miracles", "Believe in Miracles!", 1, [0, 21, 0, 0, 21], true),
+    song(
+        "believe-in-miracles",
+        "Believe in Miracles!",
+        1,
+        [0, 21, 0, 0, 21],
+        true,
+    ),
     song(
         "zero-center-stands",
         "Zero Is Where the Center Stands!",
@@ -88,7 +94,13 @@ pub const SONGS: &[Song] = &[
         true,
     ),
     song("go-this-way", "Go This Way", 1, [0, 0, 21, 0, 21], false),
-    song("run-away-fallin-love", "Getaway! Fallin' Love", 1, [21, 0, 0, 21, 0], false),
+    song(
+        "run-away-fallin-love",
+        "Getaway! Fallin' Love",
+        1,
+        [21, 0, 0, 21, 0],
+        false,
+    ),
     song("ring-ring-diary", "Ring Ring Diary", 1, [0, 21, 0, 21, 0], false),
     // Concert 2
     song("run-for-our-dream", "Run for Our Dream!", 2, [0, 21, 0, 21, 0], true),
@@ -96,15 +108,45 @@ pub const SONGS: &[Song] = &[
     song("a-no-ne", "Hey, Guess What!", 2, [42, 0, 0, 21, 0], true),
     // Concert 3
     song("grow-up-and-shine", "Grow Up and Shine!", 3, [21, 0, 21, 0, 21], true),
-    song("seven-colors-scenery", "Seven Colors Scenery", 3, [0, 0, 21, 0, 42], true),
+    song(
+        "seven-colors-scenery",
+        "Seven Colors Scenery",
+        3,
+        [0, 0, 21, 0, 42],
+        true,
+    ),
     song("sunbeam-cheer", "Sunbeam Cheer", 3, [0, 42, 0, 0, 21], true),
-    song("hoppity-sunny-days", "Hoppity Sunny Days\u{266a}", 3, [0, 42, 21, 0, 0], false),
+    song(
+        "hoppity-sunny-days",
+        "Hoppity Sunny Days\u{266a}",
+        3,
+        [0, 42, 21, 0, 0],
+        false,
+    ),
     // Concert 4
-    song("precious-treasure-box", "Precious Treasure Box", 4, [42, 0, 0, 26, 0], true),
-    song("fanfare-for-the-future", "Fanfare for the Future!", 4, [26, 0, 0, 42, 0], true),
+    song(
+        "precious-treasure-box",
+        "Precious Treasure Box",
+        4,
+        [42, 0, 0, 26, 0],
+        true,
+    ),
+    song(
+        "fanfare-for-the-future",
+        "Fanfare for the Future!",
+        4,
+        [26, 0, 0, 42, 0],
+        true,
+    ),
     song("dream-sky", "Dream Sky", 4, [0, 22, 0, 0, 22], true),
     song("present-march", "Present March\u{266a}", 4, [0, 0, 22, 0, 22], true),
-    song("worlds-at-our-whim", "The World's at Our Whim", 4, [0, 32, 12, 0, 0], true),
+    song(
+        "worlds-at-our-whim",
+        "The World's at Our Whim",
+        4,
+        [0, 32, 12, 0, 0],
+        true,
+    ),
     song("sky-blue-spring", "Sky-Blue Spring", 4, [12, 0, 0, 32, 0], true),
 ];
 

@@ -135,9 +135,10 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
     // window, and the arguments are the ones we were handed.
     unsafe {
         CallWindowProcW(
-            Some(std::mem::transmute::<isize, unsafe extern "system" fn(HWND, u32, WPARAM, LPARAM) -> LRESULT>(
-                original,
-            )),
+            Some(std::mem::transmute::<
+                isize,
+                unsafe extern "system" fn(HWND, u32, WPARAM, LPARAM) -> LRESULT,
+            >(original)),
             hwnd,
             msg,
             wparam,

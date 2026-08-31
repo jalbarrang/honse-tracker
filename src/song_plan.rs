@@ -375,7 +375,11 @@ mod tests {
                 *slot += cost;
             }
         }
-        assert_eq!(summed, plan.remaining_cost(Scope::Concert(1), &owned), "list and total must agree");
+        assert_eq!(
+            summed,
+            plan.remaining_cost(Scope::Concert(1), &owned),
+            "list and total must agree"
+        );
     }
 
     /// A song planned in concert 1 and never bought is still owed in concert 2.
@@ -427,7 +431,10 @@ mod tests {
     fn owning_a_song_you_skipped_changes_nothing() {
         let plan = SongPlanFile::default();
         let owned = Owned::from_names(["Go This Way"]); // guide skips it
-        assert_eq!(plan.remaining_cost(Scope::Concert(1), &owned), plan.planned_cost(Scope::Concert(1)));
+        assert_eq!(
+            plan.remaining_cost(Scope::Concert(1), &owned),
+            plan.planned_cost(Scope::Concert(1))
+        );
         assert_eq!(plan.owned_count(Scope::Concert(1), &owned), 0);
     }
 

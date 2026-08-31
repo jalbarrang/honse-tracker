@@ -25,8 +25,8 @@ pub mod affordability;
 pub mod debug;
 pub mod keys;
 pub mod layout;
-pub mod plan;
 pub mod performance;
+pub mod plan;
 pub mod training;
 
 /// The most recent settled capture, or `None` outside a career.

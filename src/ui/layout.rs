@@ -21,8 +21,8 @@
 //! saved layout.
 
 use std::collections::BTreeMap;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Mutex;
 
 use honse_services::overlay::{self, Anchor};
 use honse_services::PluginConfig;
@@ -180,7 +180,11 @@ pub fn reset_selected() {
 }
 
 fn active_target() -> Option<&'static str> {
-    if is_active() { selected_id() } else { None }
+    if is_active() {
+        selected_id()
+    } else {
+        None
+    }
 }
 
 /// Persist one panel's position.
