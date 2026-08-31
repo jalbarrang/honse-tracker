@@ -105,6 +105,20 @@ pub const HOLDING_OPACITY: f32 = 0.62;
 /// still has a box you can select and move.
 pub const LAYOUT_GHOST_HEIGHT: f32 = 26.0;
 
+// ── glyphs ──────────────────────────────────────────────────────────────────
+//
+// egui's default fonts do **not** cover the Dingbats (U+2700..) or Arrows
+// (U+2190..) blocks: a check mark, a cross or an arrow renders as a tofu box.
+// Confirmed present and safe to use:
+//
+//   Latin-1          ·  ×
+//   General Punct.   —  ›
+//   Geometric Shapes ●  ○
+//   Misc Symbols     ☆  ♪
+//
+// Anything outside those wants checking on screen before it ships, or spelling
+// as a word. Log messages are exempt — they go to a file, not through a font.
+
 // ── type ────────────────────────────────────────────────────────────────────
 
 /// The type ramp, as roles rather than sizes.

@@ -24,9 +24,24 @@
 /// same order as `PerformanceTokens::labelled`.
 pub type TokenVector = [i32; 5];
 
-/// Per-token ceiling for each concert window. The cap rises between concerts,
+/// Per-token ceiling for each concert, in order. The cap rises between them,
 /// which is why nothing hardcodes 200.
-pub const CONCERT_CAPS: [i32; 4] = [200, 250, 300, 350];
+///
+/// The fifth tier is the closing Grand Concert. It raises the ceiling again but
+/// offers **no new songs** — the catalogue has nothing in window 5 — so it is
+/// purely a window in which to finish buying what earlier concerts offered.
+/// Leaving it out made the concert readout vanish entirely at `cap 400`,
+/// because the cap matched no known concert.
+pub const CONCERT_CAPS: [i32; 5] = [200, 250, 300, 350, 400];
+
+/// The last concert that offers songs of its own.
+pub const LAST_SONG_WINDOW: u8 = 4;
+
+/// Whether a concert offers any songs. False for the closing Grand Concert.
+#[must_use]
+pub fn has_songs(window: u8) -> bool {
+    songs_in_window(window).next().is_some()
+}
 
 /// One purchasable song.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -254,6 +269,17 @@ mod tests {
         assert_eq!(window_for_cap(250), Some(2));
         assert_eq!(window_for_cap(300), Some(3));
         assert_eq!(window_for_cap(350), Some(4));
+        assert_eq!(window_for_cap(400), Some(5), "the closing Grand Concert");
+    }
+
+    /// The finale raises the ceiling but adds no songs. If that ever changes,
+    /// the planner needs to page to it and this test is the tripwire.
+    #[test]
+    fn only_the_closing_concert_has_no_songs_of_its_own() {
+        for window in 1..=LAST_SONG_WINDOW {
+            assert!(has_songs(window), "concert {window} should offer songs");
+        }
+        assert!(!has_songs(5), "the closing Grand Concert offers none");
     }
 
     #[test]

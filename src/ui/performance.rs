@@ -23,6 +23,7 @@ use honse_services::overlay::theme;
 use super::{egui, with_snapshot, Face};
 use crate::memory_reader::{GrandLivePerformance, ScenarioState};
 use crate::song_catalog;
+use crate::song_plan::Scope;
 
 /// Draw the panel. Returns without painting anything — chrome included —
 /// whenever this is not a Grand Live run with something to show.
@@ -70,9 +71,7 @@ fn concert_plan(ui: &mut egui::Ui, perf: &GrandLivePerformance) {
         return; // unknown ceiling: no window, nothing honest to say
     };
     // Remaining, not total: a song already bought is paid for.
-    let owned = crate::song_plan::Owned::from_names(perf.owned.iter().filter_map(|s| s.name.as_deref()));
-    let required = crate::song_plan::remaining_cost(window, &owned);
-    let missing = song_catalog::shortfall(required, perf.tokens.to_vector());
+    let owned = crate::song_plan::owned_from(perf.owned.iter().filter_map(|s| s.name.as_deref()));
 
     ui.add_space(8.0);
     let sep = ui.available_rect_before_wrap();
@@ -83,9 +82,53 @@ fn concert_plan(ui: &mut egui::Ui, perf: &GrandLivePerformance) {
     );
     ui.add_space(7.0);
 
+    let tokens = perf.tokens.to_vector();
+    let settled = plan_block(ui, &concert_name(window), window, &owned, tokens);
+
+    // Everything planned so far is bought, so this concert has nothing left to
+    // say and the useful question becomes the next one — start saving now
+    // rather than finding out when the cap rises. Only look ahead to a concert
+    // that offers songs: the closing Grand Concert raises the cap but adds
+    // none, so pointing at it would repeat the block above under a new heading.
+    if settled {
+        let next = window + 1;
+        if song_catalog::has_songs(next) {
+            ui.add_space(6.0);
+            plan_block(ui, &format!("SAVING FOR {}", concert_name(next)), next, &owned, tokens);
+        }
+    }
+}
+
+/// What to call a concert. The last one has a name rather than a number, and
+/// showing "CONCERT 5" there would not match anything on screen.
+fn concert_name(window: u8) -> String {
+    if song_catalog::has_songs(window) {
+        format!("CONCERT {window}")
+    } else {
+        "GRAND CONCERT".to_string()
+    }
+}
+
+/// One concert's outstanding plan: heading, the songs, the totals.
+///
+/// Scoped `Through`, so it carries anything unbought from earlier concerts.
+/// Returns whether nothing is outstanding — the caller uses that to decide
+/// whether to look ahead.
+fn plan_block(
+    ui: &mut egui::Ui,
+    title: &str,
+    window: u8,
+    owned: &crate::song_plan::Owned,
+    tokens: song_catalog::TokenVector,
+) -> bool {
+    let scope = Scope::Through(window);
+    let outstanding = crate::song_plan::outstanding(scope, owned);
+    let required = crate::song_plan::remaining_cost(scope, owned);
+    let missing = song_catalog::shortfall(required, tokens);
+
     ui.horizontal(|ui| {
         ui.label(
-            egui::RichText::new(format!("CONCERT {window}"))
+            egui::RichText::new(title)
                 .font(theme::text::section())
                 .color(theme::TEXT_MUTED),
         );
@@ -93,8 +136,8 @@ fn concert_plan(ui: &mut egui::Ui, perf: &GrandLivePerformance) {
             ui.label(
                 egui::RichText::new(format!(
                     "{}/{} bought",
-                    crate::song_plan::owned_count(window, &owned),
-                    crate::song_plan::planned_count(window)
+                    crate::song_plan::owned_count(scope, owned),
+                    crate::song_plan::planned_count(scope)
                 ))
                 .font(theme::text::meta())
                 .color(theme::TEXT_FAINT),
@@ -102,23 +145,81 @@ fn concert_plan(ui: &mut egui::Ui, perf: &GrandLivePerformance) {
         });
     });
 
-    let covered = missing.iter().all(|&v| v == 0);
-    let (text, colour) = if covered {
-        ("plan covered".to_string(), theme::ACCENT_VALUE)
-    } else {
-        (format!("short {}", super::token_vector_text(missing)), theme::CAUTION)
-    };
-    ui.label(egui::RichText::new(text).font(theme::text::meta()).color(colour));
+    if outstanding.is_empty() {
+        summary_row(ui, "", "all bought".to_string(), theme::ACCENT_VALUE);
+        return true;
+    }
 
-    // A single token needing more than the window allows is unreachable however
-    // you train — worth saying rather than showing an impossible shortfall.
-    if song_catalog::exceeds_cap(required, perf.caps.dance) {
+    // The songs the shortfall is *for*. Without these the panel says how much
+    // you are missing but not what you are missing it towards, which meant
+    // keeping the planner open just to read three lines off it.
+    for song in outstanding.iter().take(MAX_OUTSTANDING) {
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new(song.name)
+                    .font(theme::text::meta())
+                    .color(theme::TEXT_SECONDARY),
+            );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(
+                    egui::RichText::new(super::token_vector_text(song.cost))
+                        .font(theme::text::meta())
+                        .color(theme::TEXT_FAINT),
+                );
+            });
+        });
+    }
+    if outstanding.len() > MAX_OUTSTANDING {
         ui.label(
-            egui::RichText::new("exceeds this concert's ceiling")
+            egui::RichText::new(format!("+{} more", outstanding.len() - MAX_OUTSTANDING))
+                .font(theme::text::help())
+                .color(theme::TEXT_FAINT),
+        );
+    }
+
+    // One song's cost is already on the line above it; a total would just
+    // repeat it.
+    if outstanding.len() > 1 {
+        summary_row(ui, "total", super::token_vector_text(required), theme::TEXT);
+    }
+
+    if missing.iter().all(|&v| v == 0) {
+        summary_row(ui, "", "affordable now".to_string(), theme::ACCENT_VALUE);
+    } else {
+        summary_row(ui, "short", super::token_vector_text(missing), theme::CAUTION);
+    }
+
+    // A single token needing more than that concert's ceiling allows is
+    // unreachable however you train — worth saying rather than showing an
+    // impossible shortfall.
+    if song_catalog::exceeds_cap(required, song_catalog::CONCERT_CAPS[usize::from(window - 1)]) {
+        ui.label(
+            egui::RichText::new("exceeds that concert's ceiling")
                 .font(theme::text::help())
                 .color(theme::NEGATIVE),
         );
     }
+    false
+}
+
+/// Outstanding songs listed before the panel stops and counts the rest.
+/// Beyond this the footer is taller than the token list it hangs off.
+const MAX_OUTSTANDING: usize = 5;
+
+
+/// A label on the left and a token vector on the right, aligned with the song
+/// rows above so the columns read as one block.
+fn summary_row(ui: &mut egui::Ui, label: &str, value: String, colour: egui::Color32) {
+    ui.horizontal(|ui| {
+        ui.label(
+            egui::RichText::new(label)
+                .font(theme::text::meta())
+                .color(theme::TEXT_MUTED),
+        );
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.label(egui::RichText::new(value).font(theme::text::meta()).color(colour));
+        });
+    });
 }
 
 /// One token row: name on the left, `value / cap` on the right.

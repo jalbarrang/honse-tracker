@@ -169,13 +169,13 @@ pub fn install() {
         overlay::theme::WIDTH_WIDE,
         training::draw,
     );
-    // Top-left, opposite the training board so the two never collide. Narrow:
-    // five short rows, and it only appears in Grand Live runs.
+    // Top-left, opposite the training board so the two never collide. Wide
+    // enough for the concert footer's song names, not for the tokens alone.
     overlay::register_panel(
         "performance",
         Anchor::TopLeft,
         egui::vec2(overlay::theme::GAP, 96.0),
-        250.0,
+        overlay::theme::WIDTH_WIDE,
         performance::draw,
     );
     // Bottom-right: the last free corner, and wide because square names are
@@ -221,7 +221,7 @@ pub fn install() {
 pub fn owned_songs() -> crate::song_plan::Owned {
     with_snapshot(|snapshot| match &snapshot.scenario_state {
         Some(crate::memory_reader::ScenarioState::GrandLive(perf)) => {
-            crate::song_plan::Owned::from_names(perf.owned.iter().filter_map(|s| s.name.as_deref()))
+            crate::song_plan::owned_from(perf.owned.iter().filter_map(|s| s.name.as_deref()))
         }
         _ => crate::song_plan::Owned::default(),
     })
