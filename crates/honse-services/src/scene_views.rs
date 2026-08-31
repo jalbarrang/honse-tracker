@@ -46,6 +46,7 @@ pub enum View {
     CareerTraining,
     CareerPreComplete,
     CareerComplete,
+    CareerIndependentTraining,
     RacePaddock,
     RaceList,
     CareerSkillsShop,
@@ -107,6 +108,7 @@ const VIEWS: &[(i32, View, &CStr)] = &[
     (5630, View::DailyLegendRacePaddock, c"Daily Legend Races - Paddock"),
     (5650, View::DailyLegendRaceHome, c"Daily Legend Races - Home"),
     (5710, View::ConcertTheaterHome, c"Concert Theater - Home"),
+    (6600, View::CareerIndependentTraining, c"Career - Independent Training"),
 ];
 
 impl View {

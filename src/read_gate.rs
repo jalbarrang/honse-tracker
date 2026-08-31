@@ -126,7 +126,13 @@ pub const fn career_state_for_view(view: View) -> CareerState {
         View::RacePaddock | View::RacePlayback => CareerState::RaceActive,
 
         // Full-screen playback. Panels would be drawing over a video.
-        View::ConcertPlayback | View::GrandConcertConcertView => CareerState::CutsceneActive,
+        //
+        // Independent Training looks like a career screen — it has a timer and
+        // a menu button — but it is a montage that plays itself out. There is
+        // no decision to support, so panels stay out of the way.
+        View::ConcertPlayback | View::GrandConcertConcertView | View::CareerIndependentTraining => {
+            CareerState::CutsceneActive
+        }
 
         // Outside a career: boot, the home screen, every mode reached from it,
         // and the point where a run is actually over. `Idle` is the honest
@@ -345,11 +351,14 @@ mod tests {
                 "view {id} ({view:?}) should be a menu"
             );
         }
-        // …while the screen that really is a concert stays hidden.
-        assert_eq!(
-            career_state_for_view(View::from_id(1621)),
-            CareerState::CutsceneActive
-        );
+        // …while the screens that really are playback stay hidden.
+        for id in [1621, 6600] {
+            assert_eq!(
+                career_state_for_view(View::from_id(id)),
+                CareerState::CutsceneActive,
+                "view {id} plays itself out; panels would sit on top of it"
+            );
+        }
     }
 
     /// A career ends at 1301, not 1300. Getting this pair backwards either
