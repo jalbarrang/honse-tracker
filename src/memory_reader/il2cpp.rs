@@ -208,6 +208,7 @@ pub(super) unsafe fn read_obscured_int_array(array: *mut c_void) -> Vec<i32> {
     // Striding by 8 decodes element 0 correctly — the two ints it needs are
     // first — and then reads across field boundaries for every element after,
     // which looks like plausible-but-wrong data rather than an obvious failure.
+    // Element 1 came back as `fakeValue ^ inited`, which is a very convincing 1.
     // SAFETY: `array` is a live IL2CPP array object.
     let Some(stride) = (unsafe { array_element_size(array) }) else {
         return Vec::new();
@@ -229,28 +230,49 @@ pub(super) unsafe fn read_obscured_int_array(array: *mut c_void) -> Vec<i32> {
 
 /// Element size of an IL2CPP array, from the runtime's own metadata.
 ///
-/// Returns `None` when the export is unavailable — better to read nothing than
-/// to walk an array on a guessed stride.
+/// # Ask about the element, not the array
+///
+/// `il2cpp_class_array_element_size` answers "how big is this class *when used
+/// as an array element*". Handed an array class it answers truthfully and
+/// uselessly: 8, the size of a reference. The element class has to be fetched
+/// first, and only then does the question mean what it looks like it means.
+/// This cost a run to find, because 8 is also the wrong stride that decodes
+/// element zero perfectly.
+///
+/// Returns `None` when either export is unavailable — better to read nothing
+/// than to walk an array on a guessed stride.
 ///
 /// # Safety
 /// `array` must be a valid non-null IL2CPP array object.
 unsafe fn array_element_size(array: *mut c_void) -> Option<usize> {
-    static ELEMENT_SIZE_FN: OnceLock<Option<usize>> = OnceLock::new();
-    let addr = (*ELEMENT_SIZE_FN.get_or_init(|| {
-        let f = Sdk::get().resolve_symbol("il2cpp_class_array_element_size");
-        if f.is_none() {
-            hlog_error!("il2cpp_class_array_element_size unavailable; ObscuredInt arrays cannot be read");
+    let (element_class_fn, element_size_fn) = *ARRAY_METADATA_FNS.get_or_init(|| {
+        let sdk = Sdk::get();
+        let fns = (
+            sdk.resolve_symbol("il2cpp_class_get_element_class"),
+            sdk.resolve_symbol("il2cpp_class_array_element_size"),
+        );
+        if fns.0.is_none() || fns.1.is_none() {
+            hlog_error!("il2cpp array metadata exports unavailable; ObscuredInt arrays cannot be read");
         }
-        f.map(|p| p as usize)
-    }))?;
+        (fns.0.map(|p| p as usize), fns.1.map(|p| p as usize))
+    });
+    let (element_class_fn, element_size_fn) = (element_class_fn?, element_size_fn?);
+
     // SAFETY: IL2CPP object header — klass pointer at offset 0.
-    let klass = unsafe { *(array as *const *mut c_void) };
-    if klass.is_null() {
+    let array_class = unsafe { *(array as *const *mut c_void) };
+    if array_class.is_null() {
         return None;
     }
     // SAFETY: resolved IL2CPP export, called with this array's own class.
-    let f: unsafe extern "C" fn(*mut c_void) -> i32 = unsafe { std::mem::transmute(addr) };
-    let size = unsafe { f(klass) };
+    let get_element_class: unsafe extern "C" fn(*mut c_void) -> *mut c_void =
+        unsafe { std::mem::transmute(element_class_fn) };
+    let element_class = unsafe { get_element_class(array_class) };
+    if element_class.is_null() {
+        return None;
+    }
+    // SAFETY: as above, now with the class the question is actually about.
+    let element_size: unsafe extern "C" fn(*mut c_void) -> i32 = unsafe { std::mem::transmute(element_size_fn) };
+    let size = unsafe { element_size(element_class) };
     let stride = usize::try_from(size).ok().filter(|&s| s >= 8);
     // Logged once: the reported size has been wrong before, and the symptom —
     // every Nth element decoding correctly and the rest looking like plausible
@@ -261,6 +283,10 @@ unsafe fn array_element_size(array: *mut c_void) -> Option<usize> {
     });
     stride
 }
+
+/// `(il2cpp_class_get_element_class, il2cpp_class_array_element_size)`,
+/// resolved once. Both or neither: one without the other cannot answer.
+static ARRAY_METADATA_FNS: OnceLock<(Option<usize>, Option<usize>)> = OnceLock::new();
 
 /// Read a plain `System.Int32` instance field by name from an object.
 /// Returns `0` if the object is null or the field cannot be resolved.
