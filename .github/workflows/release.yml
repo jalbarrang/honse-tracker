@@ -49,7 +49,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # The dashboard's selected branch is the source for a manual release.
           ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.ref }}
@@ -109,6 +109,12 @@ jobs:
 
             **Compatibility contract:** built for **Hachimi-Edge v0.26.4**. The plugin UI renders on a self-hosted egui stack (statically linked; no egui types cross the plugin↔host boundary), so the DLL only depends on Edge's stable C plugin ABI — no egui/rustc lockstep with the Edge binary is required.
 
-            Install: place the DLL in the Honse game folder root and add it to `load_libraries` in `hachimi/config.json`.
+            Install: place the DLL in the `hachimi` folder inside the Honse game folder, then add it to `load_libraries` in `hachimi/config.json`:
+
+            ```json
+            { "load_libraries": ["hachimi\\honse_tracker.dll"] }
+            ```
+
+            Restart the game afterwards — Edge loads plugins at startup only.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
