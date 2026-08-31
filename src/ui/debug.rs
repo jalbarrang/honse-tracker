@@ -29,17 +29,17 @@ use honse_services::overlay::theme;
 use super::{egui, Face};
 use crate::read_gate::View;
 
-/// Whether the panel paints. Also drives the view poll, so that turning the
-/// panel on is enough to start observing ids outside a career.
-///
-/// Off by default: this is a diagnostic, and it costs a poll nobody asked for.
-/// `Ctrl+Shift+D` brings it up.
+/// Whether the panel paints. Off by default; `Ctrl+Shift+D` brings it up.
 static ENABLED: AtomicBool = AtomicBool::new(false);
 
-/// Show or hide the panel, and hold the view poll open to match.
+/// Show or hide the panel.
+///
+/// This deliberately does *not* touch the view poll. It used to hold the poll
+/// open, which made a diagnostic panel load-bearing for the whole HUD: the poll
+/// hold is one shared flag, so this panel going off took the poll — and every
+/// other panel — with it. `ui::install` owns that hold now.
 pub fn set_enabled(enabled: bool) {
     ENABLED.store(enabled, Ordering::Release);
-    honse_services::set_view_poll_hold(enabled);
     hlog_info!(target: "training-tracker", "Debug overlay: {}", if enabled { "on" } else { "off" });
 }
 

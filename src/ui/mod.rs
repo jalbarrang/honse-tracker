@@ -205,9 +205,14 @@ pub fn install() {
         overlay::theme::WIDTH_WIDE,
         plan::draw,
     );
-    // Keep the view poll's hold in step with the flag, whatever it starts as:
-    // the poll only runs while something wants it.
-    debug::set_enabled(debug::is_enabled());
+    // Hold the view poll open for as long as the plugin is loaded. This is not
+    // a diagnostic convenience: view changes are what drive the read gate, and
+    // without them the lifecycle never leaves `Idle`, which means every panel
+    // is `Face::Off` and the HUD is simply gone.
+    //
+    // It used to be the debug panel that held this, as a side effect of being
+    // on by default. Turning that panel off turned the whole HUD off with it.
+    honse_services::set_view_poll_hold(true);
     crate::song_plan::load();
     layout::load_and_apply();
     // A mouse drag moves a panel on the render thread; this is what writes the
