@@ -2,7 +2,7 @@
 #
 # HIKER-IN-CI decision: hiker IS publicly installable (`cargo install hiker`,
 # crates.io hiker 0.1.2). We install it in CI, run `hiker check` + `hiker gen`
-# (generated tests are gitignored under .hiker-cache/), then `cargo test`.
+# (generated tests are gitignored under .hiker-cache/), then `cargo test --workspace`.
 # Also run `hiker verify` against the committed facts under .hiker/facts/.
 # Do not silently skip these steps.
 #
@@ -40,7 +40,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Rust toolchain
         # Must match rust-toolchain.toml (Hachimi-Edge rustc lockstep).
@@ -69,11 +69,14 @@ jobs:
         # file, and clippy --all-targets compiles the test target.
         run: hiker gen .hiker/tents/honse-extraction/honse-extraction.tent --target rust --module honse_tracker
 
+      # --workspace on both: a root package shadows the workspace, so the bare
+      # form checks only honse-tracker and silently skips every crate under
+      # crates/. A broken test sat in honse-services for weeks that way.
       - name: clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: cargo test
-        run: cargo test
+        run: cargo test --workspace
 
       - name: cargo build --release
         run: cargo build --release
