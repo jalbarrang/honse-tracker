@@ -1,6 +1,7 @@
 //! Low-level IL2CPP call/read primitives shared by the entity readers.
 
 use std::ffi::c_void;
+use std::sync::OnceLock;
 
 use crate::compat::Sdk;
 
@@ -201,17 +202,64 @@ pub(super) unsafe fn read_obscured_int_array(array: *mut c_void) -> Vec<i32> {
     if len > 4096 {
         return Vec::new();
     }
-    // SAFETY: inline value-type elements begin at offset 0x20, 8 bytes each.
+    // Element size comes from the runtime, never assumed. `ObscuredInt` is not
+    // two ints: it carries `currentCryptoKey`, `hiddenValue`, `inited`,
+    // `fakeValue` and `fakeValueActive`, so the stride is well over 8 bytes.
+    // Striding by 8 decodes element 0 correctly — the two ints it needs are
+    // first — and then reads across field boundaries for every element after,
+    // which looks like plausible-but-wrong data rather than an obvious failure.
+    // SAFETY: `array` is a live IL2CPP array object.
+    let Some(stride) = (unsafe { array_element_size(array) }) else {
+        return Vec::new();
+    };
+    // SAFETY: inline value-type elements begin at offset 0x20.
     let base = unsafe { array.byte_add(0x20) as *const u8 };
     let mut out = Vec::with_capacity(len);
     for i in 0..len {
-        // SAFETY: i < len, each element is 8 bytes within the array buffer.
-        let key = unsafe { *(base.add(i * 8) as *const i32) };
+        // SAFETY: i < len and `stride` is the runtime's own element size, so
+        // each read stays inside the array buffer. `currentCryptoKey` and
+        // `hiddenValue` are the first two fields of the element.
+        let key = unsafe { *(base.add(i * stride) as *const i32) };
         // SAFETY: hiddenValue immediately follows the key.
-        let hidden = unsafe { *(base.add(i * 8 + 4) as *const i32) };
+        let hidden = unsafe { *(base.add(i * stride + 4) as *const i32) };
         out.push(hidden ^ key);
     }
     out
+}
+
+/// Element size of an IL2CPP array, from the runtime's own metadata.
+///
+/// Returns `None` when the export is unavailable — better to read nothing than
+/// to walk an array on a guessed stride.
+///
+/// # Safety
+/// `array` must be a valid non-null IL2CPP array object.
+unsafe fn array_element_size(array: *mut c_void) -> Option<usize> {
+    static ELEMENT_SIZE_FN: OnceLock<Option<usize>> = OnceLock::new();
+    let addr = (*ELEMENT_SIZE_FN.get_or_init(|| {
+        let f = Sdk::get().resolve_symbol("il2cpp_class_array_element_size");
+        if f.is_none() {
+            hlog_error!("il2cpp_class_array_element_size unavailable; ObscuredInt arrays cannot be read");
+        }
+        f.map(|p| p as usize)
+    }))?;
+    // SAFETY: IL2CPP object header — klass pointer at offset 0.
+    let klass = unsafe { *(array as *const *mut c_void) };
+    if klass.is_null() {
+        return None;
+    }
+    // SAFETY: resolved IL2CPP export, called with this array's own class.
+    let f: unsafe extern "C" fn(*mut c_void) -> i32 = unsafe { std::mem::transmute(addr) };
+    let size = unsafe { f(klass) };
+    let stride = usize::try_from(size).ok().filter(|&s| s >= 8);
+    // Logged once: the reported size has been wrong before, and the symptom —
+    // every Nth element decoding correctly and the rest looking like plausible
+    // ids — is not something the values alone reveal.
+    static REPORTED: std::sync::Once = std::sync::Once::new();
+    REPORTED.call_once(|| {
+        hlog_info!("il2cpp array element size reported as {size} (using {stride:?})");
+    });
+    stride
 }
 
 /// Read a plain `System.Int32` instance field by name from an object.
