@@ -115,6 +115,77 @@ pub fn read_snapshot() -> Option<CareerSnapshot> {
     }
 }
 
+/// The slice of a career that a shop screen can change: what you spent, and
+/// what you got for it.
+#[derive(Debug, Clone, Default)]
+pub struct LightRefresh {
+    pub speed: i32,
+    pub stamina: i32,
+    pub power: i32,
+    pub guts: i32,
+    pub wiz: i32,
+    pub hp: i32,
+    pub max_hp: i32,
+    pub scenario_state: Option<ScenarioState>,
+}
+
+/// Re-read only what a purchase can move: the five stats, energy, and the
+/// active scenario's state. Skips skills, evaluations, the deck, command info
+/// and every master-data lookup that does not belong to the scenario.
+///
+/// Exists so a shop screen stays truthful — you buy `Guts +5` for `Pa10` and
+/// both sides of that trade should move. It is a far smaller read than
+/// [`read_snapshot`], and it touches career-lifetime work data rather than
+/// per-screen UI objects, which is what makes it defensible outside the normal
+/// gate.
+///
+/// Like every read it must be called on the Unity main thread. It never grants
+/// itself permission: the caller decides when it is safe.
+pub fn read_light_refresh() -> Option<LightRefresh> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(read_light_refresh_inner)) {
+        Ok(result) => result,
+        Err(_) => {
+            hlog_error!("read_light_refresh PANICKED — IL2CPP call likely hit a bad pointer");
+            None
+        }
+    }
+}
+
+fn read_light_refresh_inner() -> Option<LightRefresh> {
+    let chain = CHAIN.get()?;
+    let sdk = Sdk::get();
+    let singleton = sdk.get_singleton(chain.wdm_klass.cast())?.cast::<c_void>();
+    // SAFETY: non-null singleton; resolved getter.
+    let wsmd = unsafe { call_obj(singleton, chain.m_get_single_mode) };
+    if wsmd.is_null() {
+        return None;
+    }
+    // SAFETY: non-null WorkSingleModeData.
+    if !unsafe { call_bool(wsmd, chain.m_get_is_playing) } {
+        return None; // career ended under us
+    }
+    // SAFETY: non-null WorkSingleModeData.
+    let chara = unsafe { call_obj(wsmd, chain.m_get_character) };
+    if chara.is_null() {
+        return None;
+    }
+    // SAFETY: every call below is a resolved 0-arg getter on the non-null
+    // WorkSingleModeCharaData, the same ones the full snapshot uses.
+    unsafe {
+        let scenario_id = call_i32(chara, chain.m_get_scenario_id);
+        Some(LightRefresh {
+            speed: call_i32(chara, chain.m_get_speed),
+            stamina: call_i32(chara, chain.m_get_stamina),
+            power: call_i32(chara, chain.m_get_power),
+            guts: call_i32(chara, chain.m_get_guts),
+            wiz: call_i32(chara, chain.m_get_wiz),
+            hp: call_i32(chara, chain.m_get_hp),
+            max_hp: call_i32(chara, chain.m_get_max_hp),
+            scenario_state: read_scenario_state(chara, wsmd, scenario_id),
+        })
+    }
+}
+
 fn read_snapshot_inner() -> Option<CareerSnapshot> {
     let chain = CHAIN.get()?;
     let sdk = Sdk::get();
@@ -148,7 +219,9 @@ fn read_snapshot_inner() -> Option<CareerSnapshot> {
     // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
     let month = unsafe { call_i32(wsmd, chain.m_get_month) };
     // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
-    let current_turn = unsafe { call_i32(wsmd, chain.m_get_current_turn) };
+    // Read _totalTurnNum directly as ObscuredInt field. GetCurrentTurn() does
+    // master-data lookups and crashes when called during asset transitions.
+    let current_turn = unsafe { read_obscured_int_field(wsmd, chain.f_total_turn_num) };
     // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
     let total_races = unsafe { call_i32(wsmd, chain.m_get_total_races) };
     // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
@@ -306,7 +379,7 @@ fn read_snapshot_inner() -> Option<CareerSnapshot> {
         scenario_command_base,
         scenario_id,
         // SAFETY: `chara` is a valid non-null IL2CPP object from the resolved chain.
-        scenario_state: read_scenario_state(chara),
+        scenario_state: read_scenario_state(chara, wsmd, scenario_id),
         chara_effect_ids,
     })
 }

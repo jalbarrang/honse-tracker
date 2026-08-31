@@ -4,13 +4,11 @@
 //! WorkSingleModeCharaData` accessor chain used by every entity reader.
 
 use std::ffi::c_void;
-use std::sync::atomic::Ordering;
 use std::sync::OnceLock;
 
 use crate::compat::Sdk;
 
 use super::il2cpp::{call_bool, call_obj};
-use super::TRACKING;
 
 /// All resolved MethodInfo pointers for the singleton chain.
 pub(super) struct ResolvedChain {
@@ -22,7 +20,10 @@ pub(super) struct ResolvedChain {
     // WorkSingleModeData getters
     pub(super) m_get_is_playing: *const c_void,
     pub(super) m_get_character: *const c_void,
-    pub(super) m_get_current_turn: *const c_void,
+    /// Field handle for `_totalTurnNum` (ObscuredInt) — read directly instead
+    /// of calling `GetCurrentTurn()` which does master-data lookups and crashes
+    /// when called outside the main thread's safe window.
+    pub(super) f_total_turn_num: *mut c_void,
     pub(super) m_get_month: *const c_void,
     pub(super) m_get_total_races: *const c_void,
     pub(super) m_get_win_count: *const c_void,
@@ -125,7 +126,17 @@ fn try_resolve() -> Result<ResolvedChain, &'static str> {
 
         m_get_is_playing: resolve_method(wsmd, c"get_IsPlaying", 0)?,
         m_get_character: resolve_method(wsmd, c"get_Character", 0)?,
-        m_get_current_turn: resolve_method(wsmd, c"GetCurrentTurn", 0)?,
+        f_total_turn_num: {
+            let sdk = Sdk::get();
+            let f = sdk.get_field_from_name(wsmd.cast(), "_totalTurnNum");
+            match f {
+                Some(ptr) => ptr.cast(),
+                None => {
+                    hlog_error!("Field not found: _totalTurnNum on WorkSingleModeData");
+                    return Err("IL2CPP field _totalTurnNum not found");
+                }
+            }
+        },
 
         m_get_month: resolve_method(wsmd, c"get_Month", 0)?,
         m_get_total_races: resolve_method(wsmd, c"get_TotalRaceCount", 0)?,
@@ -164,31 +175,53 @@ fn try_resolve() -> Result<ResolvedChain, &'static str> {
 }
 
 // ---------------------------------------------------------------------------
-// Tracking lifecycle
+// Lazy resolution lifecycle
 // ---------------------------------------------------------------------------
 
-/// Attempt to resolve the IL2CPP method chain and begin tracking.
-/// Call from the tracker lifecycle.
-pub fn start_tracking() -> Result<(), &'static str> {
-    // Resolve chain if not already done
-    if CHAIN.get().is_none() {
-        let chain = try_resolve()?;
-        let _ = CHAIN.set(chain); // ignore if race
+/// Idempotent lazy resolution of the IL2CPP method chain (the same `CHAIN`
+/// cell every entity reader uses). Returns whether the chain is resolved.
+///
+/// Caller contract: Unity main thread only — the settled-turn capture callback
+/// (and the temporary settle diagnostics) are the only callers, both already
+/// behind the two crash-safety gates. There is no manual start/stop lifecycle:
+/// DLL load performs no career-state reads, and the first resolution happens
+/// on the first settled edge that requests a capture.
+pub(crate) fn ensure_resolved() -> bool {
+    if CHAIN.get().is_some() {
+        return true;
     }
-    TRACKING.store(true, Ordering::Relaxed);
-    // Arm the view-change gate only while we actually read memory (the poll is
-    // idle otherwise). This is what suspends reads during scene teardown.
-    honse_services::set_view_poll_enabled(true);
-    hlog_info!("Memory-read tracking STARTED");
-    crate::career_poll::request_refresh_immediate();
-    Ok(())
+    match try_resolve() {
+        Ok(chain) => {
+            let _ = CHAIN.set(chain); // ignore if race
+            true
+        }
+        Err(e) => {
+            hlog_warn!("memory-read chain not resolvable yet: {e}");
+            false
+        }
+    }
 }
 
-/// Stop tracking and disable memory reads.
-pub fn stop_tracking() {
-    TRACKING.store(false, Ordering::Relaxed);
-    honse_services::set_view_poll_enabled(false);
-    hlog_info!("Memory-read tracking STOPPED");
+// ---------------------------------------------------------------------------
+// t-001 settled-turn diagnostics (TEMPORARY — removed once the runtime
+// coverage matrix is recorded).
+// ---------------------------------------------------------------------------
+
+/// Diagnostic turn read for the settled-edge coverage matrix.
+///
+/// Reads `_totalTurnNum` directly as an ObscuredInt field — safe on any thread
+/// since it never calls methods that do master-data lookups.
+///
+/// Returns `None` when the chain cannot resolve yet (game runtime not up) or
+/// when no career is active (`get_IsPlaying` false).
+pub(crate) fn diag_read_current_turn() -> Option<i32> {
+    if !ensure_resolved() {
+        return None;
+    }
+    let chain = CHAIN.get()?;
+    let wsmd = get_single_mode_data()?;
+    // SAFETY: non-null WorkSingleModeData; reading ObscuredInt backing field.
+    Some(unsafe { super::il2cpp::read_obscured_int_field(wsmd, chain.f_total_turn_num) })
 }
 
 // ---------------------------------------------------------------------------

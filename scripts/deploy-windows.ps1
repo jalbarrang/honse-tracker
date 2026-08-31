@@ -3,7 +3,7 @@
     Copy release-built honse-tracker plugin DLLs into the Honse game folder.
 
 .DESCRIPTION
-    Copies the Edge plugin DLL into the game folder root:
+    Copies the Edge plugin DLL into the game's hachimi subfolder:
       - target\release\honse_tracker.dll
 
     Does NOT deploy a core/proxy DLL (cri_mana_vpx.dll is Edge's job).
@@ -55,12 +55,12 @@ function Show-ConfigHint {
     Write-Host @'
 {
   "load_libraries": [
-    "honse_tracker.dll"
+    "hachimi\\honse_tracker.dll"
   ]
 }
 '@
     Write-Host ""
-    Write-Host "Place the DLL in the Honse game folder root (same directory as the game exe)." -ForegroundColor DarkGray
+    Write-Host "Place the DLL in the Honse game folder's hachimi subfolder." -ForegroundColor DarkGray
     Write-Host "Restart the Honse game after copying - Edge loads the plugin at startup only." -ForegroundColor DarkGray
 }
 
@@ -126,15 +126,20 @@ Set -GameDir or env:HACHIMI_GAME_DIR to your Honse game install folder.
 "@
 }
 
+$PluginDir = Join-Path $GameDir "hachimi"
+if (-not (Test-Path -LiteralPath $PluginDir -PathType Container)) {
+    Write-Error "Hachimi plugin directory not found: $PluginDir"
+}
+
 Write-Host ""
-Write-Host "Deploying plugin DLL to: $GameDir" -ForegroundColor Green
+Write-Host "Deploying plugin DLL to: $PluginDir" -ForegroundColor Green
 Write-Host ""
 
 foreach ($p in $Plugins) {
     $src = Join-Path $TargetDir $p.Name
-    $dest = Join-Path $GameDir $p.Name
+    $dest = Join-Path $PluginDir $p.Name
     Copy-WithRetry -Source $src -Dest $dest
-    Write-Host "  $($p.Name)  ->  $($p.Name)"
+    Write-Host "  $($p.Name)  ->  hachimi\$($p.Name)"
 }
 
 Write-Host ""

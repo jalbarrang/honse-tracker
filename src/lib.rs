@@ -51,11 +51,15 @@
 #[macro_use]
 pub mod compat;
 
+mod apply_hooks;
 mod command_hooks;
 mod entry;
 pub mod read_gate;
 
-pub use read_gate::{read_gate, ReadState};
+pub use read_gate::{
+    career_state_for_view, read_gate, read_state, reads_permitted, transition, ApplyEvent, CareerEvent, CareerState,
+    ReadState, View,
+};
 
 /// Hiker `Assignment` sort (compat method → provider). Used by generated property tests.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -81,7 +85,7 @@ mod bond_progress;
 mod career_meta;
 mod career_poll;
 mod chara_effects;
-mod class_dump;
+pub(crate) mod class_dump;
 mod deck_bonuses;
 mod diagnostics;
 mod eval_data;
@@ -89,19 +93,24 @@ mod evaluation;
 mod gametora_data;
 mod hooks;
 mod memory_reader;
+pub(crate) mod race_cutin;
 mod rank_table;
+mod song_catalog;
+mod song_plan;
 mod telemetry;
+mod ui;
 
-/// Suspend the memory reader while a career command (training / rest / infirmary /
-/// outing) plays out. Crate-visible entry point for the `SingleModeMainViewController`
-/// command-submit IL2CPP hooks. See `career_poll::suspend_reads`.
+/// Mark a career command in flight before the original submit method runs.
 pub(crate) fn suspend_reads_for_command() {
-    career_poll::suspend_reads();
+    career_poll::enter_command();
 }
 
-/// Resume the memory reader once the command-select screen has been rebuilt.
-/// Crate-visible entry point for the `SingleModeMainViewController` command-select
-/// IL2CPP hooks. See `career_poll::resume_reads`.
+/// Mark command select actionable after the original setup method returned.
 pub(crate) fn resume_reads_on_command_select() {
-    career_poll::resume_reads();
+    career_poll::command_select_settled();
+}
+
+/// Mark the initial/resumed command view actionable after play-in completed.
+pub(crate) fn reads_on_command_view_play_in_completed() {
+    career_poll::command_view_play_in_completed();
 }

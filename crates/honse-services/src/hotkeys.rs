@@ -26,6 +26,20 @@ pub const MOD_SHIFT: u8 = 1 << 1;
 /// Modifier bit: Alt held.
 pub const MOD_ALT: u8 = 1 << 2;
 
+/// The leader every overlay binding is built on: **Ctrl+Shift**.
+///
+/// The game has text fields and its own shortcuts, so an overlay chord must
+/// never be something a player could type. Two constraints pick this:
+///
+/// - a bare key, or Shift alone, types characters — excluded by
+///   [`register_hotkey`]'s modifier requirement;
+/// - **Ctrl+Alt is AltGr on Windows.** On non-US layouts AltGr is how you type
+///   everyday characters — on a Spanish keyboard `AltGr+2` is `@` — so a
+///   Ctrl+Alt chord fires while the player types perfectly ordinary text.
+///
+/// Ctrl+Shift produces no characters on any layout, which leaves it free.
+pub const MOD_OVERLAY: u8 = MOD_CTRL | MOD_SHIFT;
+
 /// A key combination: modifier bits + primary virtual-key code.
 /// `vk == 0` means "unbound" and never matches.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -60,6 +74,13 @@ pub fn should_fire(was_down: bool, is_down: bool) -> bool {
 /// Compat `GuiMenuCallback` shape: `extern "C" fn(userdata)`.
 pub type HotkeyCallback = extern "C" fn(userdata: *mut c_void);
 
+/// Frames a repeating chord must be held before it starts repeating, and the
+/// gap between repeats after that. Counted in present ticks rather than
+/// milliseconds so the poll needs no clock — at 60fps this is roughly a
+/// 0.4s delay then 15 repeats a second, which matches typical key repeat.
+const REPEAT_DELAY_FRAMES: u32 = 24;
+const REPEAT_EVERY_FRAMES: u32 = 4;
+
 struct Registration {
     handle: u64,
     id: String,
@@ -69,15 +90,57 @@ struct Registration {
     callback: HotkeyCallback,
     userdata: usize,
     was_down: bool,
+    /// Whether holding the chord fires repeatedly. Off by default: a toggle
+    /// that repeats is a toggle that flickers.
+    repeat: bool,
+    held_frames: u32,
+}
+
+impl Registration {
+    /// Whether this frame should fire, given the chord's current state.
+    /// Advances the hold counter as a side effect.
+    fn tick(&mut self, is_down: bool) -> bool {
+        if !is_down {
+            self.was_down = false;
+            self.held_frames = 0;
+            return false;
+        }
+        let first = !self.was_down;
+        self.was_down = true;
+        if first {
+            self.held_frames = 0;
+            return true;
+        }
+        if !self.repeat {
+            return false;
+        }
+        self.held_frames += 1;
+        self.held_frames >= REPEAT_DELAY_FRAMES
+            && (self.held_frames - REPEAT_DELAY_FRAMES).is_multiple_of(REPEAT_EVERY_FRAMES)
+    }
 }
 
 static HOTKEYS: Lazy<Mutex<Vec<Registration>>> = Lazy::new(|| Mutex::new(Vec::new()));
 static POLL_INSTALLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// Whether a modifier set is safe to bind against a game with text fields.
+///
+/// Requires Ctrl or Alt. A bare key, or Shift alone, is a character the player
+/// could be typing — `Shift+A` is just `A`. This is a floor, not a
+/// recommendation: prefer [`MOD_OVERLAY`], which also dodges AltGr.
+#[must_use]
+pub const fn mods_are_typable(mods: u8) -> bool {
+    mods & (MOD_CTRL | MOD_ALT) == 0
+}
+
 /// Register a hotkey matching compat `Sdk::register_hotkey`.
 ///
 /// Re-registering the same `id` replaces the old entry (fork semantics).
-/// Returns a non-zero handle, or 0 if `id` is empty.
+/// Returns a non-zero handle, or 0 if `id` is empty or the chord is one the
+/// player could type — see [`mods_are_typable`]. Refusing is deliberate: a
+/// binding that steals keystrokes from an in-game text field is worse than no
+/// binding, and silently registering it would surface as the game "eating"
+/// characters with no obvious cause.
 pub fn register_hotkey(
     id: &str,
     label: &str,
@@ -87,6 +150,13 @@ pub fn register_hotkey(
     userdata: *mut c_void,
 ) -> u64 {
     if id.is_empty() {
+        return 0;
+    }
+    if default_vk != 0 && mods_are_typable(default_mods) {
+        log::error!(
+            "honse-services: refusing hotkey '{id}' — mods {default_mods:#04b} need Ctrl or Alt, \
+             or the player cannot type"
+        );
         return 0;
     }
     install_poll_job();
@@ -101,8 +171,50 @@ pub fn register_hotkey(
         callback,
         userdata: userdata as usize,
         was_down: false,
+        repeat: false,
+        held_frames: 0,
     });
     handle
+}
+
+/// Make a registered chord fire repeatedly while held.
+///
+/// For nudging things — a cursor, a panel position — where one press per step
+/// would mean fifty presses to cross the screen. Never for toggles.
+pub fn set_repeat(handle: u64, repeat: bool) -> bool {
+    let mut hotkeys = HOTKEYS.lock();
+    match hotkeys.iter_mut().find(|h| h.handle == handle) {
+        Some(h) => {
+            h.repeat = repeat;
+            true
+        }
+        None => false,
+    }
+}
+
+/// Whether some registered chord is exactly `(mods, vk)`.
+///
+/// Used by [`crate::input_block`] to decide whether to drop a key message. It
+/// matches the same way [`chord_is_down`] does — modifiers exactly, not a
+/// superset — so `Ctrl+Shift+J` is eaten while a bare `J` passes through to the
+/// game untouched.
+#[must_use]
+pub fn chord_registered(vk: u16, mods: u8) -> bool {
+    HOTKEYS.lock().iter().any(|h| h.chord.matches(Chord::new(mods, vk)))
+}
+
+/// Whether any registered chord uses exactly this modifier set.
+///
+/// For `WM_CHAR`, where the virtual key is no longer available: if the overlay
+/// owns this modifier combination at all, no character from it should reach a
+/// focused text field.
+#[must_use]
+pub fn any_chord_uses(mods: u8) -> bool {
+    mods != 0
+        && HOTKEYS
+            .lock()
+            .iter()
+            .any(|h| h.chord.is_bound() && h.chord.mods == mods)
 }
 
 /// Remove a hotkey by handle.
@@ -118,6 +230,9 @@ fn install_poll_job() {
         return;
     }
     crate::frame::register_frame_job(Box::new(|| {
+        // Retried each frame until the game window exists; a no-op after that.
+        #[cfg(windows)]
+        crate::input_block::ensure_installed();
         poll_hotkeys(platform_key_down, platform_is_foreground);
     }));
 }
@@ -156,6 +271,7 @@ pub fn poll_hotkeys(key_down: impl Fn(u16) -> bool, is_foreground: impl Fn() -> 
         // Reset edge state so a chord held while unfocused doesn't fire on refocus.
         for h in HOTKEYS.lock().iter_mut() {
             h.was_down = false;
+            h.held_frames = 0;
         }
         return;
     }
@@ -165,10 +281,9 @@ pub fn poll_hotkeys(key_down: impl Fn(u16) -> bool, is_foreground: impl Fn() -> 
         let mut hotkeys = HOTKEYS.lock();
         for h in hotkeys.iter_mut() {
             let is_down = chord_is_down(h.chord, &key_down);
-            if should_fire(h.was_down, is_down) {
+            if h.tick(is_down) {
                 to_fire.push((h.callback, h.userdata));
             }
-            h.was_down = is_down;
         }
     }
     for (callback, userdata) in to_fire {
@@ -258,10 +373,12 @@ mod tests {
         clear();
         HITS.store(0, Ordering::Relaxed);
 
-        let h = register_hotkey("test.f1", "F1", 0, 0x70, count, std::ptr::null_mut());
+        // Ctrl+F1, not bare F1: registration refuses a chord a player could
+        // type, so an unmodified key would never have been bound at all.
+        let h = register_hotkey("test.f1", "Ctrl+F1", MOD_CTRL, 0x70, count, std::ptr::null_mut());
         assert_ne!(h, 0);
 
-        let held = |vk: u16| vk == 0x70;
+        let held = |vk: u16| matches!(vk, 0x70 | 0x11);
         // Frame 1: down-transition → fire.
         poll_hotkeys(held, || true);
         assert_eq!(HITS.load(Ordering::Relaxed), 1);
@@ -281,8 +398,9 @@ mod tests {
         let _guard = TEST_LOCK.lock();
         clear();
         HITS.store(0, Ordering::Relaxed);
-        let _h = register_hotkey("test.fg", "F1", 0, 0x70, count, std::ptr::null_mut());
-        poll_hotkeys(|vk| vk == 0x70, || false);
+        let h = register_hotkey("test.fg", "Ctrl+F1", MOD_CTRL, 0x70, count, std::ptr::null_mut());
+        assert_ne!(h, 0, "otherwise this passes because nothing was bound");
+        poll_hotkeys(|vk| matches!(vk, 0x70 | 0x11), || false);
         assert_eq!(HITS.load(Ordering::Relaxed), 0);
         clear();
     }

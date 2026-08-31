@@ -11,11 +11,25 @@ message Envelope {
   oneof payload {
     CareerSnapshot career_snapshot = 10;
     CareerExtras career_extras = 11;
+    SettledTurn settled_turn = 12;
   }
 }
 
+// One atomic settled-turn capture: the snapshot and extras that used to travel
+// as two independent envelopes, bound together with a caller-created idempotency
+// key. The encoded body is retained unchanged across delivery retries, so a
+// consumer can dedupe replays on `capture_id`. Additive: the legacy
+// `career_snapshot` / `career_extras` variants keep their field numbers and
+// remain decodable.
+message SettledTurn {
+  string capture_id = 1;      // caller-created idempotency key, stable across retries
+  uint64 captured_at_ms = 2;  // epoch milliseconds when the turn state was read
+  CareerSnapshot snapshot = 3;
+  CareerExtras extras = 4;
+}
+
 // ---------------------------------------------------------------------------
-// Career snapshot (training-tracker, ~2s cadence)
+// Career snapshot (training-tracker; nested in SettledTurn after migration)
 // Mirrors src/memory_reader/snapshot.rs::CareerSnapshot
 // ---------------------------------------------------------------------------
 

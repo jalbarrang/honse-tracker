@@ -12,6 +12,9 @@ path = "src/lib.rs"
 blake3 = { workspace = true }
 chrono = { workspace = true }
 edge-sdk = { path = "../edge-sdk" }
+# `default_fonts` is for the self-hosted overlay: our own egui context needs its
+# own font data — the host's egui is never touched.
+egui = { workspace = true, features = ["default_fonts"] }
 log = { workspace = true }
 once_cell = { workspace = true }
 parking_lot = { workspace = true }
@@ -23,8 +26,17 @@ ureq = { workspace = true }
 tempfile = "3"
 
 [target.'cfg(windows)'.dependencies]
+# Self-hosted overlay renderer. Pinned: it is compiled against the same egui the
+# workspace pins, and its `Renderer::render` contract (what it clobbers, and the
+# gamma-space render target it requires) is what `overlay::render` is built to.
+egui-directx11 = "=0.12.1"
 windows = { version = "0.62.2", features = [
     "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_UI_Input",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
     "Win32_System_Threading",

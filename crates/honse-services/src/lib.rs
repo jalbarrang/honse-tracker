@@ -10,18 +10,26 @@ pub mod frame;
 pub mod hosted_data;
 pub mod hotkeys;
 pub mod init;
+#[cfg(windows)]
+pub mod input_block;
+pub mod overlay;
+pub mod pointer;
 pub mod scene_views;
 pub mod view_hook;
+
+pub use egui;
 
 pub use config::{HostedDataUrls, PluginConfig};
 pub use event::{EventFn, ViewChangeEvent, FRAME, SHUTDOWN, VIEW_CHANGE};
 pub use events::{dispatch, dispatch_shutdown, dispatch_view_change, off, on};
 pub use frame::{install_frame_source, register_frame_job, FrameJob};
 pub use hosted_data::{gametora_data_dir, host_data_path, sync_all};
-pub use hotkeys::{register_hotkey, Chord, MOD_ALT, MOD_CTRL, MOD_SHIFT};
+pub use hotkeys::{register_hotkey, Chord, MOD_ALT, MOD_CTRL, MOD_OVERLAY, MOD_SHIFT};
 pub use init::{init, is_game_ready, register_on_game_ready, GameReadyCallback, InitOptions};
 pub use scene_views::view_name;
-pub use view_hook::{install_view_poll, poll_view_change, set_view_poll_enabled};
+pub use view_hook::{
+    current_view_id, install_view_poll, poll_view_change, set_view_poll_enabled, set_view_poll_hold, view_poll_active,
+};
 
 /// Unregister a handle from the hotkey registry.
 pub fn unregister(handle: u64) -> bool {
