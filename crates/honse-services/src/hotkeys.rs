@@ -191,6 +191,27 @@ pub fn set_repeat(handle: u64, repeat: bool) -> bool {
     }
 }
 
+/// Whether some registered chord is exactly `(mods, vk)`.
+///
+/// Used by [`crate::input_block`] to decide whether to drop a key message. It
+/// matches the same way [`chord_is_down`] does — modifiers exactly, not a
+/// superset — so `Ctrl+Shift+J` is eaten while a bare `J` passes through to the
+/// game untouched.
+#[must_use]
+pub fn chord_registered(vk: u16, mods: u8) -> bool {
+    HOTKEYS.lock().iter().any(|h| h.chord.matches(Chord::new(mods, vk)))
+}
+
+/// Whether any registered chord uses exactly this modifier set.
+///
+/// For `WM_CHAR`, where the virtual key is no longer available: if the overlay
+/// owns this modifier combination at all, no character from it should reach a
+/// focused text field.
+#[must_use]
+pub fn any_chord_uses(mods: u8) -> bool {
+    mods != 0 && HOTKEYS.lock().iter().any(|h| h.chord.is_bound() && h.chord.mods == mods)
+}
+
 /// Remove a hotkey by handle.
 pub fn unregister(handle: u64) -> bool {
     let mut hotkeys = HOTKEYS.lock();
@@ -204,6 +225,9 @@ fn install_poll_job() {
         return;
     }
     crate::frame::register_frame_job(Box::new(|| {
+        // Retried each frame until the game window exists; a no-op after that.
+        #[cfg(windows)]
+        crate::input_block::ensure_installed();
         poll_hotkeys(platform_key_down, platform_is_foreground);
     }));
 }

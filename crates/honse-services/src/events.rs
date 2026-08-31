@@ -84,6 +84,12 @@ pub fn dispatch_view_change(view_id: i32) {
 /// `SHUTDOWN`, then retain-away — so plugins that only subscribed to FRAME
 /// still get a chance to unhook. Process-wide variant clears everyone.
 pub fn dispatch_shutdown() {
+    // Before anything else: a DLL that unloads while still owning the window
+    // procedure leaves a pointer into freed memory, and the next keystroke
+    // takes the game down with it.
+    #[cfg(windows)]
+    crate::input_block::uninstall();
+
     let targets: Vec<(EventFn, usize)> = {
         let subs = SUBSCRIPTIONS.lock();
         subs.iter().map(|s| (s.callback, s.userdata)).collect()

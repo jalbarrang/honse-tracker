@@ -9,6 +9,8 @@ pub mod events;
 pub mod frame;
 pub mod hosted_data;
 pub mod hotkeys;
+#[cfg(windows)]
+pub mod input_block;
 pub mod init;
 pub mod overlay;
 pub mod scene_views;

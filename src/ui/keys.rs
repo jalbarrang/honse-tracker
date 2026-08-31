@@ -2,12 +2,28 @@
 //!
 //! # The leader
 //!
-//! All of them are **Ctrl+Shift+key**. The game has text fields and its own
-//! shortcuts, so an overlay chord must be something a player cannot type.
-//! Ctrl+Alt is not an option — it is AltGr on Windows, and on non-US layouts
-//! AltGr types everyday characters. `register_hotkey` refuses anything without
-//! Ctrl or Alt outright, so the rule holds even if someone adds a binding here
-//! without reading this.
+//! All of them are **Ctrl+Shift+key**. The game has text fields, so an overlay
+//! chord must be something a player cannot type. Ctrl+Alt is not an option —
+//! it is AltGr on Windows, and on non-US layouts AltGr types everyday
+//! characters. `register_hotkey` refuses anything without Ctrl or Alt outright,
+//! so the rule holds even if someone adds a binding without reading this.
+//!
+//! # Keys may still leak to the game
+//!
+//! The modifier stops the player *typing* the key. It does not stop the game
+//! *acting* on it: the poll consumes nothing, and the game reads keys without
+//! checking modifiers at all. Ctrl+Shift+Down moved the planner cursor and the
+//! game's; Ctrl+Shift+Space toggled a song and clicked the focused button.
+//! Letters leak too — Ctrl+Shift+D reached the game as `D`.
+//!
+//! [`honse_services::input_block`] now subclasses the game window to swallow
+//! these, but that is unproven — it installs and still leaks, which is why the
+//! choice of keys is defensive rather than trusting.
+//!
+//! Navigation therefore uses vim-style `HJKL` rather than the arrows, and `T`
+//! rather than Space: not because letters are safe, but because a stray letter
+//! is inert on most screens where a stray arrow moves a selection and a stray
+//! Space commits it. Once swallowing is confirmed, the arrows can come back.
 //!
 //! # Why polling is enough
 //!
@@ -21,18 +37,19 @@ use honse_services::MOD_OVERLAY;
 /// Virtual-key codes. Named rather than inlined so the table below reads as
 /// keys instead of hex.
 mod vk {
-    pub const SPACE: u16 = 0x20;
-    pub const LEFT: u16 = 0x25;
-    pub const UP: u16 = 0x26;
-    pub const RIGHT: u16 = 0x27;
-    pub const DOWN: u16 = 0x28;
-    pub const TAB: u16 = 0x09;
     pub const A: u16 = 0x41;
+    pub const B: u16 = 0x42;
     pub const D: u16 = 0x44;
+    pub const H: u16 = 0x48;
+    pub const J: u16 = 0x4A;
+    pub const K: u16 = 0x4B;
     pub const L: u16 = 0x4C;
+    pub const M: u16 = 0x4D;
+    pub const N: u16 = 0x4E;
     pub const O: u16 = 0x4F;
     pub const P: u16 = 0x50;
     pub const R: u16 = 0x52;
+    pub const T: u16 = 0x54;
 }
 
 /// One binding: id, the label a rebind UI would show, its key, and what it does.
@@ -53,10 +70,10 @@ extern "C" fn toggle_overlay(_: *mut std::ffi::c_void) {
     hlog_info!(target: "training-tracker", "Overlay: {}", if on { "shown" } else { "hidden" });
 }
 
-// The arrows and R are shared: layout mode owns them while it is on, the
-// planner otherwise, and neither when both are closed. Sharing rather than
-// binding more chords keeps the whole scheme inside Ctrl+Shift, and only one
-// of the two can be open at a time by construction.
+// HJKL and R are shared: layout mode owns them while it is on, the planner
+// otherwise, and neither when both are closed. Sharing rather than binding more
+// chords keeps the whole scheme inside Ctrl+Shift, and only one of the two can
+// be open at a time by construction.
 extern "C" fn nav_up(_: *mut std::ffi::c_void) {
     if super::layout::is_active() {
         super::layout::nudge(0.0, -1.0);
@@ -104,6 +121,9 @@ extern "C" fn plan_toggle_open(_: *mut std::ffi::c_void) {
 extern "C" fn plan_toggle_song(_: *mut std::ffi::c_void) {
     super::plan::toggle_selected();
 }
+extern "C" fn plan_toggle_bought(_: *mut std::ffi::c_void) {
+    super::plan::toggle_bought_selected();
+}
 
 extern "C" fn layout_toggle(_: *mut std::ffi::c_void) {
     if super::plan::is_open() {
@@ -140,13 +160,13 @@ const BINDINGS: &[Binding] = &[
     Binding {
         id: "layout.toggle",
         label: "Enter/leave layout mode",
-        vk: vk::L,
+        vk: vk::M,
         action: layout_toggle,
     },
     Binding {
         id: "layout.next_panel",
         label: "Layout mode: select the next panel",
-        vk: vk::TAB,
+        vk: vk::N,
         action: layout_next_panel,
     },
     Binding {
@@ -159,33 +179,39 @@ const BINDINGS: &[Binding] = &[
     // panel one step per press would mean fifty presses to cross the screen.
     Binding {
         id: "nav.up",
-        label: "Previous song / nudge panel up",
-        vk: vk::UP,
+        label: "K - previous song / nudge panel up",
+        vk: vk::K,
         action: nav_up,
     },
     Binding {
         id: "nav.down",
-        label: "Next song / nudge panel down",
-        vk: vk::DOWN,
+        label: "J - next song / nudge panel down",
+        vk: vk::J,
         action: nav_down,
     },
     Binding {
         id: "nav.left",
-        label: "Previous concert / nudge panel left",
-        vk: vk::LEFT,
+        label: "H - previous concert / nudge panel left",
+        vk: vk::H,
         action: nav_left,
     },
     Binding {
         id: "nav.right",
-        label: "Next concert / nudge panel right",
-        vk: vk::RIGHT,
+        label: "L - next concert / nudge panel right",
+        vk: vk::L,
         action: nav_right,
     },
     Binding {
         id: "plan.toggle_song",
-        label: "Song planner: plan/skip the selected song",
-        vk: vk::SPACE,
+        label: "T - plan/skip the selected song",
+        vk: vk::T,
         action: plan_toggle_song,
+    },
+    Binding {
+        id: "plan.toggle_bought",
+        label: "B - mark the selected song bought / not bought",
+        vk: vk::B,
+        action: plan_toggle_bought,
     },
     Binding {
         id: "nav.reset",
@@ -215,7 +241,7 @@ pub fn install() {
     }
     hlog_info!(
         target: "training-tracker",
-        "Hotkeys: {bound}/{} bound \u{2014} Ctrl+Shift+O overlay, +D debug, +P planner, +L layout",
+        "Hotkeys: {bound}/{} bound \u{2014} Ctrl+Shift: O overlay, D debug, P planner, M layout, HJKL nav, T plan, B bought",
         BINDINGS.len()
     );
 }

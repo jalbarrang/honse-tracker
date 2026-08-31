@@ -78,7 +78,7 @@ fn body(ui: &mut egui::Ui) {
         row(ui, "view", &view_id.to_string(), theme::TEXT);
         match view.label() {
             Some(label) => row(ui, "screen", label, theme::TEXT_SECONDARY),
-            None => row(ui, "screen", "UNKNOWN \u{2192} add to scene_views", theme::CAUTION),
+            None => row(ui, "screen", "UNKNOWN - add to scene_views", theme::CAUTION),
         }
     }
 
@@ -99,6 +99,16 @@ fn body(ui: &mut egui::Ui) {
         Some(turn) => row(ui, "snapshot", &format!("turn {turn}"), theme::TEXT_SECONDARY),
         None => row(ui, "snapshot", "none cached", theme::TEXT_UNKNOWN),
     }
+
+    // Whether overlay chords are being consumed or leaking to the game. The
+    // whole point of the subclass, and invisible without saying so.
+    let hooked = honse_services::input_block::is_installed();
+    row(
+        ui,
+        "keys",
+        if hooked { "consumed" } else { "LEAKING to game" },
+        if hooked { theme::TEXT_SECONDARY } else { theme::NEGATIVE },
+    );
 }
 
 /// One `label  ······  value` line, value right-aligned so the column scans.

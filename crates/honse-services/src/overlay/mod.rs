@@ -290,6 +290,13 @@ fn paint_frame(swapchain: &windows::Win32::Graphics::Dxgi::IDXGISwapChain) -> wi
         // SAFETY: called from the present callback with the live swapchain.
         *guard = Some(unsafe { render::Painter::new(swapchain) }?);
         log::info!("honse-services: overlay painter created");
+        // The swapchain names the window the game actually renders into —
+        // authoritative, unlike guessing at the process's first visible
+        // top-level window, which can be a splash or a helper.
+        // SAFETY: live swapchain from the present callback.
+        if let Some(hwnd) = unsafe { render::output_window(swapchain) } {
+            crate::input_block::note_render_window(hwnd);
+        }
     }
     let painter = guard.as_mut().expect("painter created above");
 

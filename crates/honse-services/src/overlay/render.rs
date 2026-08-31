@@ -121,6 +121,19 @@ impl Painter {
     }
 }
 
+/// The window this swapchain presents into.
+///
+/// The one window the game is definitely using, which is what input hooking
+/// needs — enumerating the process's windows and picking one is a guess.
+///
+/// # Safety
+/// `swapchain` must be the live `IDXGISwapChain` from the present callback.
+pub unsafe fn output_window(swapchain: &IDXGISwapChain) -> Option<isize> {
+    // SAFETY: a live swapchain always has a description.
+    let desc = unsafe { swapchain.GetDesc() }.ok()?;
+    (!desc.OutputWindow.0.is_null()).then_some(desc.OutputWindow.0 as isize)
+}
+
 /// Map an sRGB-aware backbuffer format to its plain gamma-space twin.
 ///
 /// egui does its blending in gamma space and the renderer requires a
