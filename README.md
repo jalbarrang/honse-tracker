@@ -1,6 +1,6 @@
 # Honse Tracker
 
-A HUD for Umamusume: Pretty Derby, as a plugin for [Hachimi-Edge](https://github.com/Hachimi-Hachimi/Hachimi).
+A HUD for the Honse game, as a plugin for [Hachimi-Edge](https://github.com/Hachimi-Hachimi/Hachimi).
 
 It shows you what the game already knows but does not put on screen: what each
 training facility is really offering this turn, and — in Grand Live — where your
