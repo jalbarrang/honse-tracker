@@ -1,8 +1,9 @@
-//! Layout mode — move panels without a mouse.
+//! Layout mode — pick a panel up and put it somewhere else.
 //!
-//! The design called for dragging. Dragging needs pointer events, which need
-//! the WndProc hook we have not built, so this is the keyboard form of the same
-//! idea: pick a panel, send it to a corner, nudge it from there.
+//! Drag it with the mouse, or drive it from the keyboard: pick a panel, send it
+//! to a corner, nudge it from there. The keyboard form came first, when there
+//! was no pointer to drag with, and it stays because it is the precise one —
+//! a nudge is four pixels, a drag is wherever your hand stopped.
 //!
 //! # Corner first, pixels second
 //!
@@ -70,6 +71,26 @@ pub fn load_and_apply() {
         hlog_info!(target: "training-tracker", "Overlay layout: {applied} saved position(s) applied");
     }
     *LAYOUT.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(config);
+}
+
+/// Persist a panel the mouse just finished dragging.
+///
+/// Runs every frame: the overlay moves the panel while the button is down and
+/// hands the id over once it is released, because saving belongs to whoever
+/// owns the config file.
+pub fn flush_drag() {
+    let Some(id) = overlay::take_moved_panel() else {
+        return;
+    };
+    // Grabbing a panel selects it, so the keyboard carries on from the one the
+    // mouse was last holding.
+    if let Some(index) = overlay::panel_ids().iter().position(|&p| p == id) {
+        SELECTED.store(index, Ordering::Release);
+    }
+    if let Some((anchor, offset)) = overlay::placement(id) {
+        save(id, anchor, offset);
+        hlog_info!(target: "training-tracker", "Layout: '{id}' dragged to {} +{},{}", anchor.name(), offset.x, offset.y);
+    }
 }
 
 /// Whether layout mode is on.

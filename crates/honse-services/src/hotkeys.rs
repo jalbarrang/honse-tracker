@@ -368,10 +368,12 @@ mod tests {
         clear();
         HITS.store(0, Ordering::Relaxed);
 
-        let h = register_hotkey("test.f1", "F1", 0, 0x70, count, std::ptr::null_mut());
+        // Ctrl+F1, not bare F1: registration refuses a chord a player could
+        // type, so an unmodified key would never have been bound at all.
+        let h = register_hotkey("test.f1", "Ctrl+F1", MOD_CTRL, 0x70, count, std::ptr::null_mut());
         assert_ne!(h, 0);
 
-        let held = |vk: u16| vk == 0x70;
+        let held = |vk: u16| matches!(vk, 0x70 | 0x11);
         // Frame 1: down-transition → fire.
         poll_hotkeys(held, || true);
         assert_eq!(HITS.load(Ordering::Relaxed), 1);
@@ -391,8 +393,9 @@ mod tests {
         let _guard = TEST_LOCK.lock();
         clear();
         HITS.store(0, Ordering::Relaxed);
-        let _h = register_hotkey("test.fg", "F1", 0, 0x70, count, std::ptr::null_mut());
-        poll_hotkeys(|vk| vk == 0x70, || false);
+        let h = register_hotkey("test.fg", "Ctrl+F1", MOD_CTRL, 0x70, count, std::ptr::null_mut());
+        assert_ne!(h, 0, "otherwise this passes because nothing was bound");
+        poll_hotkeys(|vk| matches!(vk, 0x70 | 0x11), || false);
         assert_eq!(HITS.load(Ordering::Relaxed), 0);
         clear();
     }

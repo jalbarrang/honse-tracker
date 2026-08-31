@@ -210,6 +210,9 @@ pub fn install() {
     debug::set_enabled(debug::is_enabled());
     crate::song_plan::load();
     layout::load_and_apply();
+    // A mouse drag moves a panel on the render thread; this is what writes the
+    // result to disk once the button comes up.
+    honse_services::frame::register_frame_job(Box::new(layout::flush_drag));
     keys::install();
     hlog_info!(target: "training-tracker", "Overlay: training + performance + lessons + debug panels registered");
 }

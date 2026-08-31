@@ -29,14 +29,20 @@
 
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, Ordering};
 
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::System::Threading::GetCurrentProcessId;
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_MENU, VK_SHIFT};
-use windows::Win32::UI::Input::{GetRawInputData, HRAWINPUT, RAWINPUT, RAWINPUTHEADER, RID_INPUT, RIM_TYPEKEYBOARD};
-use windows::Win32::UI::WindowsAndMessaging::{
-    CallWindowProcW, DefWindowProcW, EnumWindows, GetWindowThreadProcessId, IsWindowVisible, SetWindowLongPtrW,
-    GWLP_WNDPROC, WM_CHAR, WM_INPUT, WM_KEYDOWN, WM_KEYUP, WM_SYSCHAR, WM_SYSKEYDOWN, WM_SYSKEYUP,
+use windows::Win32::UI::Input::{
+    GetRawInputData, HRAWINPUT, RAWINPUT, RAWINPUTHEADER, RID_INPUT, RIM_TYPEKEYBOARD, RIM_TYPEMOUSE,
 };
+use windows::Win32::UI::WindowsAndMessaging::{
+    CallWindowProcW, DefWindowProcW, EnumWindows, GetClientRect, GetWindowThreadProcessId, IsWindowVisible,
+    SetWindowLongPtrW, GWLP_WNDPROC, WHEEL_DELTA, WM_CHAR, WM_INPUT, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDOWN,
+    WM_RBUTTONUP, WM_SYSCHAR, WM_SYSKEYDOWN, WM_SYSKEYUP,
+};
+
+use crate::pointer::{self, PointerEvent};
 
 /// Previous window procedure, or 0 if not installed.
 static ORIGINAL: AtomicIsize = AtomicIsize::new(0);
@@ -103,13 +109,18 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
     // Raw Input is a separate delivery path from WM_KEYDOWN, and the game reads
     // that one: swallowing the legacy message alone provably does nothing.
     // SAFETY: `lparam` is the HRAWINPUT handle for WM_INPUT.
-    if msg == WM_INPUT && unsafe { swallows_raw_key(lparam) } {
+    if msg == WM_INPUT && unsafe { swallows_raw_input(lparam) } {
         // The system still needs the packet released, so the default handler
         // runs — but the game's procedure never sees it.
         // SAFETY: the arguments are the ones we were handed.
         return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
     }
     if swallows(msg, wparam) {
+        return LRESULT(0);
+    }
+    // Mouse messages are always recorded and only sometimes eaten - see
+    // `mouse_message`.
+    if mouse_message(msg, wparam, lparam) == Some(Consumed::Yes) {
         return LRESULT(0);
     }
     let original = ORIGINAL.load(Ordering::Acquire);
@@ -159,15 +170,17 @@ fn swallows(msg: u32, wparam: WPARAM) -> bool {
     }
 }
 
-/// Whether a `WM_INPUT` packet is a keyboard event for one of our chords.
+/// Whether a `WM_INPUT` packet belongs to the overlay.
 ///
-/// Only keyboard packets are ever swallowed, and only ones matching a bound
-/// chord — the game's mouse and every other key ride the same message type and
-/// must pass through untouched.
+/// Keyboard packets matching a bound chord, and — while the overlay holds the
+/// pointer — mouse packets carrying a button transition. Everything else rides
+/// the same message type and must pass through untouched, mouse *movement*
+/// included: dropping that would freeze the game's own cursor whenever a panel
+/// happened to sit under it.
 ///
 /// # Safety
 /// `lparam` must be the `HRAWINPUT` from a `WM_INPUT` message.
-unsafe fn swallows_raw_key(lparam: LPARAM) -> bool {
+unsafe fn swallows_raw_input(lparam: LPARAM) -> bool {
     let mut raw = RAWINPUT::default();
     let mut size = u32::try_from(std::mem::size_of::<RAWINPUT>()).unwrap_or(0);
     // SAFETY: `raw` is a correctly sized buffer for one RAWINPUT record.
@@ -180,7 +193,15 @@ unsafe fn swallows_raw_key(lparam: LPARAM) -> bool {
             u32::try_from(std::mem::size_of::<RAWINPUTHEADER>()).unwrap_or(0),
         )
     };
-    if read == u32::MAX || raw.header.dwType != RIM_TYPEKEYBOARD.0 {
+    if read == u32::MAX {
+        return false;
+    }
+    if raw.header.dwType == RIM_TYPEMOUSE.0 {
+        // SAFETY: dwType says this union member is the mouse one.
+        let buttons = unsafe { raw.data.mouse.Anonymous.Anonymous.usButtonFlags };
+        return buttons != 0 && pointer::is_capturing();
+    }
+    if raw.header.dwType != RIM_TYPEKEYBOARD.0 {
         return false;
     }
     // SAFETY: dwType says this union member is the keyboard one.
@@ -193,12 +214,88 @@ unsafe fn swallows_raw_key(lparam: LPARAM) -> bool {
     eat
 }
 
+/// Record a mouse message, and say whether to drop it.
+///
+/// `None` means "not a mouse message". Movement is never dropped — the game's
+/// cursor would stick — and buttons only while the overlay holds the pointer,
+/// which happens only with something interactive under it.
+fn mouse_message(msg: u32, wparam: WPARAM, lparam: LPARAM) -> Option<Consumed> {
+    let button = |b, pressed| PointerEvent::Button {
+        pos: client_pos(lparam),
+        button: b,
+        pressed,
+    };
+    let event = match msg {
+        WM_MOUSEMOVE => PointerEvent::Moved(client_pos(lparam)),
+        // No TrackMouseEvent, so WM_MOUSELEAVE never arrives. Losing focus is
+        // the reliable moment the pointer stops being ours.
+        WM_KILLFOCUS => PointerEvent::Gone,
+        WM_LBUTTONDOWN => button(egui::PointerButton::Primary, true),
+        WM_LBUTTONUP => button(egui::PointerButton::Primary, false),
+        WM_RBUTTONDOWN => button(egui::PointerButton::Secondary, true),
+        WM_RBUTTONUP => button(egui::PointerButton::Secondary, false),
+        WM_MBUTTONDOWN => button(egui::PointerButton::Middle, true),
+        WM_MBUTTONUP => button(egui::PointerButton::Middle, false),
+        // The wheel reports in screen coordinates, so it carries no usable
+        // position: egui keeps the one the last move gave it.
+        WM_MOUSEWHEEL => PointerEvent::Wheel(wheel_notches(wparam)),
+        _ => return None,
+    };
+    pointer::push(event);
+    let movement = matches!(event, PointerEvent::Moved(_) | PointerEvent::Gone);
+    Some(if !movement && pointer::is_capturing() {
+        Consumed::Yes
+    } else {
+        Consumed::No
+    })
+}
+
+/// Whether a recorded message should still reach the game.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Consumed {
+    Yes,
+    No,
+}
+
+/// The cursor position packed into a mouse message's `lparam`, in client
+/// pixels. Signed: a drag can leave the window.
+fn client_pos(lparam: LPARAM) -> egui::Pos2 {
+    let x = (lparam.0 & 0xFFFF) as u16 as i16;
+    let y = ((lparam.0 >> 16) & 0xFFFF) as u16 as i16;
+    egui::pos2(f32::from(x), f32::from(y))
+}
+
+/// Wheel movement in notches, positive away from the user. The delta rides in
+/// the high word of `wparam`, unlike every other mouse message's payload.
+fn wheel_notches(wparam: WPARAM) -> f32 {
+    let delta = ((wparam.0 >> 16) & 0xFFFF) as u16 as i16;
+    f32::from(delta) / WHEEL_DELTA as f32
+}
+
+/// The game window's client area in pixels, or `None` before the overlay has
+/// seen a swapchain.
+///
+/// The frame needs it to map client coordinates onto the backbuffer: the two
+/// differ whenever the game renders at a scaled resolution.
+#[must_use]
+pub fn client_size() -> Option<(f32, f32)> {
+    let hwnd = RENDER_WINDOW.load(Ordering::Acquire);
+    if hwnd == 0 {
+        return None;
+    }
+    let mut rect = RECT::default();
+    // SAFETY: the swapchain's output window, live for as long as the game is.
+    unsafe { GetClientRect(HWND(hwnd as *mut std::ffi::c_void), &raw mut rect) }.ok()?;
+    let (w, h) = ((rect.right - rect.left) as f32, (rect.bottom - rect.top) as f32);
+    (w > 0.0 && h > 0.0).then_some((w, h))
+}
+
 /// Modifiers currently down, in [`crate::hotkeys`]'s bit order.
 ///
 /// `GetKeyState` rather than `GetAsyncKeyState`: inside a window procedure it
 /// reports the state as of the message being processed, so a chord released
 /// mid-queue cannot make us drop the wrong key.
-fn held_mods() -> u8 {
+pub(crate) fn held_mods() -> u8 {
     // SAFETY: GetKeyState is always safe to call with a virtual-key code.
     let down = |vk: u16| unsafe { GetKeyState(i32::from(vk)) < 0 };
     (u8::from(down(VK_CONTROL.0)) * crate::hotkeys::MOD_CTRL)

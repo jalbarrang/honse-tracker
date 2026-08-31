@@ -1,9 +1,12 @@
 //! The song planner — pick what you are saving for, per concert.
 //!
-//! Opened with a hotkey and driven entirely by them, because without a WndProc
-//! the overlay observes keys rather than consuming them: anything we watch also
-//! reaches the game. Every chord therefore carries Ctrl+Shift, navigation
-//! included. See [`super::keys`].
+//! Opened with a hotkey, and drivable entirely by them — every chord carries
+//! Ctrl+Shift, navigation included. See [`super::keys`].
+//!
+//! It is also the one panel that takes the mouse, and only while it is open:
+//! left-click plans a song, right-click marks it bought. Clicks landing on it
+//! do not reach the game, which is why that is switched off the moment the
+//! planner closes.
 //!
 //! # It opens where you are
 //!
@@ -49,6 +52,9 @@ pub fn is_open() -> bool {
 pub fn toggle_open() {
     let open = !is_open();
     OPEN.store(open, Ordering::Release);
+    // The overlay only swallows clicks over a panel that asked for them, so
+    // this is what decides whether the game or the planner gets the mouse.
+    honse_services::overlay::set_panel_interactive("plan", open);
     if open {
         WINDOW.store(0, Ordering::Release);
         CURSOR.store(0, Ordering::Release);
@@ -194,15 +200,28 @@ fn body(ui: &mut egui::Ui) {
 
     let owned = super::owned_songs();
     for (i, song) in songs.iter().enumerate() {
-        row(ui, song, i == cursor, owned.has(song.id));
+        // Clicking a row moves the cursor there first, so the keys carry on
+        // from wherever the mouse left off rather than from where they were.
+        let response = row(ui, song, i == cursor, owned.has(song.id));
+        if response.clicked() {
+            CURSOR.store(i, Ordering::Release);
+            toggle_selected();
+        } else if response.secondary_clicked() {
+            CURSOR.store(i, Ordering::Release);
+            toggle_bought_selected();
+        }
     }
 
     totals(ui, window, cap, &owned);
     help(ui);
 }
 
-fn row(ui: &mut egui::Ui, song: &Song, selected: bool, owned: bool) {
+/// One song row. Returns its click response: left plans, right marks bought.
+fn row(ui: &mut egui::Ui, song: &Song, selected: bool, owned: bool) -> egui::Response {
     let planned = song_plan::is_planned(song.id);
+    // Reserved now, painted after the row is laid out: a hover highlight has to
+    // go behind the text, and the rect is not known until the text is placed.
+    let highlight = ui.painter().add(egui::Shape::Noop);
     // Three states, not two. A bought song is settled — it neither costs
     // anything further nor is something you can still decide about.
     // Geometric Shapes and Latin-1 only. egui's default fonts have no Dingbats
@@ -216,7 +235,7 @@ fn row(ui: &mut egui::Ui, song: &Song, selected: bool, owned: bool) {
         ("\u{00d7}", theme::TEXT_UNKNOWN) // times: skipped
     };
 
-    ui.horizontal(|ui| {
+    let laid_out = ui.horizontal(|ui| {
         // The cursor is a glyph, not a highlight bar: at this row height a
         // filled bar behind small text hurts legibility more than it helps.
         ui.label(
@@ -251,6 +270,22 @@ fn row(ui: &mut egui::Ui, song: &Song, selected: bool, owned: bool) {
             ui.label(egui::RichText::new(text).font(theme::text::meta()).color(colour));
         });
     });
+
+    // Hit the whole row, not the words in it: a two-pixel target is not a
+    // target. Widened a little so the highlight reads as a band.
+    let rect = laid_out.response.rect.expand2(egui::vec2(4.0, 1.0));
+    let response = ui.interact(rect, ui.id().with(song.id), egui::Sense::click());
+    if response.hovered() {
+        ui.painter().set(
+            highlight,
+            egui::epaint::RectShape::filled(
+                rect,
+                egui::CornerRadius::same(theme::RADIUS_ROW),
+                theme::ROW_HIGHLIGHT,
+            ),
+        );
+    }
+    response
 }
 
 fn totals(ui: &mut egui::Ui, window: u8, cap: i32, owned: &song_plan::Owned) {
@@ -295,7 +330,7 @@ fn totals(ui: &mut egui::Ui, window: u8, cap: i32, owned: &song_plan::Owned) {
 fn help(ui: &mut egui::Ui) {
     ui.add_space(4.0);
     ui.label(
-        egui::RichText::new("Ctrl+Shift  J/K song  H/L concert  T plan  B bought  R reset")
+        egui::RichText::new("click plan  \u{00b7}  right-click bought  \u{00b7}  Ctrl+Shift arrows, Space, B, R")
             .font(theme::text::help())
             .color(theme::TEXT_FAINT),
     );

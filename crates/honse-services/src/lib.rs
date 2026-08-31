@@ -13,6 +13,7 @@ pub mod hotkeys;
 pub mod input_block;
 pub mod init;
 pub mod overlay;
+pub mod pointer;
 pub mod scene_views;
 pub mod view_hook;
 

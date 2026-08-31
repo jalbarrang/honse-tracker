@@ -15,10 +15,14 @@
 //!
 //! # Input
 //!
-//! There is none yet. The overlay paints and forgets; nothing is clickable and
-//! nothing is dragged. Panels sit where their registration puts them. Mouse
-//! input arrives with the dormant-WndProc work and is deliberately not a
-//! prerequisite for anything on screen today.
+//! Mouse events arrive from [`crate::input_block`] via [`crate::pointer`] and
+//! are fed to the context every frame. Which clicks the overlay *takes* is a
+//! narrower question: a panel is interactable only while layout mode is on or
+//! the plugin has opted it in, and egui only reports the pointer as over an
+//! area when that area is interactable. So a HUD with nothing to click never
+//! swallows a click meant for the game.
+//!
+//! Keyboard is not fed here at all — hotkeys are polled, not typed.
 //!
 //! # One instance per DLL
 //!
@@ -109,10 +113,23 @@ struct Panel {
     draw: DrawFn,
     /// Where registration put it, kept so layout mode can undo a move.
     home: (Anchor, egui::Vec2),
+    /// Whether this panel takes the mouse. Off until a panel has something to
+    /// click, because an interactable panel is one the game cannot be clicked
+    /// through.
+    interactive: bool,
 }
 
 static PANELS: Lazy<Mutex<Vec<Panel>>> = Lazy::new(|| Mutex::new(Vec::new()));
 static ENABLED: AtomicBool = AtomicBool::new(true);
+
+/// A layout-mode drag in progress, and the panel the last one ended on.
+#[derive(Default)]
+struct Drag {
+    panel: Option<&'static str>,
+    finished: Option<&'static str>,
+}
+
+static DRAGGING: Lazy<Mutex<Drag>> = Lazy::new(|| Mutex::new(Drag::default()));
 
 /// The panel layout mode is editing, or `None` when it is off.
 ///
@@ -149,8 +166,35 @@ pub fn placement(id: &str) -> Option<(Anchor, egui::Vec2)> {
 pub fn set_placement(id: &str, anchor: Anchor, offset: egui::Vec2) {
     if let Some(panel) = PANELS.lock().iter_mut().find(|p| p.id == id) {
         panel.anchor = anchor;
-        panel.offset = egui::vec2(offset.x.max(0.0), offset.y.max(0.0));
+        panel.offset = inset(offset);
     }
+}
+
+/// An inset is a distance from a corner, so it cannot be negative: a panel
+/// pushed past its own corner would leave the screen with no way to see it and
+/// drag it back.
+fn inset(offset: egui::Vec2) -> egui::Vec2 {
+    egui::vec2(offset.x.max(0.0), offset.y.max(0.0))
+}
+
+/// Let a panel take the mouse, or stop it taking the mouse.
+///
+/// The plugin turns this on for a panel while it has something to click and off
+/// again afterwards. While it is on, clicks landing on that panel do not reach
+/// the game.
+pub fn set_panel_interactive(id: &str, interactive: bool) {
+    if let Some(panel) = PANELS.lock().iter_mut().find(|p| p.id == id) {
+        panel.interactive = interactive;
+    }
+}
+
+/// The panel a mouse drag just finished on, taken once.
+///
+/// Layout mode drags a panel by updating its offset directly; persisting that
+/// belongs to the plugin, which owns the config file.
+#[must_use]
+pub fn take_moved_panel() -> Option<&'static str> {
+    DRAGGING.lock().finished.take()
 }
 
 /// Put a panel back where registration placed it.
@@ -179,6 +223,7 @@ pub fn register_panel(
         width,
         draw: Box::new(draw),
         home: (anchor, offset),
+        interactive: false,
     });
 }
 
@@ -247,6 +292,9 @@ pub(crate) fn present(swapchain: *mut c_void) {
     use windows::Win32::Graphics::Dxgi::IDXGISwapChain;
 
     if swapchain.is_null() || !is_enabled() || DISABLED_BY_FAILURE.load(Ordering::Acquire) {
+        // An overlay that is not painting cannot know where the pointer is, and
+        // must not go on eating clicks on the strength of what it last saw.
+        crate::pointer::set_capturing(false);
         return;
     }
     // SAFETY: edge hands us the live swapchain for the frame being presented.
@@ -310,29 +358,124 @@ fn paint_frame(swapchain: &windows::Win32::Graphics::Dxgi::IDXGISwapChain) -> wi
     let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(width as f32, height as f32));
     let input = egui::RawInput {
         screen_rect: Some(screen),
-        // No events: the overlay reads no input yet. See the module docs.
+        events: pointer_events(screen),
+        modifiers: current_modifiers(),
         ..Default::default()
     };
 
     let full_output = ctx.run(input, |ctx| draw_panels(ctx, screen));
+
+    // Now that the frame knows where the pointer landed, decide whether the
+    // next click is ours. One frame behind by construction — which is harmless,
+    // because the move that establishes the hover always precedes the click.
+    let capturing = ctx.is_pointer_over_area() || DRAGGING.lock().panel.is_some();
+    crate::pointer::set_capturing(capturing);
+
     let (output, _platform, _viewports) = egui_directx11::split_output(full_output);
 
     // SAFETY: as above.
     unsafe { painter.paint(swapchain, ctx, output) }
 }
 
+/// The window procedure's mouse events, mapped onto the backbuffer.
+///
+/// Client pixels and backbuffer pixels are the same thing right up until the
+/// game renders at a scaled resolution, at which point a click lands somewhere
+/// other than where it was aimed.
+#[cfg(windows)]
+fn pointer_events(screen: egui::Rect) -> Vec<egui::Event> {
+    use crate::pointer::PointerEvent;
+
+    let modifiers = current_modifiers();
+    let scale = match crate::input_block::client_size() {
+        Some((w, h)) => egui::vec2(screen.width() / w, screen.height() / h),
+        None => egui::Vec2::splat(1.0),
+    };
+    let map = |p: egui::Pos2| egui::pos2(p.x * scale.x, p.y * scale.y);
+
+    crate::pointer::take()
+        .into_iter()
+        .map(|event| match event {
+            PointerEvent::Moved(pos) => egui::Event::PointerMoved(map(pos)),
+            PointerEvent::Button { pos, button, pressed } => egui::Event::PointerButton {
+                pos: map(pos),
+                button,
+                pressed,
+                modifiers,
+            },
+            PointerEvent::Wheel(notches) => egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Line,
+                delta: egui::vec2(0.0, notches),
+                modifiers,
+            },
+            PointerEvent::Gone => egui::Event::PointerGone,
+        })
+        .collect()
+}
+
+/// Modifiers as egui wants them, from the same source the hotkeys use.
+#[cfg(windows)]
+fn current_modifiers() -> egui::Modifiers {
+    let mods = crate::input_block::held_mods();
+    let held = |bit: u8| mods & bit != 0;
+    egui::Modifiers {
+        alt: held(crate::hotkeys::MOD_ALT),
+        ctrl: held(crate::hotkeys::MOD_CTRL),
+        shift: held(crate::hotkeys::MOD_SHIFT),
+        mac_cmd: false,
+        command: held(crate::hotkeys::MOD_CTRL),
+    }
+}
+
+/// Move the panel a drag is holding, or end the drag.
+///
+/// Called before the panels are drawn so the panel moves under the cursor this
+/// frame rather than trailing it by one.
+#[cfg(windows)]
+fn drag_step(panels: &mut [Panel], down: bool, delta: egui::Vec2) {
+    let mut drag = DRAGGING.lock();
+    let Some(id) = drag.panel else {
+        return;
+    };
+    if !down {
+        drag.panel = None;
+        drag.finished = Some(id);
+        return;
+    }
+    if let Some(panel) = panels.iter_mut().find(|p| p.id == id) {
+        // Offsets are insets from the panel's own corner, so a screen-space
+        // delta needs the same sign flip that turns an inset into a position.
+        // `signed` is its own inverse, which is why it does both jobs.
+        panel.offset = inset(panel.offset + panel.anchor.signed(delta));
+    }
+}
+
 #[cfg(windows)]
 fn draw_panels(ctx: &egui::Context, screen: egui::Rect) {
     let selected = layout_selection();
+    let (pointer, pressed, down, delta) = ctx.input(|i| {
+        (
+            i.pointer.interact_pos(),
+            i.pointer.primary_pressed(),
+            i.pointer.primary_down(),
+            i.pointer.delta(),
+        )
+    });
+
     let mut panels = PANELS.lock();
+    drag_step(&mut panels, down, delta);
+
     for panel in panels.iter_mut() {
         let anchor = panel.anchor;
         let width = panel.width;
         let id = panel.id;
+        // Layout mode makes every panel grabbable; otherwise only a panel that
+        // asked for the mouse takes it.
+        let interactive = panel.interactive || selected.is_some();
         let draw = &mut panel.draw;
         let response = egui::Area::new(egui::Id::new(("honse-overlay", id)))
             .anchor(anchor.align(), anchor.signed(panel.offset))
-            .interactable(false)
+            .interactable(interactive)
             .constrain_to(screen)
             .show(ctx, |ui| {
                 ui.set_width(width);
@@ -346,8 +489,18 @@ fn draw_panels(ctx: &egui::Context, screen: egui::Rect) {
                 draw(ui);
             });
 
+        let rect = response.response.rect;
+        // Press to grab: in layout mode the whole panel is the handle, which is
+        // what makes it draggable without giving it a title bar it would carry
+        // for the other 99% of the time.
+        let grabbed = selected.is_some() && pressed && pointer.is_some_and(|pos| rect.contains(pos));
+        if grabbed {
+            DRAGGING.lock().panel = Some(id);
+            *LAYOUT_SELECTION.lock() = Some(id);
+        }
+
         if let Some(selected) = selected {
-            outline(ctx, id, response.response.rect, selected == id);
+            outline(ctx, id, rect, selected == id);
         }
     }
 }
@@ -391,5 +544,21 @@ mod tests {
     #[test]
     fn overlay_is_enabled_by_default() {
         assert!(is_enabled());
+    }
+
+    #[test]
+    fn a_screen_delta_becomes_an_inset_delta_for_every_corner() {
+        // Dragging right and down, from each corner in turn. A right-anchored
+        // panel moving right gets *closer* to its corner, so its inset shrinks.
+        let drag = egui::vec2(10.0, 6.0);
+        assert_eq!(Anchor::TopLeft.signed(drag), egui::vec2(10.0, 6.0));
+        assert_eq!(Anchor::TopRight.signed(drag), egui::vec2(-10.0, 6.0));
+        assert_eq!(Anchor::BottomLeft.signed(drag), egui::vec2(10.0, -6.0));
+        assert_eq!(Anchor::BottomRight.signed(drag), egui::vec2(-10.0, -6.0));
+    }
+
+    #[test]
+    fn insets_never_go_negative() {
+        assert_eq!(inset(egui::vec2(-5.0, 12.0)), egui::vec2(0.0, 12.0));
     }
 }
