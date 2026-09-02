@@ -157,7 +157,9 @@ also carries `honse_source` and `honse_tracker_version`.
 
 It borrows the art from a local checkout of [hakuraku](https://github.com/CNA-Bld/hakuraku); point `HAKURAKU_ASSETS` at its `public/assets` folder. `CAREERS_DIR` and `PORT` override the rest. Pages render without art if the assets are missing rather than failing.
 
-It shares the rank ladder, stat sprites, career calendar and condition names with the overlay (`crates/honse-career-meta`), so the two cannot disagree. Some ids have no name table offline and show as raw numbers: race `program_id`, `chara_grade`, and succession factor ids.
+It shares the rank ladder, stat sprites, career calendar and condition names with the overlay (`crates/honse-career-meta`), so the two cannot disagree. Trainee, support-card and skill names come from hakuraku's `umdb.json` — point `UMDB_JSON` at it, or leave it and the pages show raw ids instead.
+
+Race `program_id`, `chara_grade` and succession factor ids stay as raw numbers: those come from tables (`single_mode_program` and friends) that nothing publishes offline yet.
 
 ## Files it writes
 

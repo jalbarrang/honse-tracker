@@ -122,7 +122,9 @@ tbody tr:hover { background: #0f141a; }
 }
 .cards img { width: 68px; border-radius: 5px; }
 .gains { display: flex; flex-direction: column; gap: 2px; width: 100%; }
-.gains .id { color: var(--faint); font-size: 10px; text-align: center; margin-bottom: 2px; }
+.gains .id { color: var(--faint); font-size: 10px; text-align: center; margin-bottom: 4px; }
+/* A resolved card name is worth reading, unlike the bare id it replaces. */
+.gains .name { color: var(--secondary); line-height: 1.35; }
 .gain { display: flex; justify-content: space-between; font-size: 11px; }
 .gain .k { color: var(--muted); }
 .gain .v { color: var(--accent); font-weight: 600; }

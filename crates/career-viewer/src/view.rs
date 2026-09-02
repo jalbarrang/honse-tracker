@@ -52,7 +52,10 @@ pub fn index(entries: &[Entry], assets: &Assets, dir: &std::path::Path) -> Marku
                                     }
                                 }
                                 .who {
-                                    span.card { "Card " (entry.card_id) }
+                                    @match &entry.trainee {
+                                        Some(name) => span.card { (name) },
+                                        None => span.card { "Card " (entry.card_id) },
+                                    }
                                     span.when { (entry.when) }
                                 }
                                 .grade { "Grade " (entry.chara_grade) }
@@ -72,7 +75,7 @@ pub fn index(entries: &[Entry], assets: &Assets, dir: &std::path::Path) -> Marku
 
 pub fn career(c: &Career, assets: &Assets) -> Markup {
     page(
-        &format!("Career {} · {}", c.card_id, c.when),
+        &format!("{} · {}", c.trainee.as_deref().unwrap_or("Career"), c.when),
         html! {
             p.back { a href="/" { "← All careers" } }
             header.hero {
@@ -83,8 +86,14 @@ pub fn career(c: &Career, assets: &Assets) -> Markup {
                     }
                 }
                 .facts {
-                    h1 { "Card " (c.card_id) }
-                    p.sub { (c.when) " · grade " (c.chara_grade) " · " (c.source) " · plugin " (c.plugin_version) }
+                    @match &c.trainee {
+                        Some(name) => h1 { (name) },
+                        None => h1 { "Card " (c.card_id) },
+                    }
+                    p.sub {
+                        (c.when) " · card " (c.card_id) " · grade " (c.chara_grade)
+                        " · " (c.source) " · plugin " (c.plugin_version)
+                    }
                     .statrow {
                         @for (i, value) in c.stats.iter().enumerate() {
                             .statbox {
@@ -156,7 +165,10 @@ fn section_supports(c: &Career, assets: &Assets) -> Markup {
                                 None => span.blank.card {},
                             }
                             .gains {
-                                span.id { "#" (s.card_id) }
+                                @match &s.name {
+                                    Some(name) => span.id.name { (name) },
+                                    None => span.id { "#" (s.card_id) },
+                                }
                                 @for (i, value) in s.gains.iter().enumerate() {
                                     @if *value != 0 {
                                         span.gain { span.k { (STAT_LABELS[i]) } span.v { "+" (value) } }
@@ -214,12 +226,15 @@ fn section_skills(c: &Career, assets: &Assets) -> Markup {
             section {
                 h2 { "Skills gained " span.count { (c.skills.len()) } }
                 ul.chips {
-                    @for id in &c.skills {
+                    @for skill in &c.skills {
                         li.chip {
-                            @if let Some(url) = assets.skill_icon(*id) {
+                            @if let Some(url) = skill.icon_id.and_then(|i| assets.skill_icon(i)) {
                                 img.skill src=(url) alt="" loading="lazy";
                             }
-                            "#" (id)
+                            @match &skill.name {
+                                Some(name) => span { (name) },
+                                None => span { "#" (skill.id) },
+                            }
                         }
                     }
                 }

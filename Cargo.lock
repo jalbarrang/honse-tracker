@@ -214,6 +214,7 @@ dependencies = [
  "chrono",
  "honse-career-meta",
  "maud",
+ "serde",
  "serde_json",
  "tokio",
  "tower-http",

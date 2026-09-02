@@ -20,6 +20,7 @@ pub struct Entry {
     /// `2026-09-01 22:07`, parsed out of the file name.
     pub when: String,
     pub card_id: i64,
+    pub trainee: Option<String>,
     pub chara_grade: i64,
     /// Speed, Stamina, Power, Guts, Wit — the panel's order.
     pub stats: [i64; 5],
@@ -32,6 +33,8 @@ pub struct Career {
     pub source: String,
     pub plugin_version: String,
     pub card_id: i64,
+    /// From umdb when it is loaded; `None` leaves the page showing the id.
+    pub trainee: Option<String>,
     pub chara_grade: i64,
     pub stats: [i64; 5],
     pub skill_points: i64,
@@ -39,7 +42,7 @@ pub struct Career {
     pub supports: Vec<Support>,
     pub factors: Vec<FactorYear>,
     pub conditions: Vec<Condition>,
-    pub skills: Vec<i64>,
+    pub skills: Vec<Skill>,
 }
 
 pub struct Race {
@@ -56,8 +59,15 @@ pub struct Race {
 
 pub struct Support {
     pub card_id: i64,
+    pub name: Option<String>,
     /// `(stat label, delta)` for the five main stats, in panel order.
     pub gains: [i64; 5],
+}
+
+pub struct Skill {
+    pub id: i64,
+    pub name: Option<String>,
+    pub icon_id: Option<i64>,
 }
 
 pub struct FactorYear {
@@ -86,7 +96,7 @@ pub const STAT_LABELS: [&str; 5] = ["Speed", "Stamina", "Power", "Guts", "Wit"];
 /// file has to be opened to sort the list. A file that will not parse is
 /// skipped rather than failing the page — one bad export must not hide the
 /// rest.
-pub fn list(dir: &Path) -> Vec<Entry> {
+pub fn list(dir: &Path, umdb: &crate::umdb::Umdb) -> Vec<Entry> {
     let Ok(read) = std::fs::read_dir(dir) else {
         return Vec::new(); // no directory yet: nothing exported, not an error
     };
@@ -103,9 +113,11 @@ pub fn list(dir: &Path) -> Vec<Entry> {
         .filter_map(|file| {
             let value = read_json(&dir.join(&file))?;
             let chara = chara_info(&value);
+            let card_id = int(chara, "card_id");
             Some(Entry {
                 when: pretty_stamp(&file),
-                card_id: int(chara, "card_id"),
+                card_id,
+                trainee: umdb.trainee(card_id),
                 chara_grade: int(chara, "chara_grade"),
                 stats: stats_of(chara),
                 file,
@@ -142,7 +154,7 @@ pub fn read_json(path: &Path) -> Option<Value> {
 // One career
 // ---------------------------------------------------------------------------
 
-pub fn parse(file: &str, value: &Value) -> Career {
+pub fn parse(file: &str, value: &Value, umdb: &crate::umdb::Umdb) -> Career {
     let chara = chara_info(value);
     let log = value.pointer("/data/progress_log_info");
 
@@ -152,17 +164,15 @@ pub fn parse(file: &str, value: &Value) -> Career {
         source: string(value.get("honse_source")),
         plugin_version: string(value.get("honse_tracker_version")),
         card_id: int(chara, "card_id"),
+        trainee: umdb.trainee(int(chara, "card_id")),
         chara_grade: int(chara, "chara_grade"),
         stats: stats_of(chara),
         skill_points: int(log, "total_skill_point"),
         races: races(log),
-        supports: supports(log),
+        supports: supports(log, umdb),
         factors: factors(log),
         conditions: conditions(log),
-        skills: array(log, "gain_skill_id_array")
-            .iter()
-            .filter_map(serde_json::Value::as_i64)
-            .collect(),
+        skills: skills(log, umdb),
     }
 }
 
@@ -191,12 +201,31 @@ fn races(log: Option<&Value>) -> Vec<Race> {
         .collect()
 }
 
-fn supports(log: Option<&Value>) -> Vec<Support> {
+fn supports(log: Option<&Value>, umdb: &crate::umdb::Umdb) -> Vec<Support> {
     array(log, "support_card_gain_info_array")
         .iter()
-        .map(|entry| Support {
-            card_id: int(Some(entry), "support_card_id"),
-            gains: signed_stats(entry.get("gain_info")),
+        .map(|entry| {
+            let card_id = int(Some(entry), "support_card_id");
+            Support {
+                card_id,
+                name: umdb.support_card(card_id).map(str::to_owned),
+                gains: signed_stats(entry.get("gain_info")),
+            }
+        })
+        .collect()
+}
+
+fn skills(log: Option<&Value>, umdb: &crate::umdb::Umdb) -> Vec<Skill> {
+    array(log, "gain_skill_id_array")
+        .iter()
+        .filter_map(Value::as_i64)
+        .map(|id| {
+            let found = umdb.skill(id);
+            Skill {
+                id,
+                name: found.map(|s| s.name.clone()),
+                icon_id: found.and_then(|s| s.icon_id),
+            }
         })
         .collect()
 }
@@ -380,7 +409,7 @@ mod tests {
     /// A payload that has moved on must render, not panic.
     #[test]
     fn an_empty_document_parses_to_an_empty_career() {
-        let career = parse("x.json", &json!({}));
+        let career = parse("x.json", &json!({}), &crate::umdb::Umdb::empty());
         assert_eq!(career.card_id, 0);
         assert!(career.races.is_empty());
         assert!(career.supports.is_empty());

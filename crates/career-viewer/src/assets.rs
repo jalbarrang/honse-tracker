@@ -45,8 +45,11 @@ impl Assets {
         self.url("umamusume_cards", &format!("tex_support_card_{support_card_id}"))
     }
 
-    pub fn skill_icon(&self, skill_id: i64) -> Option<String> {
-        self.url("skill_icons", &format!("utx_ico_skill_{skill_id}"))
+    /// Skill icon, keyed by the skill's `icon_id` from umdb — skills share
+    /// icons, and matching on the skill id resolves nothing at all (0 of 714
+    /// against the real asset set).
+    pub fn skill_icon(&self, icon_id: i64) -> Option<String> {
+        self.url("skill_icons", &format!("utx_ico_skill_{icon_id}"))
     }
 
     /// The stat rank badge for a stat value, via the same table the overlay

@@ -25,6 +25,7 @@
 
 mod assets;
 mod career;
+mod umdb;
 mod view;
 
 use std::net::{Ipv4Addr, SocketAddr};
@@ -43,6 +44,7 @@ use assets::Assets;
 struct App {
     careers_dir: PathBuf,
     assets: Assets,
+    umdb: umdb::Umdb,
 }
 
 #[tokio::main]
@@ -50,6 +52,8 @@ async fn main() {
     let careers_dir = env_path("CAREERS_DIR").unwrap_or_else(default_careers_dir);
     let assets_root =
         env_path("HAKURAKU_ASSETS").unwrap_or_else(|| PathBuf::from(r"D:\work\dreki\hakuraku\public\assets"));
+    let umdb_path =
+        env_path("UMDB_JSON").unwrap_or_else(|| PathBuf::from(r"D:\work\dreki\hakuraku\public\data\umdb.json"));
     let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(4173);
 
     // Say what is missing at startup rather than rendering an empty page and
@@ -67,9 +71,20 @@ async fn main() {
         );
     }
 
+    // Names are a convenience, so a missing database degrades to raw ids
+    // rather than refusing to start over someone else's checkout.
+    let umdb = umdb::Umdb::load(&umdb_path).unwrap_or_else(|| {
+        eprintln!(
+            "note: no umdb at {} (set UMDB_JSON); ids will show unresolved",
+            umdb_path.display()
+        );
+        umdb::Umdb::empty()
+    });
+
     let app = Arc::new(App {
         careers_dir,
         assets: Assets::new(assets_root),
+        umdb,
     });
 
     let router = Router::new()
@@ -90,6 +105,9 @@ async fn main() {
     println!("career-viewer → http://{addr}");
     println!("  careers: {}", app.careers_dir.display());
     println!("  assets:  {}", app.assets.root().display());
+    if !app.umdb.is_empty() {
+        println!("  names:   {}", umdb_path.display());
+    }
     if let Err(e) = axum::serve(listener, router).await {
         eprintln!("server stopped: {e}");
     }
@@ -110,7 +128,7 @@ fn default_careers_dir() -> PathBuf {
 }
 
 async fn index(State(app): State<Arc<App>>) -> Response {
-    let entries = career::list(&app.careers_dir);
+    let entries = career::list(&app.careers_dir, &app.umdb);
     Html(view::index(&entries, &app.assets, &app.careers_dir).into_string()).into_response()
 }
 
@@ -118,7 +136,7 @@ async fn detail(State(app): State<Arc<App>>, UrlPath(file): UrlPath<String>) -> 
     let Some(value) = load(&app, &file) else {
         return not_found(&file);
     };
-    let parsed = career::parse(&file, &value);
+    let parsed = career::parse(&file, &value, &app.umdb);
     Html(view::career(&parsed, &app.assets).into_string()).into_response()
 }
 
