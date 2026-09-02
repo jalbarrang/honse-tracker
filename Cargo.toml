@@ -1,10 +1,17 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/career-viewer",
     "crates/edge-sdk",
+    "crates/honse-career-meta",
     "crates/honse-services",
     "crates/honse-telemetry",
 ]
+
+# The plugin is what a bare `cargo build --release` should produce — that is what
+# `scripts/deploy-windows.ps1` runs, and a deploy has no reason to compile the
+# career viewer's web stack. CI still passes `--workspace`, so nothing escapes it.
+default-members = ["."]
 
 [package]
 name = "honse-tracker"
@@ -20,6 +27,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 edge-sdk = { path = "crates/edge-sdk" }
+honse-career-meta = { path = "crates/honse-career-meta" }
 honse-services = { path = "crates/honse-services" }
 hachimi_telemetry = { package = "honse-telemetry", path = "crates/honse-telemetry" }
 log = { workspace = true }

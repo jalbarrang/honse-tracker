@@ -220,6 +220,15 @@ game reports, never subtracted.
 `Through(n)` is that concert and every one before it, what you actually still
 owe. (`song_plan.rs`)
 
+**Career viewer** — `crates/career-viewer`, a local site that browses the
+Independent Training exports with the game's own art. Outside the workspace's
+`default-members`, so a deploy build never compiles it.
+
+**Shared tables** — `crates/honse-career-meta`: the rank ladder, stat-rank
+sprites, career calendar and condition names. Its own crate rather than a module
+because the viewer needs them too and the plugin drags in the SDK, the overlay
+and D3D11 — nothing a viewer should link to look up a badge.
+
 ## Windows input
 
 **WndProc** — a window's message handler. **Subclassing** it means putting ours

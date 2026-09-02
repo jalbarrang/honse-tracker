@@ -84,7 +84,6 @@ pub fn assigned(a: &Assignment) -> bool {
 mod bond_progress;
 mod career_meta;
 mod career_poll;
-mod chara_effects;
 pub(crate) mod class_dump;
 pub(crate) mod config;
 mod deck_bonuses;
@@ -98,7 +97,6 @@ mod idle_training;
 pub(crate) mod il2cpp_json;
 mod memory_reader;
 pub(crate) mod race_cutin;
-mod rank_table;
 mod song_catalog;
 mod song_plan;
 mod telemetry;

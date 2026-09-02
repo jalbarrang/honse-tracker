@@ -1,0 +1,143 @@
+/* Dark and compact, to sit beside a game overlay rather than compete with it.
+   Colours are the overlay's own (honse-services/overlay/theme.rs). */
+:root {
+  --bg: #0a0d11;
+  --panel: #11151b;
+  --line: #1e242c;
+  --text: #e9edf3;
+  --secondary: #c0c9d4;
+  --muted: #7d8895;
+  --faint: #59636f;
+  --accent: #00d2d3;
+  --accent-bright: #5de9e9;
+  --caution: #f4a34b;
+  --negative: #ff9189;
+  --radius: 7px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
+}
+
+main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 64px; }
+
+a { color: var(--accent-bright); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: .2px; }
+h2 {
+  font-size: 12px; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--muted); margin: 28px 0 10px; font-weight: 600;
+}
+h3 { font-size: 12px; color: var(--secondary); margin: 12px 0 6px; font-weight: 600; }
+.count { color: var(--faint); margin-left: 6px; font-weight: 400; }
+
+.sub { color: var(--muted); margin: 0; font-size: 12px; }
+.dim { color: var(--muted); }
+.back { margin: 0 0 20px; font-size: 12px; }
+.raw { margin-top: 32px; font-size: 12px; }
+.empty {
+  color: var(--muted); background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 20px;
+}
+code { color: var(--accent); font-size: 12px; }
+
+.top { margin-bottom: 20px; }
+
+/* Numbers are for comparing down a column, so they line up and share a face. */
+.num, .v, td.num { font-variant-numeric: tabular-nums; text-align: right; }
+
+/* --- index ------------------------------------------------------------- */
+.careers { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+
+.row {
+  display: grid;
+  grid-template-columns: 44px 1fr auto auto;
+  gap: 16px; align-items: center;
+  padding: 10px 14px;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); color: inherit;
+}
+.row:hover { border-color: var(--accent); text-decoration: none; }
+
+.thumb img, .thumb .blank { width: 44px; height: 44px; border-radius: 50%; display: block; }
+.blank { background: #171c23; border: 1px solid var(--line); display: inline-block; }
+.blank.big { width: 132px; height: 132px; border-radius: var(--radius); }
+.blank.card { width: 68px; height: 90px; border-radius: 5px; }
+
+.who { display: flex; flex-direction: column; }
+.card { font-weight: 600; }
+.when { color: var(--muted); font-size: 12px; }
+.grade { color: var(--secondary); font-size: 12px; }
+
+.stats { display: flex; gap: 12px; }
+.stats .stat { display: flex; flex-direction: column; align-items: flex-end; min-width: 46px; }
+.stats .k { color: var(--faint); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+.stats .v { font-weight: 600; }
+
+/* --- career hero ------------------------------------------------------- */
+.hero {
+  display: flex; gap: 20px; align-items: flex-start;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 18px;
+}
+.portrait img { width: 132px; border-radius: var(--radius); display: block; }
+.facts { flex: 1; }
+
+.statrow { display: flex; gap: 10px; margin: 14px 0 10px; flex-wrap: wrap; }
+.statbox {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: #0d1116; border: 1px solid var(--line);
+  border-radius: 5px; padding: 8px 14px; min-width: 78px;
+}
+.statbox .k { color: var(--faint); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+.statbox .v { font-size: 17px; font-weight: 600; }
+.statbox .rank { height: 16px; }
+.sp { margin: 0; color: var(--muted); font-size: 12px; }
+.sp .v { color: var(--accent-bright); font-weight: 600; margin-left: 4px; }
+
+/* --- tables ------------------------------------------------------------ */
+.scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th {
+  text-align: left; color: var(--faint); font-weight: 600; font-size: 10px;
+  text-transform: uppercase; letter-spacing: .05em;
+  padding: 9px 12px; background: var(--panel); position: sticky; top: 0;
+}
+td { padding: 7px 12px; border-top: 1px solid var(--line); }
+tbody tr:hover { background: #0f141a; }
+.place { color: var(--accent-bright); font-weight: 600; }
+
+/* --- cards and chips --------------------------------------------------- */
+.cards { list-style: none; padding: 0; margin: 0; display: flex; gap: 12px; flex-wrap: wrap; }
+.cards .card {
+  display: flex; flex-direction: column; gap: 6px; align-items: center;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 10px; width: 132px; font-weight: 400;
+}
+.cards img { width: 68px; border-radius: 5px; }
+.gains { display: flex; flex-direction: column; gap: 2px; width: 100%; }
+.gains .id { color: var(--faint); font-size: 10px; text-align: center; margin-bottom: 2px; }
+.gain { display: flex; justify-content: space-between; font-size: 11px; }
+.gain .k { color: var(--muted); }
+.gain .v { color: var(--accent); font-weight: 600; }
+
+.chips { list-style: none; padding: 0; margin: 0; display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 999px; padding: 4px 11px; font-size: 12px; color: var(--secondary);
+}
+.chip .id { color: var(--faint); font-size: 10px; }
+.chip img.skill { width: 16px; height: 16px; }
+.chip.good { color: var(--caution); border-color: #3a2c18; }
+.chip.bad { color: var(--negative); border-color: #3a1f1d; }
+/* Recorded but not currently in effect. */
+.chip.off { opacity: .5; }
+
+.year { margin-bottom: 10px; }

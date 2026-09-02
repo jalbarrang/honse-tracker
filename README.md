@@ -151,6 +151,14 @@ game's two result callbacks produced it (`end` when the run is finalised,
 `result` when you view it — same payload, kept apart so you can tell). Each file
 also carries `honse_source` and `honse_tracker_version`.
 
+## Browsing saved careers
+
+`cargo run -p career-viewer` opens a small local site at http://127.0.0.1:4173 that lists every exported career and shows one in detail — stats with their rank badges, race history, support-card contributions, succession factors and conditions — using the game's own art.
+
+It borrows the art from a local checkout of [hakuraku](https://github.com/CNA-Bld/hakuraku); point `HAKURAKU_ASSETS` at its `public/assets` folder. `CAREERS_DIR` and `PORT` override the rest. Pages render without art if the assets are missing rather than failing.
+
+It shares the rank ladder, stat sprites, career calendar and condition names with the overlay (`crates/honse-career-meta`), so the two cannot disagree. Some ids have no name table offline and show as raw numbers: race `program_id`, `chara_grade`, and succession factor ids.
+
 ## Files it writes
 
 - `hachimi/honse-tracker.json` — everything above, plus your panel positions and

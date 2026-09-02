@@ -61,7 +61,7 @@ pub struct CareerSnapshot {
     pub star: i32,
 
     /// Self-computed overall evaluation estimate (Rating). Filled by career_poll.
-    /// Mapped to a rank-badge label via `crate::rank_table::rank_label`.
+    /// Mapped to a rank-badge label via `honse_career_meta::rank_label`.
     pub evaluation_value: Option<i32>,
 
     /// Per-facility training failure % [Speed, Stamina, Power, Guts, Wisdom].
@@ -98,7 +98,7 @@ pub struct CareerSnapshot {
 
     /// Active career conditions/状態 as raw chara-effect ids (decrypted from the
     /// `CharaEffectIdArray` ObscuredInt[]). Mapped to display names via
-    /// `crate::chara_effects`. Empty when none are active or unread.
+    /// `honse_career_meta::chara_effects`. Empty when none are active or unread.
     pub chara_effect_ids: Vec<i32>,
 }
 
@@ -317,14 +317,14 @@ fn read_snapshot_inner() -> Option<CareerSnapshot> {
     let chara_effect_ids = unsafe { read_obscured_int_array(effect_array) };
     {
         // One-shot diagnostic: capture the live effect ids so we can map them
-        // to display names (see crate::chara_effects).
+        // to display names (see honse_career_meta::chara_effects).
         static EFFECTS_LOGGED: AtomicBool = AtomicBool::new(false);
         if !chara_effect_ids.is_empty() && !EFFECTS_LOGGED.swap(true, Ordering::Relaxed) {
             hlog_info!("Active chara effect ids (状態): {:?}", chara_effect_ids);
             let unknown: Vec<i32> = chara_effect_ids
                 .iter()
                 .copied()
-                .filter(|&id| !crate::chara_effects::is_known(id))
+                .filter(|&id| !honse_career_meta::is_known(id))
                 .collect();
             if !unknown.is_empty() {
                 hlog_warn!("Unmapped chara effect ids (add to chara_effects table): {:?}", unknown);
