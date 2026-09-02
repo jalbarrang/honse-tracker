@@ -22,8 +22,8 @@
 //! fires (see [`prepare`]) — partly so it only exists when there is a reason
 //! for it, and partly because the shell establishes a new icon asynchronously
 //! and refuses a balloon aimed at one that has not landed yet. It borrows the
-//! game's own icon, so what appears in the tray and on the toast is the game.
-//! It is removed on shutdown.
+//! game's own icon, which is also what identifies the toast, and is removed on
+//! shutdown.
 //!
 //! # What can still swallow it
 //!
@@ -38,8 +38,7 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::Shell::{
-    Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_TIP, NIIF_NONE, NIIF_USER, NIM_ADD, NIM_DELETE, NIM_MODIFY,
-    NOTIFYICONDATAW, NOTIFY_ICON_INFOTIP_FLAGS,
+    Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_TIP, NIIF_NONE, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{GetClassLongPtrW, LoadIconW, GCLP_HICON, HICON, IDI_APPLICATION};
 
@@ -58,8 +57,8 @@ static OWNER: AtomicIsize = AtomicIsize::new(0);
 /// The shell establishes a newly added icon asynchronously. A balloon aimed at
 /// one that has not landed yet is refused outright — which is exactly what
 /// happened when the icon was added and the balloon requested 0.12&nbsp;ms
-/// later. [`prepare`] is the real fix; this is what covers a session armed with
-/// less warning than the shell needs.
+/// later. [`prepare`] is the real fix, and in practice the ladder is never
+/// reached; this covers a session armed with less warning than the shell needs.
 const RETRY_GAPS_MS: &[u64] = &[120, 300, 700, 1500];
 
 /// Register the tray icon now, ahead of the notification that will need it.
@@ -115,36 +114,32 @@ fn show_blocking(title: &str, body: &str) {
         return;
     }
 
-    // Our own icon in the balloon, so the toast is recognisably from the game
-    // rather than a generic blue (i).
-    if balloon(hwnd, title, body, NIIF_USER) {
+    if balloon(hwnd, title, body) {
         return;
     }
     for gap in RETRY_GAPS_MS {
         std::thread::sleep(std::time::Duration::from_millis(*gap));
-        if balloon(hwnd, title, body, NIIF_USER) {
+        if balloon(hwnd, title, body) {
             return;
         }
     }
-    // Still refused. The other thing the shell rejects a balloon over is the
-    // icon it was told to draw, so drop that requirement and take the generic
-    // one — a plain notification beats a pretty absent one. Logged distinctly
-    // because which of the two it was is the whole diagnosis.
-    if balloon(hwnd, title, body, NIIF_NONE) {
-        log::warn!("honse-services: notification shown only without its own icon");
-    } else {
-        log::warn!("honse-services: Shell_NotifyIcon(NIM_MODIFY) refused the notification");
-    }
+    log::warn!("honse-services: Shell_NotifyIcon(NIM_MODIFY) refused the notification");
 }
 
 /// One attempt at the balloon. `true` if the shell took it.
-fn balloon(hwnd: HWND, title: &str, body: &str, info_flags: NOTIFY_ICON_INFOTIP_FLAGS) -> bool {
+///
+/// # No `NIIF_USER`
+///
+/// Asking for our own icon in the balloon body looked nicer and did not work:
+/// the shell refused every `NIIF_USER` attempt and took the very next
+/// `NIIF_NONE` one, which cost the whole retry ladder — 2.6 seconds of delay on
+/// a notification, every time, for a decoration. The tray icon still carries
+/// the game's icon, and that is what identifies the toast in the Action Centre
+/// anyway.
+fn balloon(hwnd: HWND, title: &str, body: &str) -> bool {
     let mut data = icon_data(hwnd);
     data.uFlags = NIF_INFO;
-    data.dwInfoFlags = info_flags;
-    if info_flags == NIIF_USER {
-        data.hBalloonIcon = window_icon(hwnd);
-    }
+    data.dwInfoFlags = NIIF_NONE;
     write_wide(&mut data.szInfoTitle, title);
     write_wide(&mut data.szInfo, body);
 
