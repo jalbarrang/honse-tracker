@@ -221,8 +221,8 @@ game reports, never subtracted.
 owe. (`song_plan.rs`)
 
 **Career viewer** — `crates/career-viewer`, a local site that browses the
-Independent Training exports with the game's own art. Outside the workspace's
-`default-members`, so a deploy build never compiles it.
+Independent Training exports with the game's own art, linked from hakuraku.moe.
+Outside the workspace's `default-members`, so a deploy build never compiles it.
 
 **Shared tables** — `crates/honse-career-meta`: the rank ladder, stat-rank
 sprites, career calendar and condition names. Its own crate rather than a module

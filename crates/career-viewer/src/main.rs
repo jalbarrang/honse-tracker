@@ -17,10 +17,16 @@
 //! It is deliberately outside `default-members`, so `cargo build --release` —
 //! what the deploy script runs — never compiles a web stack to ship a plugin.
 //!
+//! # Where the art and names come from
+//!
+//! hakuraku.moe. Pages link straight to its images, and its `umdb.json` is
+//! downloaded once a day into a local cache for the name lookups. Nothing from
+//! that site is checked in, and no checkout of it is needed.
+//!
 //! # Configuration
 //!
 //! - `CAREERS_DIR` — where the plugin writes exports
-//! - `HAKURAKU_ASSETS` — hakuraku's `public/assets`, served read-only at `/assets`
+//! - `HAKURAKU_URL` — the site to take art and names from, for a mirror
 //! - `PORT`
 
 mod assets;
@@ -37,7 +43,6 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
-use tower_http::services::ServeDir;
 
 use assets::Assets;
 
@@ -50,38 +55,32 @@ struct App {
 #[tokio::main]
 async fn main() {
     let careers_dir = env_path("CAREERS_DIR").unwrap_or_else(default_careers_dir);
-    let assets_root = env_path("HAKURAKU_ASSETS").unwrap_or_else(|| hakuraku().join("public").join("assets"));
-    let umdb_path = env_path("UMDB_JSON").unwrap_or_else(|| hakuraku().join("public").join("data").join("umdb.json"));
+    let base = std::env::var("HAKURAKU_URL")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| Assets::DEFAULT_BASE.to_string());
     let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(4173);
 
     // Say what is missing at startup rather than rendering an empty page and
-    // leaving someone to guess which of the two paths is wrong.
+    // leaving someone to guess where it looked.
     if !careers_dir.is_dir() {
         eprintln!(
             "note: no careers directory at {} (set CAREERS_DIR)",
             careers_dir.display()
         );
     }
-    if !assets_root.is_dir() {
-        eprintln!(
-            "note: no assets at {} (set HAKURAKU_ASSETS); pages will render without art",
-            assets_root.display()
-        );
-    }
 
-    // Names are a convenience, so a missing database degrades to raw ids
-    // rather than refusing to start over someone else's checkout.
-    let umdb = umdb::Umdb::load(&umdb_path).unwrap_or_else(|| {
-        eprintln!(
-            "note: no umdb at {} (set UMDB_JSON); ids will show unresolved",
-            umdb_path.display()
-        );
+    // Names are a convenience, so no database — offline on a first run, say —
+    // degrades to raw ids rather than refusing to start.
+    let cache = umdb::default_cache();
+    let umdb = umdb::Umdb::fetch(&base, &cache).unwrap_or_else(|| {
+        eprintln!("note: no umdb available; ids will show unresolved");
         umdb::Umdb::empty()
     });
 
     let app = Arc::new(App {
         careers_dir,
-        assets: Assets::new(assets_root),
+        assets: Assets::new(&base),
         umdb,
     });
 
@@ -89,7 +88,6 @@ async fn main() {
         .route("/", get(index))
         .route("/career/{file}", get(detail))
         .route("/raw/{file}", get(raw))
-        .nest_service(Assets::MOUNT, ServeDir::new(app.assets.root()))
         .with_state(Arc::clone(&app));
 
     let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
@@ -102,9 +100,9 @@ async fn main() {
     };
     println!("career-viewer → http://{addr}");
     println!("  careers: {}", app.careers_dir.display());
-    println!("  assets:  {}", app.assets.root().display());
+    println!("  art:     {}", app.assets.base());
     if !app.umdb.is_empty() {
-        println!("  names:   {}", umdb_path.display());
+        println!("  names:   {} (delete to refresh)", cache.display());
     }
     if let Err(e) = axum::serve(listener, router).await {
         eprintln!("server stopped: {e}");
@@ -124,17 +122,6 @@ fn default_careers_dir() -> PathBuf {
         || PathBuf::from("SavedIdleCareers"),
         |home| honse_career_meta::saved_careers_dir(&PathBuf::from(home)),
     )
-}
-
-/// A hakuraku checkout beside this one: `cargo run` sets the working directory
-/// to the workspace root, so its parent is where sibling repos live. Anyone
-/// with a different layout sets `HAKURAKU_ASSETS` / `UMDB_JSON`.
-fn hakuraku() -> PathBuf {
-    std::env::current_dir()
-        .ok()
-        .and_then(|cwd| cwd.parent().map(std::path::Path::to_path_buf))
-        .unwrap_or_default()
-        .join("hakuraku")
 }
 
 async fn index(State(app): State<Arc<App>>) -> Response {

@@ -2,17 +2,22 @@
 //!
 //! The plugin dumps the server's response verbatim, which means ids and nothing
 //! else — the game resolves those from master data the export has no reason to
-//! duplicate. hakuraku already publishes that master data as one JSON file, so
-//! the viewer reads it rather than shipping a table of its own that would go
+//! duplicate. hakuraku.moe publishes that master data as one JSON file, so the
+//! viewer downloads it rather than shipping a table of its own that would go
 //! stale on the next game update.
+//!
+//! # Cached, because it is 1.5 MB
+//!
+//! [`Umdb::fetch`] keeps a copy on disk and only asks the site again once the
+//! copy is a day old. When the site cannot be reached the stale copy is used;
+//! deleting the file forces a fresh download.
 //!
 //! # Optional by design
 //!
-//! Everything here returns `Option`, and a missing file simply means every
+//! Everything here returns `Option`, and no file at all simply means every
 //! lookup misses. The pages then show the raw ids, which is exactly what they
 //! showed before this module existed — a viewer that refuses to start because
-//! it cannot find someone else's checkout would be worse than one that renders
-//! numbers.
+//! it is offline would be worse than one that renders numbers.
 //!
 //! # What it cannot answer
 //!
@@ -22,9 +27,22 @@
 //! program id until something publishes that table.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use serde::Deserialize;
+
+/// How old the cached file may be before the site is asked again.
+const MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// `%LOCALAPPDATA%\honse-tracker\umdb.json`, or the temp directory when there
+/// is no profile to hang it off.
+pub fn default_cache() -> PathBuf {
+    std::env::var_os("LOCALAPPDATA")
+        .map_or_else(std::env::temp_dir, PathBuf::from)
+        .join("honse-tracker")
+        .join("umdb.json")
+}
 
 pub struct Umdb {
     charas: HashMap<i64, String>,
@@ -71,12 +89,57 @@ struct RawSkill {
     icon_id: Option<i64>,
 }
 
+/// Younger than [`MAX_AGE`]. A file whose age cannot be read counts as stale,
+/// which at worst costs one download.
+fn is_fresh(path: &Path) -> bool {
+    std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.elapsed().ok())
+        .is_some_and(|age| age < MAX_AGE)
+}
+
+fn download(url: &str) -> Result<Vec<u8>, String> {
+    let response = ureq::AgentBuilder::new()
+        .timeout(Duration::from_secs(60))
+        .build()
+        .get(url)
+        .call()
+        .map_err(|e| e.to_string())?;
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut response.into_reader(), &mut bytes).map_err(|e| e.to_string())?;
+    Ok(bytes)
+}
+
 fn index(rows: Vec<Named>) -> HashMap<i64, String> {
     rows.into_iter().filter_map(|row| Some((row.id?, row.name?))).collect()
 }
 
 impl Umdb {
-    /// Read hakuraku's `umdb.json`. `None` when it is absent or unreadable —
+    /// The database from `<base>/data/umdb.json`, through the cache at `cache`.
+    ///
+    /// A fresh enough cache is used without asking the site. Otherwise the file
+    /// is downloaded and the cache replaced — but only after the download
+    /// succeeds, so a network failure never leaves an empty file behind and the
+    /// stale copy still serves. `None` only when there is nothing at all.
+    pub fn fetch(base: &str, cache: &Path) -> Option<Self> {
+        if !is_fresh(cache) {
+            match download(&format!("{}/data/umdb.json", base.trim_end_matches('/'))) {
+                Ok(bytes) => {
+                    if let Some(dir) = cache.parent() {
+                        let _ = std::fs::create_dir_all(dir);
+                    }
+                    if let Err(e) = std::fs::write(cache, bytes) {
+                        eprintln!("note: could not cache umdb at {}: {e}", cache.display());
+                    }
+                }
+                Err(e) => eprintln!("note: could not download umdb ({e}); using the cached copy if any"),
+            }
+        }
+        Self::load(cache)
+    }
+
+    /// Parse an `umdb.json` on disk. `None` when it is absent or unreadable —
     /// see the module note: that is a degraded viewer, not a broken one.
     pub fn load(path: &Path) -> Option<Self> {
         let text = std::fs::read_to_string(path).ok()?;
@@ -187,6 +250,17 @@ mod tests {
         assert_eq!(skill.name, "Warning Shot!");
         assert_eq!(skill.icon_id, Some(20013));
         assert_ne!(skill.icon_id, Some(10071));
+    }
+
+    /// A cache that was just written must not trigger a download; one that is
+    /// missing must. (The download itself is not exercised here — it needs the
+    /// network — only the decision to make it.)
+    #[test]
+    fn freshness_decides_whether_to_ask_the_site() {
+        let path = std::env::temp_dir().join("honse-umdb-fresh-test.json");
+        std::fs::write(&path, "{}").expect("write");
+        assert!(super::is_fresh(&path));
+        assert!(!super::is_fresh(std::path::Path::new("no-such-umdb.json")));
     }
 
     /// A missing file is a degraded viewer, not a broken one.

@@ -11,6 +11,12 @@ use crate::career::{Career, Entry, STAT_LABELS};
 
 const STYLE: &str = include_str!("style.css");
 
+// The art is hotlinked and the set is incomplete, so a miss is discovered by
+// the browser, not the server. A big image that fails becomes the blank
+// placeholder; a small badge that fails just goes away.
+const MISS: &str = "this.classList.add('blank')";
+const GONE: &str = "this.remove()";
+
 fn page(title: &str, body: Markup) -> Markup {
     html! {
         (DOCTYPE)
@@ -47,7 +53,7 @@ pub fn index(entries: &[Entry], assets: &Assets, dir: &std::path::Path) -> Marku
                             a.row href={ "/career/" (entry.file) } {
                                 .thumb {
                                     @match assets.chara_icon(entry.card_id) {
-                                        Some(url) => img src=(url) alt="" loading="lazy";,
+                                        Some(url) => img src=(url) alt="" loading="lazy" onerror=(MISS);,
                                         None => span.blank {},
                                     }
                                 }
@@ -81,8 +87,8 @@ pub fn career(c: &Career, assets: &Assets) -> Markup {
             header.hero {
                 .portrait {
                     @match assets.portrait(c.card_id) {
-                        Some(url) => img src=(url) alt="";,
-                        None => span.blank.big {},
+                        Some(url) => img src=(url) alt="" onerror=(MISS);,
+                        None => span.blank {},
                     }
                 }
                 .facts {
@@ -99,9 +105,7 @@ pub fn career(c: &Career, assets: &Assets) -> Markup {
                             .statbox {
                                 span.k { (STAT_LABELS[i]) }
                                 span.v { (value) }
-                                @if let Some(url) = assets.stat_rank(*value) {
-                                    img.rank src=(url) alt="";
-                                }
+                                img.rank src=(assets.stat_rank(*value)) alt="" onerror=(GONE);
                             }
                         }
                     }
@@ -160,10 +164,7 @@ fn section_supports(c: &Career, assets: &Assets) -> Markup {
                 ul.cards {
                     @for s in &c.supports {
                         li.card {
-                            @match assets.support_card(s.card_id) {
-                                Some(url) => img src=(url) alt="" loading="lazy";,
-                                None => span.blank.card {},
-                            }
+                            img src=(assets.support_card(s.card_id)) alt="" loading="lazy" onerror=(MISS);
                             .gains {
                                 @match &s.name {
                                     Some(name) => span.id.name { (name) },
@@ -233,8 +234,8 @@ fn section_skills(c: &Career, assets: &Assets) -> Markup {
                 ul.chips {
                     @for skill in &c.skills {
                         li.chip {
-                            @if let Some(url) = skill.icon_id.and_then(|i| assets.skill_icon(i)) {
-                                img.skill src=(url) alt="" loading="lazy";
+                            @if let Some(icon) = skill.icon_id {
+                                img.skill src=(assets.skill_icon(icon)) alt="" loading="lazy" onerror=(GONE);
                             }
                             @match &skill.name {
                                 Some(name) => span { (name) },

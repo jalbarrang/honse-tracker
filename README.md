@@ -147,9 +147,9 @@ somewhere Windows will refuse to write.
 
 Files are named `20260902_014233-card101302-end.json`: timestamp first so the
 folder sorts chronologically, then the trainee's card id, then which of the
-game's two result callbacks produced it. Only `end` has been seen to fire so
-far; `result` is hooked in case another path uses it, and the suffix keeps the
-two apart if it ever does. Each file also carries `honse_source` and
+game's two result callbacks produced it: `end` when the run is finalised,
+`result` when you open its log later. Same trainee, same payload shape; the
+suffix keeps the two apart. Each file also carries `honse_source` and
 `honse_tracker_version`.
 
 ## Browsing saved careers
@@ -159,15 +159,16 @@ that lists every exported career and shows one in detail — stats with their
 rank badges, race history, support-card contributions, succession factors and
 conditions — using the game's own art.
 
-It borrows the art from a local checkout of
-[hakuraku](https://github.com/CNA-Bld/hakuraku); point `HAKURAKU_ASSETS` at its
-`public/assets` folder. `CAREERS_DIR` and `PORT` override the rest. Pages
-render without art if the assets are missing rather than failing.
+The art is linked straight from [hakuraku.moe](https://hakuraku.moe/), so the
+pages need an internet connection to show it; nothing is copied into this repo.
+Trainee, support-card and skill names come from the same site's `umdb.json`,
+downloaded once a day into `%LOCALAPPDATA%\honse-tracker\umdb.json` — delete
+that file to refresh it early. Offline, the pages still render, with raw ids and
+blank art. `HAKURAKU_URL` points both at a mirror; `CAREERS_DIR` and `PORT`
+override the rest.
 
 It shares the rank ladder, stat sprites, career calendar and condition names
 with the overlay (`crates/honse-career-meta`), so the two cannot disagree.
-Trainee, support-card and skill names come from hakuraku's `umdb.json` — point
-`UMDB_JSON` at it, or leave it and the pages show raw ids instead.
 
 Race `program_id`, `chara_grade` and succession factor ids stay as raw numbers:
 those come from tables (`single_mode_program` and friends) that nothing

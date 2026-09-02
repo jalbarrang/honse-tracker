@@ -66,9 +66,9 @@ code { color: var(--accent); font-size: 12px; }
 .row:hover { border-color: var(--accent); text-decoration: none; }
 
 .thumb img, .thumb .blank { width: 44px; height: 44px; border-radius: 50%; display: block; }
+/* Either a span in place of an image the viewer could not name, or an img
+   whose hotlinked file was not there (see view.rs MISS). */
 .blank { background: #171c23; border: 1px solid var(--line); display: inline-block; }
-.blank.big { width: 132px; height: 132px; border-radius: var(--radius); }
-.blank.card { width: 68px; height: 90px; border-radius: 5px; }
 
 .who { display: flex; flex-direction: column; }
 .card { font-weight: 600; }
@@ -86,7 +86,8 @@ code { color: var(--accent); font-size: 12px; }
   background: var(--panel); border: 1px solid var(--line);
   border-radius: var(--radius); padding: 18px;
 }
-.portrait img { width: 132px; border-radius: var(--radius); display: block; }
+.portrait img, .portrait .blank { width: 132px; border-radius: var(--radius); display: block; }
+.portrait .blank { height: 132px; }
 .facts { flex: 1; }
 
 .statrow { display: flex; gap: 10px; margin: 14px 0 10px; flex-wrap: wrap; }
@@ -121,6 +122,7 @@ tbody tr:hover { background: #0f141a; }
   border-radius: var(--radius); padding: 10px; width: 132px; font-weight: 400;
 }
 .cards img { width: 68px; border-radius: 5px; }
+.cards img.blank { height: 90px; }
 .gains { display: flex; flex-direction: column; gap: 2px; width: 100%; }
 .gains .id { color: var(--faint); font-size: 10px; text-align: center; margin-bottom: 4px; }
 /* A resolved card name is worth reading, unlike the bare id it replaces. */
