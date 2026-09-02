@@ -15,6 +15,8 @@ pub mod input_block;
 pub mod overlay;
 pub mod pointer;
 pub mod scene_views;
+#[cfg(windows)]
+pub mod toast;
 pub mod view_hook;
 
 pub use egui;

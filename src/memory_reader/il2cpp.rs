@@ -29,6 +29,14 @@ pub(super) unsafe fn call_i32(this: *mut c_void, mi: *const c_void) -> i32 {
     fp(this, mi)
 }
 
+/// Call an instance method that returns `i64`.
+#[inline]
+pub(super) unsafe fn call_i64(this: *mut c_void, mi: *const c_void) -> i64 {
+    // SAFETY: Transmuting IL2CPP MethodInfo pointer to callable function pointer.
+    let fp: extern "C" fn(*mut c_void, *const c_void) -> i64 = unsafe { std::mem::transmute(method_ptr(mi)) };
+    fp(this, mi)
+}
+
 /// Call an instance method that returns `bool` (IL2CPP uses u8).
 #[inline]
 pub(super) unsafe fn call_bool(this: *mut c_void, mi: *const c_void) -> bool {

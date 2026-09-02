@@ -92,6 +92,7 @@ mod eval_data;
 mod evaluation;
 mod gametora_data;
 mod hooks;
+mod idle_training;
 mod memory_reader;
 pub(crate) mod race_cutin;
 mod rank_table;

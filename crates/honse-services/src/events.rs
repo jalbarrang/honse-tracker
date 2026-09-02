@@ -89,6 +89,9 @@ pub fn dispatch_shutdown() {
     // takes the game down with it.
     #[cfg(windows)]
     crate::input_block::uninstall();
+    // And an icon whose process is gone leaves a ghost in the tray.
+    #[cfg(windows)]
+    crate::toast::remove();
 
     let targets: Vec<(EventFn, usize)> = {
         let subs = SUBSCRIPTIONS.lock();

@@ -36,10 +36,11 @@ use windows::Win32::UI::Input::{
     GetRawInputData, HRAWINPUT, RAWINPUT, RAWINPUTHEADER, RID_INPUT, RIM_TYPEKEYBOARD, RIM_TYPEMOUSE,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallWindowProcW, DefWindowProcW, EnumWindows, GetClientRect, GetWindowThreadProcessId, IsWindowVisible,
-    SetWindowLongPtrW, GWLP_WNDPROC, WHEEL_DELTA, WM_CHAR, WM_INPUT, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS,
-    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDOWN,
-    WM_RBUTTONUP, WM_SYSCHAR, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    CallWindowProcW, DefWindowProcW, EnumWindows, FlashWindowEx, GetClientRect, GetForegroundWindow,
+    GetWindowThreadProcessId, IsWindowVisible, SetWindowLongPtrW, FLASHWINFO, FLASHW_TIMERNOFG, FLASHW_TRAY,
+    GWLP_WNDPROC, WHEEL_DELTA, WM_CHAR, WM_INPUT, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP,
+    WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSCHAR, WM_SYSKEYDOWN,
+    WM_SYSKEYUP,
 };
 
 use crate::pointer::{self, PointerEvent};
@@ -74,16 +75,9 @@ pub fn ensure_installed() -> bool {
     if HOOKED.load(Ordering::Acquire) {
         return true;
     }
-    // Prefer the swapchain's window; only fall back to enumeration if the
-    // overlay has not painted yet.
     let render = RENDER_WINDOW.load(Ordering::Acquire);
-    let hwnd = if render == 0 {
-        let Some(found) = main_window() else {
-            return false; // window not up yet; try again next frame
-        };
-        found
-    } else {
-        HWND(render as *mut std::ffi::c_void)
+    let Some(hwnd) = game_window() else {
+        return false; // window not up yet; try again next frame
     };
     // SAFETY: `hwnd` is a live top-level window owned by this process.
     let previous = unsafe { SetWindowLongPtrW(hwnd, GWLP_WNDPROC, wndproc as *const () as isize) };
@@ -304,6 +298,19 @@ pub(crate) fn held_mods() -> u8 {
         | (u8::from(down(VK_MENU.0)) * crate::hotkeys::MOD_ALT)
 }
 
+/// The window the game renders into, once there is one.
+///
+/// Prefers the swapchain's own output window and only falls back to
+/// enumerating the process's windows if the overlay has not painted yet — a
+/// process can own a splash, a helper, or an off-screen window, and picking the
+/// wrong one succeeds at everything except being the window the player sees.
+pub(crate) fn game_window() -> Option<HWND> {
+    match RENDER_WINDOW.load(Ordering::Acquire) {
+        0 => main_window(),
+        render => Some(HWND(render as *mut std::ffi::c_void)),
+    }
+}
+
 /// The process's first visible top-level window.
 fn main_window() -> Option<HWND> {
     struct Search {
@@ -334,6 +341,37 @@ fn main_window() -> Option<HWND> {
     // outlives the call.
     let _ = unsafe { EnumWindows(Some(visit), LPARAM(&raw mut search as isize)) };
     search.found
+}
+
+/// Flash the game's taskbar button until the player comes back to it.
+///
+/// For telling someone something while they are looking at a different window.
+/// The in-game notification is the right surface when the game is in front;
+/// when it is not, it paints into a window nobody can see, and this is the only
+/// part of the message that reaches them.
+///
+/// No-op while the game already has focus — flashing the window someone is
+/// looking at just makes the title bar blink at them.
+pub fn flash_window() {
+    let Some(hwnd) = game_window() else {
+        return;
+    };
+    // SAFETY: GetForegroundWindow takes no arguments and cannot fail.
+    if unsafe { GetForegroundWindow() } == hwnd {
+        return;
+    }
+    let info = FLASHWINFO {
+        cbSize: u32::try_from(std::mem::size_of::<FLASHWINFO>()).unwrap_or(0),
+        hwnd,
+        // TRAY flashes the taskbar button; TIMERNOFG keeps it flashing until the
+        // window is brought to the front, which is exactly "come look at this".
+        dwFlags: FLASHW_TRAY | FLASHW_TIMERNOFG,
+        uCount: 0,
+        dwTimeout: 0,
+    };
+    // SAFETY: `hwnd` is a live top-level window owned by this process and
+    // `info` is fully initialised with its own size.
+    let _ = unsafe { FlashWindowEx(&raw const info) };
 }
 
 /// Whether the subclass is installed and consuming.

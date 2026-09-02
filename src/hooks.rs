@@ -13,8 +13,12 @@ use crate::compat::{capability, event, Sdk};
 /// Fired once per rendered frame on the render thread (`data` is null). Drives
 /// the capture pump — atomic bookkeeping only, no IL2CPP access and no career
 /// read; a no-op unless a capture request is held in `CommandSelectActive`.
+/// The Independent Training watcher rides along under the same rule: it
+/// compares a remembered deadline against the clock and schedules its own read
+/// onto the main thread when it needs one.
 extern "C" fn on_frame(_event_id: u32, _data: *const c_void, _userdata: *mut c_void) {
     crate::career_poll::tick();
+    crate::idle_training::tick();
 }
 
 /// Fired when the game changes view/scene. Records the transition (suspending

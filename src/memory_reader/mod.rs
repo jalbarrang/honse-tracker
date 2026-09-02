@@ -13,6 +13,7 @@
 //! Organized by concern, re-exported flatly so `memory_reader::*` call sites
 //! keep working:
 //! - `chain` — lazy IL2CPP resolution, `get_chara_ptr`
+//! - `idle_training` — Independent Training slot (its own singleton walk)
 //! - `il2cpp` — low-level call/read primitives + `read_list_field`
 //! - `snapshot` — `CareerSnapshot` (stats, turns, training levels)
 //! - `skills` — acquired skills
@@ -23,6 +24,7 @@ mod chain;
 mod command_info;
 mod eval_master;
 mod evaluations;
+mod idle_training;
 mod il2cpp;
 #[allow(dead_code)]
 mod presentation;
@@ -38,6 +40,7 @@ pub use chain::get_chara_ptr;
 pub(crate) use chain::{diag_read_current_turn, ensure_resolved};
 pub use eval_master::probe as probe_eval_master;
 pub use evaluations::{read_evaluations, EvaluationInfo};
+pub use idle_training::{read_idle_session, IdleSession, IdleState};
 #[allow(unused_imports)]
 pub use presentation::mood_label;
 // Only referenced by a unit test now (the Training tab that used it was removed).
