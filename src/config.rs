@@ -29,7 +29,6 @@
 //! older build should find its settings where it left them, and nothing here
 //! is worth removing someone's file over.
 
-use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 use honse_services::{HostedDataUrls, PluginConfig};
@@ -220,12 +219,6 @@ pub fn edit(f: impl FnOnce(&mut HonseTrackerFile)) {
     if let Err(e) = config.save() {
         hlog_warn!(target: "training-tracker", "Config: save failed: {e}");
     }
-}
-
-/// Panel placements, for [`crate::ui::layout`] to apply at startup.
-#[must_use]
-pub fn layout_panels() -> BTreeMap<String, crate::ui::layout::Placement> {
-    read(|file| file.layout.panels.clone())
 }
 
 #[cfg(test)]

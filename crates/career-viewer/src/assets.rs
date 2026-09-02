@@ -55,12 +55,10 @@ impl Assets {
     /// The stat rank badge for a stat value, via the same table the overlay
     /// uses — so a stat that shows a B badge in game shows a B badge here.
     pub fn stat_rank(&self, value: i64) -> Option<String> {
-        let sprite = honse_career_meta::stat_rank_sprite(i32::try_from(value).unwrap_or(0));
-        // The shared table names a PNG under `statusrank/`; hakuraku's copy is
-        // webp under `textures/uma_ranks` with the same two-digit index, so the
-        // index is what carries over, not the path.
-        let index = sprite.trim_end_matches(".png").rsplit('_').next()?.to_string();
-        self.url("textures/uma_ranks", &format!("utx_ico_statusrank_{index}"))
+        // The index is what the overlay and this viewer share; the file it
+        // names differs (PNG under `statusrank/` there, webp here).
+        let index = honse_career_meta::rank_icon_index(i32::try_from(value).unwrap_or(0));
+        self.url("textures/uma_ranks", &format!("utx_ico_statusrank_{index:02}"))
     }
 
     /// `Some(url)` only when the file is really there.

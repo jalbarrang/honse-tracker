@@ -128,9 +128,9 @@ pub unsafe fn object_to_json(obj: *mut c_void) -> Option<Value> {
     }
     api()?;
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let mut visited = HashSet::new();
+        let mut walk = Walk::new();
         // SAFETY: forwarded from this function's own contract.
-        unsafe { object(obj, 0, &mut visited) }
+        unsafe { object(obj, &mut walk) }
     })) {
         Ok(value) => Some(value),
         Err(_) => {
@@ -149,87 +149,156 @@ unsafe fn name_of(ptr: *const c_char) -> String {
     unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned()
 }
 
+/// One traversal's state: how deep it is, and which objects are on the path
+/// down to here.
+///
+/// Carried by reference through every step rather than as two loose
+/// arguments. The path set is scoped to the current descent, not the whole
+/// walk: a response shares sub-objects freely (the same chara appears under
+/// several branches), and refusing to visit one twice would silently drop
+/// real data. Only a true cycle — an object that is its own ancestor — is
+/// refused.
+struct Walk {
+    depth: usize,
+    path: HashSet<usize>,
+}
+
+impl Walk {
+    fn new() -> Self {
+        Self {
+            depth: 0,
+            path: HashSet::new(),
+        }
+    }
+
+    /// Run `f` one level down.
+    fn deeper(&mut self, f: impl FnOnce(&mut Self) -> Value) -> Value {
+        self.depth += 1;
+        let value = f(self);
+        self.depth -= 1;
+        value
+    }
+}
+
+/// One field of a class, with the metadata every consumer here reads first.
+struct FieldInfo {
+    ptr: *mut c_void,
+    flags: i32,
+    offset: i32,
+    name: String,
+}
+
+impl FieldInfo {
+    fn is_static(&self) -> bool {
+        self.flags & FIELD_STATIC != 0
+    }
+
+    fn is_enum_member(&self) -> bool {
+        self.is_static() && self.flags & FIELD_LITERAL != 0
+    }
+
+    /// Where an instance field's storage sits, measured from the first field.
+    /// `None` for statics, and for the header-overlapping offsets the runtime
+    /// reports for things that are not real fields.
+    fn instance_offset(&self) -> Option<usize> {
+        if self.is_static() || self.offset < OBJECT_HEADER {
+            return None;
+        }
+        usize::try_from(self.offset - OBJECT_HEADER).ok()
+    }
+}
+
+/// Every field the runtime lists for `klass`, in declaration order.
+///
+/// Three readers used to run this loop themselves; one place to get the
+/// iteration contract right is better than three chances to get it wrong.
+unsafe fn fields_of(klass: *mut c_void) -> Vec<FieldInfo> {
+    let Some(api) = api() else { return Vec::new() };
+    let mut out = Vec::new();
+    let mut iter: *mut c_void = std::ptr::null_mut();
+    loop {
+        // SAFETY: `il2cpp_class_get_fields(klass, &iter)` walks the class's
+        // field list and returns null when it is exhausted.
+        let ptr = unsafe { (api.class_get_fields)(klass, &raw mut iter) };
+        if ptr.is_null() {
+            return out;
+        }
+        // SAFETY: `ptr` is a FieldInfo the runtime just handed back.
+        let (flags, offset, name) = unsafe {
+            (
+                (api.field_get_flags)(ptr),
+                (api.field_get_offset)(ptr),
+                name_of((api.field_get_name)(ptr)),
+            )
+        };
+        out.push(FieldInfo {
+            ptr,
+            flags,
+            offset,
+            name,
+        });
+    }
+}
+
 /// One object or boxed value: `{ field: value, … }`.
-unsafe fn object(obj: *mut c_void, depth: usize, visited: &mut HashSet<usize>) -> Value {
+unsafe fn object(obj: *mut c_void, walk: &mut Walk) -> Value {
     if obj.is_null() {
         return Value::Null;
     }
     let Some(api) = api() else { return Value::Null };
-    if depth > MAX_DEPTH {
+    if walk.depth > MAX_DEPTH {
         return Value::String("<max depth>".to_string());
     }
-    // A response graph shares sub-objects (the same chara appears in several
-    // branches). Following one twice is fine; following a cycle is not, so the
-    // guard is scoped to the current path and released on the way out.
-    if !visited.insert(obj as usize) {
+    if !walk.path.insert(obj as usize) {
         return Value::String("<cycle>".to_string());
     }
 
     // SAFETY: `obj` is a live IL2CPP object; its class pointer heads the object.
     let klass = unsafe { (api.object_get_class)(obj) };
-    if klass.is_null() {
-        visited.remove(&(obj as usize));
-        return Value::Null;
-    }
-    // SAFETY: `klass` came from the runtime.
-    let class_name = unsafe { name_of((api.class_get_name)(klass)) };
-
-    let value = if class_name.ends_with("[]") {
-        // SAFETY: the class name says array, so the object has an array header.
-        unsafe { array(obj, klass, depth, visited) }
-    } else if class_name == "String" {
-        // SAFETY: `obj` is a System.String.
-        unsafe { read_string(obj) }
+    let value = if klass.is_null() {
+        Value::Null
     } else {
-        // SAFETY: fields start one object header in from the object head.
-        unsafe { fields(obj.byte_add(OBJECT_HEADER as usize), klass, depth, visited) }
+        // SAFETY: `klass` came from the runtime.
+        let class_name = unsafe { name_of((api.class_get_name)(klass)) };
+        if class_name.ends_with("[]") {
+            // SAFETY: the class name says array, so the object has an array header.
+            unsafe { array(obj, klass, walk) }
+        } else if class_name == "String" {
+            // SAFETY: `obj` is a System.String.
+            unsafe { read_string(obj) }
+        } else {
+            // SAFETY: fields start one object header in from the object head.
+            unsafe { fields(obj.byte_add(OBJECT_HEADER as usize), klass, walk) }
+        }
     };
 
-    visited.remove(&(obj as usize));
+    walk.path.remove(&(obj as usize));
     value
 }
 
 /// Walk every instance field of `klass` over a buffer whose offset zero is the
 /// first field (i.e. past the object header for a class, the struct base for a
 /// value type).
-unsafe fn fields(base: *mut c_void, klass: *mut c_void, depth: usize, visited: &mut HashSet<usize>) -> Value {
+unsafe fn fields(base: *mut c_void, klass: *mut c_void, walk: &mut Walk) -> Value {
     let Some(api) = api() else { return Value::Null };
     let mut map = Map::new();
-    let mut iter: *mut c_void = std::ptr::null_mut();
-    loop {
-        // SAFETY: standard il2cpp_class_get_fields iteration; ends on null.
-        let field = unsafe { (api.class_get_fields)(klass, &raw mut iter) };
-        if field.is_null() {
-            break;
-        }
-        // SAFETY: `field` came from the iteration above.
-        let (flags, offset, name, ftype) = unsafe {
-            (
-                (api.field_get_flags)(field),
-                (api.field_get_offset)(field),
-                name_of((api.field_get_name)(field)),
-                (api.field_get_type)(field),
-            )
-        };
-        if flags & FIELD_STATIC != 0 || offset < OBJECT_HEADER {
+    // SAFETY: `klass` is a live class.
+    for field in unsafe { fields_of(klass) } {
+        let Some(rel) = field.instance_offset() else {
             continue; // statics and constants are not this object's state
-        }
-        let addr = {
-            let Ok(rel) = usize::try_from(offset - OBJECT_HEADER) else {
-                continue;
-            };
-            // SAFETY: `rel` is the runtime's own offset for a field of this class.
-            unsafe { base.byte_add(rel) }
         };
+        // SAFETY: `rel` is the runtime's own offset for a field of this class,
+        // and `field.ptr` is the FieldInfo it belongs to.
+        let (addr, ftype) = unsafe { (base.byte_add(rel), (api.field_get_type)(field.ptr)) };
         // SAFETY: `addr` is that field's storage and `ftype` describes it.
-        let value = unsafe { read(addr, ftype, depth, visited) };
-        map.insert(normalise(&name), value);
+        let value = unsafe { read(addr, ftype, walk) };
+        map.insert(normalise(&field.name), value);
     }
     Value::Object(map)
 }
 
 /// Read one field, dispatching on its `Il2CppTypeEnum`.
-unsafe fn read(addr: *mut c_void, ftype: *mut c_void, depth: usize, visited: &mut HashSet<usize>) -> Value {
+unsafe fn read(addr: *mut c_void, ftype: *mut c_void, walk: &mut Walk) -> Value {
     let Some(api) = api() else { return Value::Null };
     // SAFETY: `ftype` is the runtime's type for this field.
     let kind = unsafe { (api.type_get_type)(ftype) };
@@ -247,9 +316,12 @@ unsafe fn read(addr: *mut c_void, ftype: *mut c_void, depth: usize, visited: &mu
             // R8
             0x0D => finite(*addr.cast::<f64>()),
             // STRING, CLASS, SZARRAY, ARRAY, OBJECT, GENERICINST
-            0x0E | 0x12 | 0x1C | 0x1D | 0x14 | 0x15 => object(*addr.cast::<*mut c_void>(), depth + 1, visited),
+            0x0E | 0x12 | 0x1C | 0x1D | 0x14 | 0x15 => {
+                let target = *addr.cast::<*mut c_void>();
+                walk.deeper(|w| object(target, w))
+            }
             // VALUETYPE — an inline struct, an enum, or an Obscured wrapper.
-            0x11 => value_type(addr, ftype, depth, visited),
+            0x11 => value_type(addr, ftype, walk),
             // Anything else: report the width we can safely read rather than
             // guessing at a shape.
             _ => Value::Number(Number::from(*addr.cast::<i32>())),
@@ -258,7 +330,7 @@ unsafe fn read(addr: *mut c_void, ftype: *mut c_void, depth: usize, visited: &mu
 }
 
 /// An inline value type: enum, `Obscured*`, or a plain struct.
-unsafe fn value_type(addr: *mut c_void, ftype: *mut c_void, depth: usize, visited: &mut HashSet<usize>) -> Value {
+unsafe fn value_type(addr: *mut c_void, ftype: *mut c_void, walk: &mut Walk) -> Value {
     let Some(api) = api() else { return Value::Null };
     // SAFETY: `ftype` is a live runtime type.
     let klass = unsafe { (api.class_from_type)(ftype) };
@@ -282,7 +354,7 @@ unsafe fn value_type(addr: *mut c_void, ftype: *mut c_void, depth: usize, visite
     // A struct's fields are measured from the object head like a class's, so the
     // same header adjustment applies even though there is no header here.
     // SAFETY: `addr` is the struct's inline storage.
-    unsafe { fields(addr, klass, depth, visited) }
+    unsafe { fields(addr, klass, walk) }
 }
 
 /// Decrypt a CodeStage `Obscured*` wrapper by finding its two fields by name.
@@ -290,28 +362,13 @@ unsafe fn value_type(addr: *mut c_void, ftype: *mut c_void, depth: usize, visite
 /// Offsets are read from the metadata rather than assumed: the struct carries
 /// more than the two integers, and the layout is not ours to predict.
 unsafe fn obscured(addr: *mut c_void, klass: *mut c_void, class_name: &str) -> Option<Value> {
-    let api = api()?;
     let (mut hidden_at, mut key_at) = (None, None);
-    let mut iter: *mut c_void = std::ptr::null_mut();
-    loop {
-        // SAFETY: standard field iteration.
-        let field = unsafe { (api.class_get_fields)(klass, &raw mut iter) };
-        if field.is_null() {
-            break;
-        }
-        // SAFETY: `field` came from the iteration.
-        let (flags, offset, name) = unsafe {
-            (
-                (api.field_get_flags)(field),
-                (api.field_get_offset)(field),
-                name_of((api.field_get_name)(field)),
-            )
-        };
-        if flags & FIELD_STATIC != 0 || offset < OBJECT_HEADER {
+    // SAFETY: `klass` is a live class.
+    for field in unsafe { fields_of(klass) } {
+        let Some(rel) = field.instance_offset() else {
             continue;
-        }
-        let rel = usize::try_from(offset - OBJECT_HEADER).ok()?;
-        match name.as_str() {
+        };
+        match field.name.as_str() {
             "hiddenValue" => hidden_at = Some(rel),
             "currentCryptoKey" | "cryptoKey" => key_at = Some(rel),
             _ => {}
@@ -341,31 +398,23 @@ unsafe fn enum_name(addr: *mut c_void, klass: *mut c_void) -> Value {
     let Some(api) = api() else { return Value::Null };
     // SAFETY: enum storage is its underlying integer; Gallop's are all Int32.
     let current = unsafe { *addr.cast::<i32>() };
-    let mut iter: *mut c_void = std::ptr::null_mut();
-    loop {
-        // SAFETY: standard field iteration.
-        let field = unsafe { (api.class_get_fields)(klass, &raw mut iter) };
-        if field.is_null() {
-            break;
-        }
-        // SAFETY: `field` came from the iteration.
-        let flags = unsafe { (api.field_get_flags)(field) };
-        if flags & FIELD_STATIC == 0 || flags & FIELD_LITERAL == 0 {
+    // SAFETY: `klass` is a live class.
+    for field in unsafe { fields_of(klass) } {
+        if !field.is_enum_member() {
             continue; // `value__` and anything else that is not a member
         }
         let mut member: i32 = 0;
         // SAFETY: reading a literal static's constant into a matching i32 slot.
-        unsafe { (api.field_static_get_value)(field, (&raw mut member).cast()) };
+        unsafe { (api.field_static_get_value)(field.ptr, (&raw mut member).cast()) };
         if member == current {
-            // SAFETY: `field` came from the iteration.
-            return Value::String(unsafe { name_of((api.field_get_name)(field)) });
+            return Value::String(field.name);
         }
     }
     Value::Number(Number::from(current))
 }
 
 /// An array, at the runtime's own element stride.
-unsafe fn array(obj: *mut c_void, klass: *mut c_void, depth: usize, visited: &mut HashSet<usize>) -> Value {
+unsafe fn array(obj: *mut c_void, klass: *mut c_void, walk: &mut Walk) -> Value {
     let Some(api) = api() else { return Value::Null };
     // SAFETY: `obj` is an IL2CPP array object.
     let len = unsafe { (api.array_length)(obj) } as usize;
@@ -388,7 +437,7 @@ unsafe fn array(obj: *mut c_void, klass: *mut c_void, depth: usize, visited: &mu
             // SAFETY: i < len, and reference elements are one pointer each.
             let item = unsafe { *data.cast::<*mut c_void>().add(i) };
             // SAFETY: `item` is a live element or null.
-            out.push(unsafe { object(item, depth + 1, visited) });
+            out.push(walk.deeper(|w| unsafe { object(item, w) }));
         }
         return Value::Array(out);
     }
@@ -420,7 +469,7 @@ unsafe fn array(obj: *mut c_void, klass: *mut c_void, depth: usize, visited: &mu
             unsafe { obscured(at, element, &name) }.unwrap_or(Value::Null)
         } else {
             // SAFETY: as above.
-            unsafe { fields(at, element, depth + 1, visited) }
+            walk.deeper(|w| unsafe { fields(at, element, w) })
         };
         out.push(value);
     }

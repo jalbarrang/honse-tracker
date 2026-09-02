@@ -171,7 +171,12 @@ fn section_supports(c: &Career, assets: &Assets) -> Markup {
                                 }
                                 @for (i, value) in s.gains.iter().enumerate() {
                                     @if *value != 0 {
-                                        span.gain { span.k { (STAT_LABELS[i]) } span.v { "+" (value) } }
+                                        // `{:+}` writes the sign either way, so a loss
+                                        // reads "-12" rather than "+-12".
+                                        span.gain.loss[*value < 0] {
+                                            span.k { (STAT_LABELS[i]) }
+                                            span.v { (format!("{value:+}")) }
+                                        }
                                     }
                                 }
                             }
@@ -209,8 +214,8 @@ fn section_factors(c: &Career) -> Markup {
                     .year {
                         h3 { "Year " (year.year) }
                         ul.chips {
-                            @for (id, level) in &year.factors {
-                                li.chip { "#" (id) @if *level > 0 { " Lv" (level) } }
+                            @for f in &year.factors {
+                                li.chip { "#" (f.id) @if f.level > 0 { " Lv" (f.level) } }
                             }
                         }
                     }
@@ -224,7 +229,7 @@ fn section_skills(c: &Career, assets: &Assets) -> Markup {
     html! {
         @if !c.skills.is_empty() {
             section {
-                h2 { "Skills gained " span.count { (c.skills.len()) } }
+                h2 { "Skills " span.count { (c.skills.len()) } }
                 ul.chips {
                     @for skill in &c.skills {
                         li.chip {
@@ -235,6 +240,7 @@ fn section_skills(c: &Career, assets: &Assets) -> Markup {
                                 Some(name) => span { (name) },
                                 None => span { "#" (skill.id) },
                             }
+                            @if skill.level > 1 { span.id { "Lv" (skill.level) } }
                         }
                     }
                 }

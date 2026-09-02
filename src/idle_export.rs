@@ -78,13 +78,19 @@ pub fn output_dir() -> PathBuf {
     DIR.get().cloned().unwrap_or_else(default_dir)
 }
 
-/// `%USERPROFILE%\Documents\SavedIdleCareers`, or the working directory if the
-/// profile is not readable — the export is a convenience, not worth refusing to
-/// load over.
+/// The user's profile directory, if Windows will say.
+fn home() -> Option<PathBuf> {
+    std::env::var_os("USERPROFILE").map(PathBuf::from)
+}
+
+/// The default export directory — the same rule the career viewer uses to find
+/// them, so the two cannot disagree. Falls back to the working directory when
+/// there is no profile to hang it off: the export is a convenience, not worth
+/// refusing to load over.
 fn default_dir() -> PathBuf {
-    std::env::var_os("USERPROFILE").map_or_else(
+    home().map_or_else(
         || PathBuf::from("SavedIdleCareers"),
-        |home| PathBuf::from(home).join("Documents").join("SavedIdleCareers"),
+        |home| honse_career_meta::saved_careers_dir(&home),
     )
 }
 
@@ -95,20 +101,25 @@ fn default_dir() -> PathBuf {
 /// inside Program Files that Windows would then refuse to write to.
 pub fn configure(enabled: bool, override_dir: Option<&str>) {
     let dir = match override_dir.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(raw) => {
-            let expanded = std::env::var("USERPROFILE")
-                .map_or_else(|_| raw.to_string(), |home| raw.replace("%USERPROFILE%", &home));
-            let path = PathBuf::from(&expanded);
-            if path.is_absolute() {
-                path
-            } else {
-                std::env::var_os("USERPROFILE").map_or_else(|| path.clone(), |home| PathBuf::from(home).join(&path))
-            }
-        }
+        Some(raw) => resolve_override(raw, home().as_deref()),
         None => default_dir(),
     };
     let _ = DIR.set(dir);
     set_enabled(enabled);
+}
+
+/// Expand `%USERPROFILE%` and anchor a relative path under the profile. Pure,
+/// so the rule can be tested without an environment.
+fn resolve_override(raw: &str, home: Option<&std::path::Path>) -> PathBuf {
+    let expanded = match home.and_then(std::path::Path::to_str) {
+        Some(home) => raw.replace("%USERPROFILE%", home),
+        None => raw.to_string(),
+    };
+    let path = PathBuf::from(expanded);
+    match (path.is_absolute(), home) {
+        (false, Some(home)) => home.join(path),
+        _ => path,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -158,7 +169,31 @@ fn capture(source: &'static str, response: *mut Il2CppObject) {
 // Writing
 // ---------------------------------------------------------------------------
 
+/// Field names that identify the account rather than the run. Removed before
+/// anything reaches disk, at every depth.
+///
+/// A folder of exports is for analysis and may well be shared; an account id
+/// in each one is not something the player would knowingly hand over, and it
+/// contributes nothing to the analysis. Both spellings are listed because the
+/// walker normalises the game's `_ownerViewerId` backing fields to camelCase
+/// while the response types themselves use snake_case.
+const IDENTIFYING_FIELDS: &[&str] = &["viewer_id", "owner_viewer_id", "viewerId", "ownerViewerId"];
+
+/// Strip [`IDENTIFYING_FIELDS`] from every object in the tree.
+fn scrub(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            map.retain(|key, _| !IDENTIFYING_FIELDS.contains(&key.as_str()));
+            map.values_mut().for_each(scrub);
+        }
+        Value::Array(items) => items.iter_mut().for_each(scrub),
+        _ => {}
+    }
+}
+
 fn write(dir: &std::path::Path, source: &str, mut value: Value) {
+    scrub(&mut value);
+
     // Stamp what produced the file. A folder of these is worth nothing in six
     // months if you cannot tell which plugin version or which callback wrote
     // one, and the game's own payload has nowhere to say so.
@@ -289,7 +324,8 @@ pub fn uninstall() {
 /// inside them carries the method it closed over and does not move.
 fn closure_method_addr(parent: *mut c_void, method: &str) -> Option<*mut c_void> {
     let sdk = Sdk::get();
-    // SAFETY: standard il2cpp_class_get_nested_types iteration, ending on null.
+    // SAFETY: `il2cpp_class_get_nested_types` is an IL2CPP C API export with
+    // exactly this signature — `(klass, iter) -> klass`, null at the end.
     let get_nested: unsafe extern "C" fn(*mut c_void, *mut *mut c_void) -> *mut c_void =
         unsafe { std::mem::transmute(sdk.resolve_symbol("il2cpp_class_get_nested_types")?) };
 
@@ -308,8 +344,58 @@ fn closure_method_addr(parent: *mut c_void, method: &str) -> Option<*mut c_void>
 
 #[cfg(test)]
 mod tests {
-    use super::{card_id, file_name};
+    use super::{card_id, file_name, resolve_override, scrub};
     use serde_json::json;
+    use std::path::{Path, PathBuf};
+
+    /// The one thing an export must never carry: the account it came from.
+    /// Checked at depth, because the id appears six times in a real response
+    /// and only one of them is near the top.
+    #[test]
+    fn the_account_id_is_stripped_at_every_depth() {
+        let mut value = json!({
+            "owner_viewer_id": 413,
+            "data": {
+                "end_info": { "chara_info": { "owner_viewer_id": 413, "card_id": 100702 } },
+                "list": [ { "viewer_id": 413 }, { "ownerViewerId": 413, "keep": 1 } ]
+            }
+        });
+        scrub(&mut value);
+        let text = value.to_string();
+        assert!(!text.contains("413"), "{text}");
+        assert!(!text.contains("viewer"), "{text}");
+        assert_eq!(
+            value["data"]["end_info"]["chara_info"]["card_id"], 100702,
+            "everything else survives"
+        );
+        assert_eq!(value["data"]["list"][1]["keep"], 1);
+    }
+
+    /// A relative override means "under my profile", never "under the game
+    /// folder" — which on a Steam install is somewhere Windows refuses writes.
+    #[test]
+    fn a_relative_override_anchors_under_the_profile() {
+        let home = Path::new(r"C:\Users\juan");
+        assert_eq!(
+            resolve_override(r"Documents\Runs", Some(home)),
+            PathBuf::from(r"C:\Users\juan\Documents\Runs")
+        );
+        assert_eq!(
+            resolve_override(r"D:\runs", Some(home)),
+            PathBuf::from(r"D:\runs"),
+            "absolute stays put"
+        );
+        assert_eq!(
+            resolve_override(r"%USERPROFILE%\x", Some(home)),
+            PathBuf::from(r"C:\Users\juan\x"),
+            "the placeholder expands"
+        );
+        assert_eq!(
+            resolve_override("runs", None),
+            PathBuf::from("runs"),
+            "no profile: taken as given"
+        );
+    }
 
     #[test]
     fn the_card_id_names_the_file() {

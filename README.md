@@ -147,19 +147,31 @@ somewhere Windows will refuse to write.
 
 Files are named `20260902_014233-card101302-end.json`: timestamp first so the
 folder sorts chronologically, then the trainee's card id, then which of the
-game's two result callbacks produced it (`end` when the run is finalised,
-`result` when you view it — same payload, kept apart so you can tell). Each file
-also carries `honse_source` and `honse_tracker_version`.
+game's two result callbacks produced it. Only `end` has been seen to fire so
+far; `result` is hooked in case another path uses it, and the suffix keeps the
+two apart if it ever does. Each file also carries `honse_source` and
+`honse_tracker_version`.
 
 ## Browsing saved careers
 
-`cargo run -p career-viewer` opens a small local site at http://127.0.0.1:4173 that lists every exported career and shows one in detail — stats with their rank badges, race history, support-card contributions, succession factors and conditions — using the game's own art.
+`cargo run -p career-viewer` opens a small local site at http://127.0.0.1:4173
+that lists every exported career and shows one in detail — stats with their
+rank badges, race history, support-card contributions, succession factors and
+conditions — using the game's own art.
 
-It borrows the art from a local checkout of [hakuraku](https://github.com/CNA-Bld/hakuraku); point `HAKURAKU_ASSETS` at its `public/assets` folder. `CAREERS_DIR` and `PORT` override the rest. Pages render without art if the assets are missing rather than failing.
+It borrows the art from a local checkout of
+[hakuraku](https://github.com/CNA-Bld/hakuraku); point `HAKURAKU_ASSETS` at its
+`public/assets` folder. `CAREERS_DIR` and `PORT` override the rest. Pages
+render without art if the assets are missing rather than failing.
 
-It shares the rank ladder, stat sprites, career calendar and condition names with the overlay (`crates/honse-career-meta`), so the two cannot disagree. Trainee, support-card and skill names come from hakuraku's `umdb.json` — point `UMDB_JSON` at it, or leave it and the pages show raw ids instead.
+It shares the rank ladder, stat sprites, career calendar and condition names
+with the overlay (`crates/honse-career-meta`), so the two cannot disagree.
+Trainee, support-card and skill names come from hakuraku's `umdb.json` — point
+`UMDB_JSON` at it, or leave it and the pages show raw ids instead.
 
-Race `program_id`, `chara_grade` and succession factor ids stay as raw numbers: those come from tables (`single_mode_program` and friends) that nothing publishes offline yet.
+Race `program_id`, `chara_grade` and succession factor ids stay as raw numbers:
+those come from tables (`single_mode_program` and friends) that nothing
+publishes offline yet.
 
 ## Files it writes
 
@@ -172,3 +184,40 @@ Upgrading from an older build, the first launch folds `honseTrackerConfig.json`,
 `overlayLayout.json` and `songPlan.json` into the single file and says so in the
 log. The three originals are left where they are rather than deleted, so
 dropping back to an older DLL still finds its settings.
+
+## Building it yourself
+
+Windows, with the pinned toolchain in `rust-toolchain.toml`:
+
+```
+cargo build --release
+```
+
+The DLL lands at `target/release/honse_tracker.dll`. `scripts/deploy-windows.ps1`
+copies it into the game folder for you, and refuses while the game is running
+rather than half-writing a locked file.
+
+That bare build produces only the plugin: the career viewer is outside the
+workspace's `default-members`, so a deploy never compiles a web stack. Build it
+on its own with `cargo build -p career-viewer`.
+
+```
+cargo test --workspace
+cargo clippy --workspace --all-targets
+cargo fmt --check
+```
+
+`--workspace` matters: a root package shadows it, so the bare forms check only
+the root crate and skip everything under `crates/`.
+
+`GLOSSARY.md` explains the terms — the game's, the host's and ours.
+
+## Known rough edges
+
+- **Owned songs are not always detected.** The planner reads which songs a run
+  has learned, and that read has been unreliable. `Ctrl+Shift+B` marks one by
+  hand; hand marks are added to what the game reports and never taken away, so
+  a later fix cannot contradict your record.
+- **Training projections go stale on shop screens.** Energy and stats stay
+  current there, but gains and failure rates are last turn's — nothing
+  re-derives them while you are shopping. The panel dims to say so.

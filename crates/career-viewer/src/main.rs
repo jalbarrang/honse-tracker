@@ -50,10 +50,8 @@ struct App {
 #[tokio::main]
 async fn main() {
     let careers_dir = env_path("CAREERS_DIR").unwrap_or_else(default_careers_dir);
-    let assets_root =
-        env_path("HAKURAKU_ASSETS").unwrap_or_else(|| PathBuf::from(r"D:\work\dreki\hakuraku\public\assets"));
-    let umdb_path =
-        env_path("UMDB_JSON").unwrap_or_else(|| PathBuf::from(r"D:\work\dreki\hakuraku\public\data\umdb.json"));
+    let assets_root = env_path("HAKURAKU_ASSETS").unwrap_or_else(|| hakuraku().join("public").join("assets"));
+    let umdb_path = env_path("UMDB_JSON").unwrap_or_else(|| hakuraku().join("public").join("data").join("umdb.json"));
     let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(4173);
 
     // Say what is missing at startup rather than rendering an empty page and
@@ -119,12 +117,24 @@ fn env_path(key: &str) -> Option<PathBuf> {
         .filter(|p| !p.as_os_str().is_empty())
 }
 
-/// `%USERPROFILE%\Documents\SavedIdleCareers`, the plugin's own default.
+/// Where the plugin writes exports by default — the same rule it uses, from
+/// the shared crate, so the two cannot disagree.
 fn default_careers_dir() -> PathBuf {
     std::env::var_os("USERPROFILE").map_or_else(
         || PathBuf::from("SavedIdleCareers"),
-        |home| PathBuf::from(home).join("Documents").join("SavedIdleCareers"),
+        |home| honse_career_meta::saved_careers_dir(&PathBuf::from(home)),
     )
+}
+
+/// A hakuraku checkout beside this one: `cargo run` sets the working directory
+/// to the workspace root, so its parent is where sibling repos live. Anyone
+/// with a different layout sets `HAKURAKU_ASSETS` / `UMDB_JSON`.
+fn hakuraku() -> PathBuf {
+    std::env::current_dir()
+        .ok()
+        .and_then(|cwd| cwd.parent().map(std::path::Path::to_path_buf))
+        .unwrap_or_default()
+        .join("hakuraku")
 }
 
 async fn index(State(app): State<Arc<App>>) -> Response {

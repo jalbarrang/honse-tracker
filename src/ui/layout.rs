@@ -52,7 +52,7 @@ static SELECTED: AtomicUsize = AtomicUsize::new(0);
 /// a placement for an unregistered panel is silently dropped.
 pub fn load_and_apply() {
     let mut applied = 0;
-    for (id, placement) in crate::config::layout_panels() {
+    for (id, placement) in crate::config::read(|file| file.layout.panels.clone()) {
         let Some(anchor) = Anchor::from_name(&placement.anchor) else {
             hlog_warn!(target: "training-tracker", "Overlay layout: unknown anchor {:?} for '{id}'", placement.anchor);
             continue;

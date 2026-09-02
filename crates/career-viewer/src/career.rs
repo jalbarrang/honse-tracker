@@ -60,19 +60,25 @@ pub struct Race {
 pub struct Support {
     pub card_id: i64,
     pub name: Option<String>,
-    /// `(stat label, delta)` for the five main stats, in panel order.
+    /// Delta per main stat, in panel order. Negative for a loss.
     pub gains: [i64; 5],
 }
 
 pub struct Skill {
     pub id: i64,
+    pub level: i64,
     pub name: Option<String>,
     pub icon_id: Option<i64>,
 }
 
 pub struct FactorYear {
     pub year: i64,
-    pub factors: Vec<(i64, i64)>,
+    pub factors: Vec<Factor>,
+}
+
+pub struct Factor {
+    pub id: i64,
+    pub level: i64,
 }
 
 pub struct Condition {
@@ -172,7 +178,7 @@ pub fn parse(file: &str, value: &Value, umdb: &crate::umdb::Umdb) -> Career {
         supports: supports(log, umdb),
         factors: factors(log),
         conditions: conditions(log),
-        skills: skills(log, umdb),
+        skills: skills(chara, umdb),
     }
 }
 
@@ -215,14 +221,20 @@ fn supports(log: Option<&Value>, umdb: &crate::umdb::Umdb) -> Vec<Support> {
         .collect()
 }
 
-fn skills(log: Option<&Value>, umdb: &crate::umdb::Umdb) -> Vec<Skill> {
-    array(log, "gain_skill_id_array")
+/// The trainee's skills at the end of the run.
+///
+/// Read from `chara_info.skill_array`, which is where the response actually
+/// lists them — `progress_log_info.gain_skill_id_array` was empty in the only
+/// real export while `skill_array` held the learned skill and its level.
+fn skills(chara: Option<&Value>, umdb: &crate::umdb::Umdb) -> Vec<Skill> {
+    array(chara, "skill_array")
         .iter()
-        .filter_map(Value::as_i64)
-        .map(|id| {
+        .map(|entry| {
+            let id = int(Some(entry), "skill_id");
             let found = umdb.skill(id);
             Skill {
                 id,
+                level: int(Some(entry), "level"),
                 name: found.map(|s| s.name.clone()),
                 icon_id: found.and_then(|s| s.icon_id),
             }
@@ -237,7 +249,10 @@ fn factors(log: Option<&Value>) -> Vec<FactorYear> {
             year: int(Some(entry), "year"),
             factors: array(Some(entry), "gain_factor_info_array")
                 .iter()
-                .map(|f| (int(Some(f), "factor_id"), int(Some(f), "level")))
+                .map(|f| Factor {
+                    id: int(Some(f), "factor_id"),
+                    level: int(Some(f), "level"),
+                })
                 .collect(),
         })
         .collect()
@@ -404,6 +419,21 @@ mod tests {
         assert_eq!(stats[1], -12, "sign 1 reads as a loss");
         assert_eq!(stats[2], 40, "a bare number is taken as-is");
         assert_eq!(stats[3], 0, "an absent stat is zero, not a failure");
+    }
+
+    /// Skills live on the trainee, not in the progress log. Pinned because the
+    /// first version read the log's `gain_skill_id_array`, which is empty in a
+    /// real export, and rendered nothing without anyone noticing.
+    #[test]
+    fn skills_come_from_the_trainee() {
+        let value = json!({ "data": {
+            "end_info": { "chara_info": { "skill_array": [ { "skill_id": 110071, "level": 4 } ] } },
+            "progress_log_info": { "gain_skill_id_array": [] }
+        } });
+        let career = parse("x.json", &value, &crate::umdb::Umdb::empty());
+        assert_eq!(career.skills.len(), 1);
+        assert_eq!(career.skills[0].id, 110_071);
+        assert_eq!(career.skills[0].level, 4);
     }
 
     /// A payload that has moved on must render, not panic.

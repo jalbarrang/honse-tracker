@@ -1,15 +1,22 @@
-//! Pure presentation helpers for the Career overlay panel, ported from the
-//! honse-tracker dashboard so the egui panel labels/sprites match it exactly:
+//! Career presentation lookups: turns, stat values and rank labels into the
+//! labels and sprite indices the game shows for them.
 //!
-//! - [`turn_date`] — career turn → `(year, date)` label (`career-calendar.ts`).
-//! - [`stat_rank_sprite`] — stat value → `statusrank` sprite path (`stat-rank.ts`
-//!   `rankIconIndex`, itself uma-sim's `rankForStat`).
-//! - [`rank_label_sprite`] — overall-rank label → badge sprite path
-//!   (`stat-rank.ts` `rankLabelIconIndex`).
-//! - [`stat_icon_path`] — stat glyph path under `icons/`.
+//! Two readers draw from this — the in-game overlay and the career viewer —
+//! and the tables were transcribed from the honse-tracker dashboard
+//! (`career-calendar.ts`, `stat-rank.ts`, themselves after uma-sim) so all
+//! three agree:
+//!
+//! - [`turn_date`] — career turn → `(year, date)` label.
+//! - [`rank_icon_index`] — stat value → `statusrank` badge index. The index is
+//!   the shared fact; each reader names its own sprite file from it, because
+//!   the overlay's icons are PNGs under `statusrank/` and the viewer's are
+//!   webp under a different folder.
+//! - [`stat_rank_sprite`] / [`rank_label_sprite`] — the overlay's paths for
+//!   that index and for an overall-rank label.
+//! - [`stat_icon_path`] — the overlay's stat glyph path.
 //! - [`chara_id_from_card_id`] — the catalogue-free half of a portrait lookup.
 //!
-//! Paths are relative to the staged `icons/` data directory.
+//! Sprite paths here are relative to the overlay's staged `icons/` directory.
 
 const MONTHS: [&str; 12] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -57,8 +64,12 @@ pub fn turn_date(turn: i32, scenario_id: i32) -> (&'static str, String) {
     (year, format!("{half} {month}"))
 }
 
-/// Stat value → `statusrank` sprite index (uma-sim `rankForStat`). Clamped 0..=97.
-fn rank_icon_index(x: i32) -> i32 {
+/// Stat value → `statusrank` badge index (uma-sim `rankForStat`), `0..=97`.
+///
+/// Public because the index, not a path, is what both readers share: G is 0,
+/// C is 8, SS is 16, and past 1200 it climbs ten per hundred points.
+#[must_use]
+pub fn rank_icon_index(x: i32) -> i32 {
     if x > 1200 {
         (18 + ((x - 1200) / 100) * 10 + (x / 10) % 10).min(97)
     } else if x >= 1150 {

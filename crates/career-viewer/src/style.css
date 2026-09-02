@@ -128,6 +128,7 @@ tbody tr:hover { background: #0f141a; }
 .gain { display: flex; justify-content: space-between; font-size: 11px; }
 .gain .k { color: var(--muted); }
 .gain .v { color: var(--accent); font-weight: 600; }
+.gain.loss .v { color: var(--negative); }
 
 .chips { list-style: none; padding: 0; margin: 0; display: flex; gap: 6px; flex-wrap: wrap; }
 .chip {

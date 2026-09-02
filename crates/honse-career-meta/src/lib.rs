@@ -23,8 +23,12 @@
 
 pub mod career_meta;
 pub mod chara_effects;
+pub mod paths;
 pub mod rank_table;
 
-pub use career_meta::{chara_id_from_card_id, rank_label_sprite, stat_icon_path, stat_rank_sprite, turn_date};
+pub use career_meta::{
+    chara_id_from_card_id, rank_icon_index, rank_label_sprite, stat_icon_path, stat_rank_sprite, turn_date,
+};
 pub use chara_effects::{is_known, lookup, Polarity};
+pub use paths::saved_careers_dir;
 pub use rank_table::rank_label;
