@@ -45,6 +45,7 @@ extern "C" fn on_shutdown(_event_id: u32, _data: *const c_void, _userdata: *mut 
     crate::career_poll::shutdown();
     crate::command_hooks::uninstall();
     crate::apply_hooks::uninstall();
+    crate::idle_export::uninstall();
     hachimi_telemetry::shutdown();
     hlog_info!("Shutdown: capture stopped, hooks removed");
 }

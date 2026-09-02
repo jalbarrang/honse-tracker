@@ -89,10 +89,11 @@ plus a distance from it, so changing resolution does not move anything.
 
 ## The Hachimi menu
 
-Four items, for things you set once rather than press:
+Five items, for things you set once rather than press:
 
 - **Toggle debug overlay** — same as `Ctrl+Shift+D`.
 - **Toggle Independent Training timer** — same as `Ctrl+Shift+I`.
+- **Toggle Independent Training export** — see below.
 - **Toggle race cut-in skip** — see below.
 - **Dump IL2CPP classes** — writes `il2cpp_classes.txt` next to the game
   executable. Only useful if you are working on the plugin.
@@ -104,9 +105,32 @@ Four items, for things you set once rather than press:
 ```json
 {
   "skip_race_skill_cutins": false,
+  "save_idle_careers": true,
+  "idle_career_dir": "",
   "hosted_data": {}
 }
 ```
+
+**`save_idle_careers`** — when an Independent Training finishes, the server
+sends the whole run in one response: every stat, every skill learned, the race
+history, the succession factors, what each support card contributed. The game
+shows you a summary and drops the rest. This writes the response to disk first,
+as pretty-printed JSON, so you can analyse it later.
+
+On by default — it only reads, and the data is gone once you have clicked
+through the summary. Turn it off in the Hachimi menu if you do not want the
+files.
+
+**`idle_career_dir`** — where those files go. Empty means
+`%USERPROFILE%\Documents\SavedIdleCareers`. A relative path resolves under your
+user profile, not under the game folder, so you cannot accidentally aim it
+somewhere Windows will refuse to write.
+
+Files are named `20260902_014233-card101302-end.json`: timestamp first so the
+folder sorts chronologically, then the trainee's card id, then which of the
+game's two result callbacks produced it (`end` when the run is finalised,
+`result` when you view it — same payload, kept apart so you can tell). Each file
+also carries `honse_source` and `honse_tracker_version`.
 
 **`skip_race_skill_cutins`** — when a unique skill fires in a race, the game
 stops to play a cinematic. Turn this on and it does not play: the skill banner
@@ -128,6 +152,9 @@ All in the `hachimi` folder:
 - `honseTrackerConfig.json` — the settings above.
 
 Deleting any of them is safe; you get the defaults back.
+
+Independent Training exports go outside that folder, to
+`Documents\SavedIdleCareers` — see `idle_career_dir` above.
 
 ## Building it yourself
 
