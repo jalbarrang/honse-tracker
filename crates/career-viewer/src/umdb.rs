@@ -142,8 +142,12 @@ impl Umdb {
     /// Parse an `umdb.json` on disk. `None` when it is absent or unreadable —
     /// see the module note: that is a degraded viewer, not a broken one.
     pub fn load(path: &Path) -> Option<Self> {
-        let text = std::fs::read_to_string(path).ok()?;
-        let file: File = serde_json::from_str(&text).ok()?;
+        Self::parse(&std::fs::read_to_string(path).ok()?)
+    }
+
+    /// The contents of `umdb.json`, or `None` if it is not one.
+    fn parse(text: &str) -> Option<Self> {
+        let file: File = serde_json::from_str(text).ok()?;
         Some(Self {
             charas: index(file.chara),
             cards: index(file.card),
@@ -211,15 +215,15 @@ mod tests {
     use super::Umdb;
 
     fn sample() -> Umdb {
-        let json = r#"{
+        Umdb::parse(
+            r#"{
             "chara": [{"id": 1007, "name": "Gold Ship"}],
             "card": [{"id": 100702, "name": "[RUN! RUIN! LAUNCHER!]"}],
             "supportCard": [{"id": 30034, "name": "[Happiness] Rice Shower"}],
             "skill": [{"id": 10071, "name": "Warning Shot!", "iconId": 20013}]
-        }"#;
-        let path = std::env::temp_dir().join("honse-umdb-test.json");
-        std::fs::write(&path, json).expect("write sample");
-        Umdb::load(&path).expect("parse sample")
+        }"#,
+        )
+        .expect("parse sample")
     }
 
     #[test]
