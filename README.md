@@ -40,6 +40,7 @@ load it.
 | **Performance** | top-left | Grand Live only. Your five tokens against their current ceiling, then the songs you still owe for and what they cost. |
 | **Lessons** | bottom-right | Grand Live only, on the Techniques Shop. Every square on offer in the game's own order, and what the ones you cannot take are short by. |
 | **Planner** | top-left | Opened with a key. Pick which songs you are saving for, per concert. |
+| **Independent Training** | top-right | How long is left on the real-world timer, and the clock time it lands at. The only panel that shows outside a career. |
 | **Debug** | bottom-left | Off by default. Which screen you are on and why panels are or are not painting. |
 
 Panels dim when the numbers are not fresh, and disappear entirely during races
@@ -57,6 +58,7 @@ the game sees them — a bound chord does not reach it.
 | `Ctrl+Shift+O` | Show/hide the whole overlay |
 | `Ctrl+Shift+P` | Open/close the song planner |
 | `Ctrl+Shift+D` | Show/hide the screen debug readout |
+| `Ctrl+Shift+I` | Show/hide the Independent Training timer |
 | `Ctrl+Shift+M` | Enter/leave layout mode |
 
 ### In the planner
@@ -87,9 +89,10 @@ plus a distance from it, so changing resolution does not move anything.
 
 ## The Hachimi menu
 
-Three items, for things you set once rather than press:
+Four items, for things you set once rather than press:
 
 - **Toggle debug overlay** — same as `Ctrl+Shift+D`.
+- **Toggle Independent Training timer** — same as `Ctrl+Shift+I`.
 - **Toggle race cut-in skip** — see below.
 - **Dump IL2CPP classes** — writes `il2cpp_classes.txt` next to the game
   executable. Only useful if you are working on the plugin.

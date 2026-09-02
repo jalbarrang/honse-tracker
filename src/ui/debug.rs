@@ -104,6 +104,10 @@ fn body(ui: &mut egui::Ui) {
         None => row(ui, "snapshot", "none cached", theme::TEXT_UNKNOWN),
     }
 
+    // Independent Training runs on a wall clock rather than a turn, so it is
+    // the one thing here that keeps moving while nothing on screen does.
+    idle_training_row(ui);
+
     // Whether overlay chords are being consumed or leaking to the game. The
     // whole point of the subclass, and invisible without saying so.
     let hooked = honse_services::input_block::is_installed();
@@ -113,6 +117,33 @@ fn body(ui: &mut egui::Ui) {
         if hooked { "consumed" } else { "LEAKING to game" },
         if hooked { theme::TEXT_SECONDARY } else { theme::NEGATIVE },
     );
+}
+
+/// The Independent Training watcher: what the game last reported, and how long
+/// the plugin thinks is left. Comparing this countdown against the game's own
+/// gauge is the only way to check the notification will land at the right
+/// moment without sitting through a 45-minute session.
+///
+/// Painted in the caution colour when a session is counting down with no alert
+/// armed — the readout looks identical either way, and that is the state where
+/// the timer works and the notification silently will not.
+fn idle_training_row(ui: &mut egui::Ui) {
+    let Some(countdown) = crate::idle_training::countdown() else {
+        row(ui, "idle training", "not polled yet", theme::TEXT_UNKNOWN);
+        return;
+    };
+    let running = countdown.remaining > 0;
+    let colour = if running && !crate::idle_training::is_armed() {
+        theme::CAUTION
+    } else {
+        theme::TEXT_SECONDARY
+    };
+    let value = format!(
+        "{} \u{00b7} {}",
+        countdown.state.label(),
+        super::idle::clock(countdown.remaining)
+    );
+    row(ui, "idle training", &value, colour);
 }
 
 /// One `label  ······  value` line, value right-aligned so the column scans.

@@ -23,6 +23,7 @@ use crate::read_gate::CareerState;
 
 pub mod affordability;
 pub mod debug;
+pub mod idle;
 pub mod keys;
 pub mod layout;
 pub mod performance;
@@ -196,6 +197,17 @@ pub fn install() {
         300.0,
         debug::draw,
     );
+    // Under the training board on the right. It is the only panel that shows
+    // outside a career, which is when the other three are hidden anyway — so
+    // the gap above it costs nothing and it never fights for the corner.
+    // Narrow: it is a clock, not a table.
+    overlay::register_panel(
+        "idle",
+        Anchor::TopRight,
+        egui::vec2(overlay::theme::GAP, 320.0),
+        240.0,
+        idle::draw,
+    );
     // Below the performance panel: the planner is a thing you open, read and
     // close, so it does not need a corner of its own.
     overlay::register_panel(
@@ -219,7 +231,7 @@ pub fn install() {
     // result to disk once the button comes up.
     honse_services::frame::register_frame_job(Box::new(layout::flush_drag));
     keys::install();
-    hlog_info!(target: "training-tracker", "Overlay: training + performance + lessons + debug panels registered");
+    hlog_info!(target: "training-tracker", "Overlay: training + performance + lessons + idle + debug panels registered");
 }
 
 /// Songs the current run has already learned, resolved to catalogue ids.

@@ -155,6 +155,10 @@ fn plugin_init() -> bool {
         crate::ui::debug::toggle();
     });
 
+    edge_sdk::gui::register_menu_item("Toggle Independent Training timer", || {
+        crate::ui::idle::toggle();
+    });
+
     // Skipping race cut-ins is a setting, not a hotkey: it is something you
     // decide once, and the menu is where the game's own equivalent lives.
     edge_sdk::gui::register_menu_item("Toggle race cut-in skip", || {

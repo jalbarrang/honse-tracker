@@ -41,6 +41,7 @@ mod vk {
     pub const A: u16 = 0x41;
     pub const B: u16 = 0x42;
     pub const D: u16 = 0x44;
+    pub const I: u16 = 0x49;
     pub const M: u16 = 0x4D;
     pub const N: u16 = 0x4E;
     pub const O: u16 = 0x4F;
@@ -58,6 +59,10 @@ struct Binding {
 
 extern "C" fn toggle_debug(_: *mut std::ffi::c_void) {
     super::debug::toggle();
+}
+
+extern "C" fn toggle_idle(_: *mut std::ffi::c_void) {
+    super::idle::toggle();
 }
 
 extern "C" fn toggle_overlay(_: *mut std::ffi::c_void) {
@@ -146,6 +151,12 @@ const BINDINGS: &[Binding] = &[
         label: "Show/hide the screen debug readout",
         vk: vk::D,
         action: toggle_debug,
+    },
+    Binding {
+        id: "overlay.idle",
+        label: "Show/hide the Independent Training timer",
+        vk: vk::I,
+        action: toggle_idle,
     },
     Binding {
         id: "plan.open",
@@ -237,7 +248,7 @@ pub fn install() {
     }
     hlog_info!(
         target: "training-tracker",
-        "Hotkeys: {bound}/{} bound \u{2014} Ctrl+Shift: O overlay, D debug, P planner, M layout, arrows nav, Space plan, B bought",
+        "Hotkeys: {bound}/{} bound \u{2014} Ctrl+Shift: O overlay, D debug, I idle timer, P planner, M layout, arrows nav, Space plan, B bought",
         BINDINGS.len()
     );
 }
