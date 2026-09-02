@@ -11,6 +11,44 @@ inside a career.
 
 **Turn** — one action in a career. Train, rest, race, and so on.
 
+**Honse** — what this project calls the game, and where the repo name comes
+from. The game itself is Umamusume Pretty Derby; its code namespace is `Gallop`.
+
+**Trainee** — the uma you are training this career. One per career.
+
+**Facility** — one of the five things you can train: Speed, Stamina, Power,
+Guts, Wits. A turn's preview gives each one a failure rate and per-stat gains.
+The game calls them training *commands*, which is why the code says `CommandId`,
+and it spells the fifth one `Wiz` — grep for that, not for Wits.
+
+**Support card / deck** — the six cards you take into a career. They show up on
+facilities, add stat gains, and carry their own event chains. Read from
+`EquipSupportCardArray`.
+
+**Bond / friendship** — how far along you are with one support. At 80 it turns
+*rainbow*: the card trains at full strength. "Near-rainbow pressure" is our own
+number for how close a card is to that threshold, used to rank facilities.
+
+**Motivation / mood** — Great, Good, Normal, Bad, Terrible. An enum 5 down to 1
+in the game's own numbering, so bigger is better.
+
+**Energy** — the bar you spend to train. The game stores it as `Hp` / `MaxHp`,
+which is not health and has nothing to do with racing.
+
+**Aptitude** — the letter grades for distance, running style, and surface
+(`ProperGrade` in the game's code). Feeds our evaluation estimate.
+
+**Evaluation / Rating** — the overall career score, and the badge ladder it maps
+to (G through LS24). The game only computes it at career end, so we reproduce it
+ourselves in `evaluation.rs` and map it with `rank_table.rs`.
+
+**Condition** — the ongoing good and bad states a trainee picks up
+(状態 in the game's data, "chara effect" in its code). `chara_effects.rs` names them
+and says which are good.
+
+**Agenda / reserved race** — races you have booked ahead on the schedule.
+Stored per deck, read as `(year, program_id)` pairs.
+
 **Scenario** — the ruleset a career runs under: URA, Aoharu, Grand Live,
 Trackblazer, Grandmasters. Dispatch uses the raw `id` from master data, and IDs
 3 and 4 are swapped relative to release order. See `docs/scenario-ids.md`.
@@ -43,8 +81,20 @@ A square is either a lesson or a song.
 **Live id** — the game's id for a song. Names are looked up from it via
 `MasterSingleModeLiveSongList`.
 
+**Trackblazer** — scenario id 4, "Make a New Track". The one with RaceCoins and
+a rotating coin shop.
+
 **master.mdb** — the game's master database, where scenario, song, and skill
 tables live. Useful for checking ids by hand.
+
+**Independent Training** — send a trainee off and a real-world timer runs
+(about 45 minutes); you collect the finished career when it lands. The game
+calls it `IdleSingleMode` internally, which is why grepping the class dump for
+"Independent" finds nothing. Its montage screen is view 6600
+(`IdleSingleModePlayCut`), and the deadline itself is
+`WorkIdleSingleModeData.EndTime` — the same value the on-screen gauge counts
+down. `idle_training.rs` watches that clock so the notification lands whether or
+not you are looking at the game.
 
 **Cut-in** — the animation that interrupts a race when a skill fires. A unique
 reserves two: the eye flash (`Eye`) and the animation itself (`Unique` /
@@ -66,6 +116,34 @@ means resolving classes and methods through the IL2CPP runtime and calling them.
 **View id** — an integer naming the screen you are on, from
 `SceneManager.GetCurrentViewId()`. 1101 is career training, 1620 is the
 Techniques Shop, and so on. The full table is `scene_views.rs`.
+
+**Gallop** — the game's own C# namespace. Nearly every class we resolve is
+`Gallop.Something`.
+
+**Singleton** — the game keeps one live instance of its manager classes and
+hands it out on request. Every read starts by asking for one.
+
+**Work data** — the game's live session state, rooted at `WorkDataManager`.
+`WorkSingleModeData` is the current career, `WorkSingleModeCharaData` the
+trainee. If you are reading something about *right now*, it hangs off here.
+
+**Master data** — the static tables, reached at runtime through
+`MasterDataManager` (the same content as master.mdb). Looking things up here does
+real work and crashes if called off the main thread — which is why so much of
+this plugin prefers a plain field read.
+
+**Main thread** — Unity's. IL2CPP calls that touch master data or game objects
+belong on it; the present callback does not run there, so work is handed over
+with `schedule_on_main_thread`.
+
+**MinHook / trampoline** — the library Edge patches functions with, and the copy
+of the original it leaves you to call. One address can only be hooked once:
+Edge already hooks `SceneManager.ChangeView`, which is why our view signal is a
+poll instead. (`view_hook.rs`)
+
+**Class dump** — `il2cpp_classes.txt`, produced by the plugin's own menu item.
+Every class, field and method name in the build. It carries names but not enum
+*values*, so those are declaration order until proven otherwise.
 
 **ObscuredInt** — an anti-cheat struct (CodeStage) the game stores some numbers
 in. The real value is `hiddenValue XOR cryptoKey`. It has more fields after
@@ -95,6 +173,21 @@ that are mid-change.
 **Light refresh** — a narrow exception to that: on shop screens, re-read only
 the five stats, energy, and the scenario state, because a purchase moves those
 and nothing else. (`memory_reader/snapshot.rs`)
+
+**Settled turn** — a turn that has finished changing: the command view is
+rebuilt and actionable. The only moment a full career read is allowed, and the
+unit telemetry publishes.
+
+**Capture** — one settled-turn read, published once. Requests are held and
+coalesced until the lifecycle permits one.
+
+**Epoch** — a career's namespace for capture ids, restarted on a new career, a
+deck change, or a turn rewind. Without it, an untouched turn 1 of the same
+trainee in two careers would produce the same id twice.
+
+**Deadline** — Independent Training's landing time, remembered so the
+notification can fire off the wall clock rather than off anything on screen.
+Armed by the slow poll, settled by the per-frame tick. (`idle_training.rs`)
 
 **Snapshot** — the last full read of a turn. Panels draw from it, so they keep
 showing the last settled numbers instead of blanking out.
@@ -152,6 +245,15 @@ everyday characters, so Ctrl+Alt is not usable as a modifier here.
 only captures the mouse over a panel that has something to click, so the game
 stays clickable everywhere else.
 
+**Tray balloon** — `Shell_NotifyIcon` with `NIF_INFO`, which Windows 10/11 draw
+as a real notification. It needs a tray icon to hang off, which is why one
+appears the first time the plugin notifies. The modern toast API would need a
+Start Menu shortcut we have no business installing.
+
+**Focus Assist / Do Not Disturb** — Windows suppressing notifications, on by
+default while a fullscreen app is in front. The taskbar flash still gets
+through.
+
 **Client pixels vs backbuffer pixels** — mouse messages come in window
 coordinates; the overlay draws in backbuffer coordinates. They differ when the
 game renders at a scaled resolution, so clicks are converted before use.
@@ -183,5 +285,14 @@ there, and it is the first place to look.
 
 **`overlayLayout.json`** — panel positions.
 
+**`honseTrackerConfig.json`** — the plugin's own settings, beside the DLL in
+edge's base dir.
+
+**`telemetry.json`** — telemetry endpoint and token. Absent means telemetry is
+off, which is the default.
+
 **`hachimi/config.json`** — where the DLL is listed under `load_libraries` so
 Edge loads it at startup.
+
+**`il2cpp_classes.txt`** — the class dump, written next to the game exe. The
+reference for every class and method name in this repo.
