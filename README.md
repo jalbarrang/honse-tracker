@@ -100,16 +100,35 @@ Five items, for things you set once rather than press:
 
 ## Settings
 
-`hachimi/honseTrackerConfig.json`, beside the DLL:
+Everything the plugin remembers lives in one file, `hachimi/honse-tracker.json`:
 
 ```json
 {
-  "skip_race_skill_cutins": false,
-  "save_idle_careers": true,
-  "idle_career_dir": "",
-  "hosted_data": {}
+  "settings": {
+    "skip_race_skill_cutins": false,
+    "save_idle_careers": true,
+    "idle_career_dir": ""
+  },
+  "hosted_data": {},
+  "layout": {},
+  "song_plan": {}
 }
 ```
+
+`layout` is where you dragged each panel and `song_plan` is what you are saving
+for; both are written for you and there is no reason to edit them by hand. The
+`settings` block is the part worth opening the file for.
+
+**`skip_race_skill_cutins`** — when a unique skill fires in a race, the game
+stops to play a cinematic. Turn this on and it does not play: the skill banner
+still appears and the race carries on. Off by default, and the hook is not even
+installed until you turn it on, because it is the only thing here that changes
+what the game does rather than reporting on it. The Hachimi menu toggles it
+without a restart and remembers your choice.
+
+The game has its own, gentler version of this in its options — **Cut-in Play
+Mode**, with a **Short** setting. Worth trying first; this is for when you want
+none at all.
 
 **`save_idle_careers`** — when an Independent Training finishes, the server
 sends the whole run in one response: every stat, every skill learned, the race
@@ -132,59 +151,14 @@ game's two result callbacks produced it (`end` when the run is finalised,
 `result` when you view it — same payload, kept apart so you can tell). Each file
 also carries `honse_source` and `honse_tracker_version`.
 
-**`skip_race_skill_cutins`** — when a unique skill fires in a race, the game
-stops to play a cinematic. Turn this on and it does not play: the skill banner
-still appears and the race carries on. Off by default, and the hook is not even
-installed until you turn it on, because it is the only thing here that changes
-what the game does rather than reporting on it. The Hachimi menu toggles it
-without a restart and remembers your choice.
-
-The game has its own, gentler version of this in its options — **Cut-in Play
-Mode**, with a **Short** setting. Worth trying first; this is for when you want
-none at all.
-
 ## Files it writes
 
-All in the `hachimi` folder:
+- `hachimi/honse-tracker.json` — everything above, plus your panel positions and
+  song plan. Deleting it is safe; you get the defaults back.
+- `Documents\SavedIdleCareers\*.json` — one file per finished Independent
+  Training, if `save_idle_careers` is on. See `idle_career_dir` above.
 
-- `songPlan.json` — your song plan and anything you marked bought by hand.
-- `overlayLayout.json` — where you put the panels.
-- `honseTrackerConfig.json` — the settings above.
-
-Deleting any of them is safe; you get the defaults back.
-
-Independent Training exports go outside that folder, to
-`Documents\SavedIdleCareers` — see `idle_career_dir` above.
-
-## Building it yourself
-
-Windows, with the pinned toolchain in `rust-toolchain.toml`:
-
-```
-cargo build --release
-```
-
-The DLL lands at `target/release/honse_tracker.dll`. `scripts/deploy-windows.ps1`
-copies it into the game folder for you, and refuses while the game is running
-rather than half-writing a locked file.
-
-```
-cargo test --workspace
-cargo clippy --workspace --all-targets
-cargo fmt --check
-```
-
-`--workspace` matters: a root package shadows it, so the bare forms check only
-the root crate and skip everything under `crates/`.
-
-`GLOSSARY.md` explains the terms — the game's, the host's and ours.
-
-## Known rough edges
-
-- **Owned songs are not always detected.** The planner reads which songs a run
-  has learned, and that read has been unreliable. `Ctrl+Shift+B` marks one by
-  hand; hand marks are added to what the game reports and never taken away, so
-  a later fix cannot contradict your record.
-- **Training projections go stale on shop screens.** Energy and stats stay
-  current there, but gains and failure rates are last turn's — nothing
-  re-derives them while you are shopping. The panel dims to say so.
+Upgrading from an older build, the first launch folds `honseTrackerConfig.json`,
+`overlayLayout.json` and `songPlan.json` into the single file and says so in the
+log. The three originals are left where they are rather than deleted, so
+dropping back to an older DLL still finds its settings.

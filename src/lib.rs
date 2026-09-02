@@ -86,6 +86,7 @@ mod career_meta;
 mod career_poll;
 mod chara_effects;
 pub(crate) mod class_dump;
+pub(crate) mod config;
 mod deck_bonuses;
 mod diagnostics;
 mod eval_data;

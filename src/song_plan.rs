@@ -14,14 +14,13 @@
 //!
 //! # File
 //!
-//! `songPlan.json` in edge's base dir, beside `honseTrackerConfig.json`. It is
-//! deliberately its own file: `PluginConfig` round-trips a whole document, so
-//! two configs sharing one file would drop each other's fields on save.
+//! The `song_plan` section of `honse-tracker.json`. It used to be its own file,
+//! because `PluginConfig` round-trips a whole document and two owners sharing
+//! one path would erase each other on save. `crate::config` is that single
+//! owner now, so the split is no longer needed.
 
 use std::collections::BTreeMap;
-use std::sync::Mutex;
 
-use honse_services::PluginConfig;
 use serde::{Deserialize, Serialize};
 
 use crate::song_catalog::{self, TokenVector};
@@ -196,35 +195,22 @@ impl Owned {
     }
 }
 
-/// The loaded plan. `None` until [`load`] runs, or if edge has no base dir —
-/// in which case choices still work for the session but are not persisted.
-static PLAN: Mutex<Option<PluginConfig<SongPlanFile>>> = Mutex::new(None);
-
-/// Load the plan from disk. Called once from plugin init.
-pub fn load() {
-    let Some(config) = PluginConfig::<SongPlanFile>::load("songPlan.json") else {
-        hlog_warn!(target: "training-tracker", "Song plan: no base dir; choices will not persist");
-        return;
-    };
+/// Report what the plan starts the session with. The plan itself lives in
+/// [`crate::config`]; this runs once that has loaded.
+pub fn log_loaded() {
     let counts: Vec<String> = (1..=4)
-        .map(|w| config.value.planned_count(Scope::Concert(w)).to_string())
+        .map(|w| with_plan(|p| p.planned_count(Scope::Concert(w))).to_string())
         .collect();
     hlog_info!(
         target: "training-tracker",
-        "Song plan loaded from {} — planned per concert: {}",
-        config.path().display(),
+        "Song plan — planned per concert: {}",
         counts.join("/")
     );
-    *PLAN.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(config);
 }
 
 /// Run `f` against the plan, falling back to guide defaults when unloaded.
 fn with_plan<R>(f: impl FnOnce(&SongPlanFile) -> R) -> R {
-    let guard = PLAN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    match guard.as_ref() {
-        Some(config) => f(&config.value),
-        None => f(&SongPlanFile::default()),
-    }
+    crate::config::read(|file| f(&file.song_plan))
 }
 
 /// Mutate the plan and write it straight back to disk.
@@ -232,14 +218,7 @@ fn with_plan<R>(f: impl FnOnce(&SongPlanFile) -> R) -> R {
 /// Saving on every edit rather than at shutdown: a crash mid-career must not
 /// cost you the plan, and the file is a few hundred bytes.
 fn edit(f: impl FnOnce(&mut SongPlanFile)) {
-    let mut guard = PLAN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let Some(config) = guard.as_mut() else {
-        return;
-    };
-    f(&mut config.value);
-    if let Err(e) = config.save() {
-        hlog_warn!(target: "training-tracker", "Song plan: save failed: {e}");
-    }
+    crate::config::edit(|file| f(&mut file.song_plan));
 }
 
 #[must_use]

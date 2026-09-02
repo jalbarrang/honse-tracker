@@ -225,7 +225,8 @@ pub fn install() {
     // It used to be the debug panel that held this, as a side effect of being
     // on by default. Turning that panel off turned the whole HUD off with it.
     honse_services::set_view_poll_hold(true);
-    crate::song_plan::load();
+    // Both read `honse-tracker.json`, which plugin init has already loaded.
+    crate::song_plan::log_loaded();
     layout::load_and_apply();
     // A mouse drag moves a panel on the render thread; this is what writes the
     // result to disk once the button comes up.

@@ -281,12 +281,11 @@ instead. Safe blocks are listed in `overlay/theme.rs`.
 **`hachimi.log`** — the game folder's log. Everything this plugin reports goes
 there, and it is the first place to look.
 
-**`songPlan.json`** — planned and hand-marked songs.
-
-**`overlayLayout.json`** — panel positions.
-
-**`honseTrackerConfig.json`** — the plugin's own settings, beside the DLL in
-edge's base dir.
+**`honse-tracker.json`** — everything this plugin remembers, in one document:
+settings, panel positions, song plan. One owner (`config.rs`) writes it, because
+`PluginConfig` round-trips a whole file and two owners sharing one path would
+erase each other. Replaces `honseTrackerConfig.json`, `overlayLayout.json` and
+`songPlan.json`, which the first launch folds in and then leaves alone.
 
 **`telemetry.json`** — telemetry endpoint and token. Absent means telemetry is
 off, which is the default.

@@ -15,17 +15,15 @@
 //!
 //! # Persistence
 //!
-//! Saved to `overlayLayout.json` on every change, keyed by panel id. A panel id
-//! in the file that no longer exists is ignored, and a panel with no entry
-//! keeps where it registered — so adding or removing panels never corrupts a
-//! saved layout.
+//! Saved to the `layout` section of `honse-tracker.json` on every change, keyed
+//! by panel id. A panel id in the file that no longer exists is ignored, and a
+//! panel with no entry keeps where it registered — so adding or removing panels
+//! never corrupts a saved layout.
 
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Mutex;
 
 use honse_services::overlay::{self, Anchor};
-use honse_services::PluginConfig;
 use serde::{Deserialize, Serialize};
 
 use super::egui;
@@ -33,44 +31,39 @@ use super::egui;
 /// Pixels one arrow press moves a panel.
 const NUDGE: f32 = 4.0;
 
+/// One panel's saved position: a corner plus an inset from it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct Placement {
-    anchor: String,
-    x: f32,
-    y: f32,
+pub struct Placement {
+    pub anchor: String,
+    pub x: f32,
+    pub y: f32,
 }
 
+/// The `layout` section of `honse-tracker.json`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct LayoutFile {
+pub struct LayoutSection {
     #[serde(default)]
-    panels: BTreeMap<String, Placement>,
+    pub panels: BTreeMap<String, Placement>,
 }
-
-static LAYOUT: Mutex<Option<PluginConfig<LayoutFile>>> = Mutex::new(None);
 /// Index into `overlay::panel_ids()` while layout mode is on.
 static SELECTED: AtomicUsize = AtomicUsize::new(0);
 
 /// Load saved positions and apply them. Call after every panel is registered —
 /// a placement for an unregistered panel is silently dropped.
 pub fn load_and_apply() {
-    let Some(config) = PluginConfig::<LayoutFile>::load("overlayLayout.json") else {
-        hlog_warn!(target: "training-tracker", "Overlay layout: no base dir; positions will not persist");
-        return;
-    };
     let mut applied = 0;
-    for (id, placement) in &config.value.panels {
+    for (id, placement) in crate::config::layout_panels() {
         let Some(anchor) = Anchor::from_name(&placement.anchor) else {
             hlog_warn!(target: "training-tracker", "Overlay layout: unknown anchor {:?} for '{id}'", placement.anchor);
             continue;
         };
         // `set_placement` is a no-op for an id that was never registered.
-        overlay::set_placement(id, anchor, egui::vec2(placement.x, placement.y));
+        overlay::set_placement(&id, anchor, egui::vec2(placement.x, placement.y));
         applied += 1;
     }
     if applied > 0 {
         hlog_info!(target: "training-tracker", "Overlay layout: {applied} saved position(s) applied");
     }
-    *LAYOUT.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(config);
 }
 
 /// Persist a panel the mouse just finished dragging.
@@ -189,21 +182,16 @@ fn active_target() -> Option<&'static str> {
 
 /// Persist one panel's position.
 fn save(id: &str, anchor: Anchor, offset: egui::Vec2) {
-    let mut guard = LAYOUT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let Some(config) = guard.as_mut() else {
-        return;
-    };
-    config.value.panels.insert(
-        id.to_owned(),
-        Placement {
-            anchor: anchor.name().to_owned(),
-            x: offset.x,
-            y: offset.y,
-        },
-    );
-    if let Err(e) = config.save() {
-        hlog_warn!(target: "training-tracker", "Overlay layout: save failed: {e}");
-    }
+    crate::config::edit(|file| {
+        file.layout.panels.insert(
+            id.to_owned(),
+            Placement {
+                anchor: anchor.name().to_owned(),
+                x: offset.x,
+                y: offset.y,
+            },
+        );
+    });
 }
 
 #[cfg(test)]
@@ -235,7 +223,8 @@ mod tests {
 
     #[test]
     fn a_saved_layout_round_trips_through_json() {
-        let mut file = LayoutFile::default();
+        // The section alone: `config` covers the whole document round-tripping.
+        let mut file = LayoutSection::default();
         file.panels.insert(
             "training".to_owned(),
             Placement {
@@ -245,7 +234,7 @@ mod tests {
             },
         );
         let text = serde_json::to_string(&file).expect("serialize");
-        let back: LayoutFile = serde_json::from_str(&text).expect("deserialize");
+        let back: LayoutSection = serde_json::from_str(&text).expect("deserialize");
         let stored = back.panels.get("training").expect("panel kept");
         assert_eq!(Anchor::from_name(&stored.anchor), Some(Anchor::BottomLeft));
         assert!((stored.y - 96.0).abs() < f32::EPSILON);
@@ -253,7 +242,7 @@ mod tests {
 
     #[test]
     fn an_empty_file_parses_to_no_placements() {
-        let file: LayoutFile = serde_json::from_str("{}").expect("empty object is valid");
+        let file: LayoutSection = serde_json::from_str("{}").expect("empty object is valid");
         assert!(file.panels.is_empty());
     }
 }

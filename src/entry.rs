@@ -1,100 +1,28 @@
 //! Plugin lifecycle: `declare_plugin!` + services init + game-initialized hooks.
 
 use std::ffi::c_void;
-use std::sync::Mutex;
 
 use edge_sdk::declare_plugin;
-use honse_services::PluginConfig;
-use serde::{Deserialize, Serialize};
 
 use crate::compat::Sdk;
 use crate::{apply_hooks, class_dump, command_hooks, gametora_data, hooks, idle_export, race_cutin};
 
-/// On-disk plugin config (`honseTrackerConfig.json` under edge base dir).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct HonseTrackerFile {
-    /// Hosted-data URL overrides.
-    #[serde(default)]
-    hosted_data: honse_services::HostedDataUrls,
-    /// Drop race skill cut-ins so the race never stops for them. Off unless
-    /// asked for: it is the one setting here that changes the game rather than
-    /// reporting on it.
-    #[serde(default)]
-    skip_race_skill_cutins: bool,
-    /// Write each finished Independent Training's server response to disk. On
-    /// by default: it only reports, and the data is gone once the game has
-    /// shown you its summary screen.
-    #[serde(default = "default_true")]
-    save_idle_careers: bool,
-    /// Where those files go. Empty means
-    /// `%USERPROFILE%\Documents\SavedIdleCareers`; a relative path resolves
-    /// under the user profile, never under the game folder.
-    #[serde(default)]
-    idle_career_dir: String,
-}
-
-/// serde needs a function for a non-`false` bool default.
-const fn default_true() -> bool {
-    true
-}
-
-impl Default for HonseTrackerFile {
-    fn default() -> Self {
-        Self {
-            hosted_data: honse_services::HostedDataUrls::default(),
-            skip_race_skill_cutins: false,
-            save_idle_careers: true,
-            idle_career_dir: String::new(),
-        }
-    }
-}
-
-/// The loaded config, kept so a menu toggle can write back to the same file it
-/// was read from.
-static CONFIG: Mutex<Option<PluginConfig<HonseTrackerFile>>> = Mutex::new(None);
-
-/// The config as loaded, or defaults when there is no base dir to read from.
-fn config_value() -> HonseTrackerFile {
-    CONFIG
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .as_ref()
-        .map(|c| c.value.clone())
-        .unwrap_or_default()
-}
-
-/// Turn Independent Training export on or off and remember it.
+/// Persist a setting after flipping it.
 ///
-/// Saves what actually took: asked to turn it on with no hooks installed, the
-/// answer is no, and a config claiming otherwise would survive a restart as a
-/// lie about where the player's data is going.
-fn set_idle_export(enabled: bool) {
-    crate::idle_export::set_enabled(enabled);
-    let mut guard = CONFIG.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let Some(config) = guard.as_mut() else {
-        return;
-    };
-    config.value.save_idle_careers = crate::idle_export::is_enabled();
-    if let Err(e) = config.save() {
-        hlog_warn!(target: "training-tracker", "Could not save honseTrackerConfig.json: {e}");
-    }
-}
-
-/// Turn cut-in skipping on or off and remember it.
-///
-/// Saves what actually took, not what was asked for: turning it on can fail if
-/// the hook will not install, and a config claiming otherwise would be a lie
-/// that survives a restart.
+/// Saves what actually took, not what was asked for: turning cut-in skipping on
+/// can fail if the hook will not install, and turning the export on can fail if
+/// its hooks did not. A config claiming otherwise would be a lie that survives
+/// a restart.
 fn set_cutin_skip(enabled: bool) {
     race_cutin::set_enabled(enabled);
-    let mut guard = CONFIG.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let Some(config) = guard.as_mut() else {
-        return;
-    };
-    config.value.skip_race_skill_cutins = race_cutin::is_enabled();
-    if let Err(e) = config.save() {
-        hlog_warn!(target: "training-tracker", "Could not save honseTrackerConfig.json: {e}");
-    }
+    let took = race_cutin::is_enabled();
+    crate::config::edit(|file| file.settings.skip_race_skill_cutins = took);
+}
+
+fn set_idle_export(enabled: bool) {
+    idle_export::set_enabled(enabled);
+    let took = idle_export::is_enabled();
+    crate::config::edit(|file| file.settings.save_idle_careers = took);
 }
 
 declare_plugin! {
@@ -151,8 +79,7 @@ fn plugin_init() -> bool {
 
     // Read before anything consults it. Hooks that depend on IL2CPP are
     // applied later, at game-ready; this only decides what to apply.
-    *CONFIG.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
-        PluginConfig::<HonseTrackerFile>::load("honseTrackerConfig.json");
+    crate::config::load();
 
     // (1) Services init: frame source and the game-ready bootstrap.
     honse_services::init(honse_services::InitOptions);
@@ -235,14 +162,14 @@ unsafe extern "C" fn on_game_initialized(_userdata: *mut c_void) {
         hlog_info!(target: "training-tracker", "Apply response hooks installed");
     }
 
-    let config = config_value();
+    let settings = crate::config::read(|file| file.settings.clone());
 
     // Hooks first, then the flag: `configure` refuses to enable an export that
     // has nowhere to come from, so it has to know whether the hooks took.
     if idle_export::install() {
         hlog_info!(target: "training-tracker", "Idle career export hooks installed");
     }
-    idle_export::configure(config.save_idle_careers, Some(config.idle_career_dir.as_str()));
+    idle_export::configure(settings.save_idle_careers, Some(settings.idle_career_dir.as_str()));
     if idle_export::is_enabled() {
         hlog_info!(
             target: "training-tracker",
@@ -253,12 +180,12 @@ unsafe extern "C" fn on_game_initialized(_userdata: *mut c_void) {
 
     // Only if asked for. `set_enabled` installs the hook on first use, so a
     // config that leaves this off never patches the game at all.
-    if config.skip_race_skill_cutins {
+    if settings.skip_race_skill_cutins {
         race_cutin::set_enabled(true);
     }
 
     // (2) Hosted-data sync_all on a background thread post-game-initialized.
-    let urls = config.hosted_data;
+    let urls = crate::config::read(|file| file.hosted_data.clone());
     std::thread::spawn(move || {
         honse_services::sync_all_from_config(&urls, true);
     });
