@@ -17,10 +17,11 @@
 //!
 //! # What it refuses
 //!
-//! Cycles (recorded as `<cycle>` rather than followed), anything past
-//! [`MAX_DEPTH`], and arrays longer than [`MAX_ARRAY`]. A response that trips
-//! one of those produces a marker string in place of that branch, never a hang
-//! and never a partial file.
+//! Cycles (never followed), anything past [`MAX_DEPTH`], and arrays longer
+//! than [`MAX_ARRAY`]. A response that trips one of those gets `null` in place
+//! of that branch and an [`Unreadable`] entry naming where and why — never a
+//! hang, never a partial file, and never a marker string sitting where a
+//! parser expects a value.
 //!
 //! # Thread contract
 //!
@@ -33,12 +34,14 @@ use std::collections::HashSet;
 use std::ffi::{c_char, c_void, CStr};
 use std::sync::OnceLock;
 
+use honse_career_meta::Unreadable;
 use serde_json::{Map, Number, Value};
 
 use crate::compat::Sdk;
 
-/// How deep to follow object graphs. A career response nests maybe six levels;
-/// past this something is wrong and the file is not worth the recursion.
+/// How deep to follow, counting every key and array index. A career response
+/// nests about ten levels; past this something is wrong and the file is not
+/// worth the recursion.
 const MAX_DEPTH: usize = 24;
 /// Arrays longer than this are summarised rather than expanded.
 const MAX_ARRAY: usize = 4096;
@@ -113,6 +116,12 @@ pub fn is_available() -> bool {
     api().is_some()
 }
 
+/// What a walk produced: the JSON, and every branch it had to give up on.
+pub struct Walked {
+    pub value: Value,
+    pub unreadable: Vec<Unreadable>,
+}
+
 /// Convert a live IL2CPP object to JSON.
 ///
 /// `None` when the runtime exports are unavailable or `obj` is null. Panics
@@ -122,7 +131,7 @@ pub fn is_available() -> bool {
 /// `obj` must be a live IL2CPP object, and the caller must be on the Unity main
 /// thread with the object not concurrently torn down.
 #[must_use]
-pub unsafe fn object_to_json(obj: *mut c_void) -> Option<Value> {
+pub unsafe fn object_to_json(obj: *mut c_void) -> Option<Walked> {
     if obj.is_null() {
         return None;
     }
@@ -130,9 +139,13 @@ pub unsafe fn object_to_json(obj: *mut c_void) -> Option<Value> {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut walk = Walk::new();
         // SAFETY: forwarded from this function's own contract.
-        unsafe { object(obj, &mut walk) }
+        let value = unsafe { object(obj, &mut walk) };
+        Walked {
+            value,
+            unreadable: walk.unreadable,
+        }
     })) {
-        Ok(value) => Some(value),
+        Ok(walked) => Some(walked),
         Err(_) => {
             hlog_error!("il2cpp_json: object_to_json PANICKED");
             None
@@ -149,35 +162,62 @@ unsafe fn name_of(ptr: *const c_char) -> String {
     unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned()
 }
 
-/// One traversal's state: how deep it is, and which objects are on the path
-/// down to here.
+/// One traversal's state: where it is in the JSON, which objects are on the
+/// path down to here, and what it has had to give up on.
 ///
-/// Carried by reference through every step rather than as two loose
-/// arguments. The path set is scoped to the current descent, not the whole
-/// walk: a response shares sub-objects freely (the same chara appears under
-/// several branches), and refusing to visit one twice would silently drop
-/// real data. Only a true cycle — an object that is its own ancestor — is
-/// refused.
+/// Carried by reference through every step rather than as loose arguments.
+/// The path set is scoped to the current descent, not the whole walk: a
+/// response shares sub-objects freely (the same chara appears under several
+/// branches), and refusing to visit one twice would silently drop real data.
+/// Only a true cycle — an object that is its own ancestor — is refused.
 struct Walk {
-    depth: usize,
+    /// JSON pointer segments from the root to the value being read.
+    trail: Vec<String>,
     path: HashSet<usize>,
+    unreadable: Vec<Unreadable>,
 }
 
 impl Walk {
     fn new() -> Self {
         Self {
-            depth: 0,
+            trail: Vec::new(),
             path: HashSet::new(),
+            unreadable: Vec::new(),
         }
     }
 
-    /// Run `f` one level down.
-    fn deeper(&mut self, f: impl FnOnce(&mut Self) -> Value) -> Value {
-        self.depth += 1;
-        let value = f(self);
-        self.depth -= 1;
+    /// Run `f` one level down, under `segment` — a field name or an array
+    /// index — so anything it gives up on is recorded at the right pointer.
+    fn enter(&mut self, segment: &str, f: impl FnOnce(&mut Self) -> Value) -> Value {
+        self.trail.push(pointer_segment(segment));
+        let value = if self.trail.len() > MAX_DEPTH {
+            self.give_up("max depth")
+        } else {
+            f(self)
+        };
+        self.trail.pop();
         value
     }
+
+    /// Record that the value at the current position cannot be read, and hand
+    /// back the `null` that takes its place in the payload.
+    fn give_up(&mut self, reason: &str) -> Value {
+        self.unreadable.push(Unreadable {
+            at: self.pointer(),
+            reason: reason.to_string(),
+        });
+        Value::Null
+    }
+
+    /// RFC 6901: `/data/end_info/chara_info`, and `""` for the root.
+    fn pointer(&self) -> String {
+        self.trail.iter().map(|s| format!("/{s}")).collect()
+    }
+}
+
+/// Escape one key or index for a JSON pointer: `~` before `/`, per RFC 6901.
+fn pointer_segment(segment: &str) -> String {
+    segment.replace('~', "~0").replace('/', "~1")
 }
 
 /// One field of a class, with the metadata every consumer here reads first.
@@ -246,11 +286,8 @@ unsafe fn object(obj: *mut c_void, walk: &mut Walk) -> Value {
         return Value::Null;
     }
     let Some(api) = api() else { return Value::Null };
-    if walk.depth > MAX_DEPTH {
-        return Value::String("<max depth>".to_string());
-    }
     if !walk.path.insert(obj as usize) {
-        return Value::String("<cycle>".to_string());
+        return walk.give_up("cycle");
     }
 
     // SAFETY: `obj` is a live IL2CPP object; its class pointer heads the object.
@@ -265,7 +302,7 @@ unsafe fn object(obj: *mut c_void, walk: &mut Walk) -> Value {
             unsafe { array(obj, klass, walk) }
         } else if class_name == "String" {
             // SAFETY: `obj` is a System.String.
-            unsafe { read_string(obj) }
+            unsafe { read_string(obj, walk) }
         } else {
             // SAFETY: fields start one object header in from the object head.
             unsafe { fields(obj.byte_add(OBJECT_HEADER as usize), klass, walk) }
@@ -290,9 +327,10 @@ unsafe fn fields(base: *mut c_void, klass: *mut c_void, walk: &mut Walk) -> Valu
         // SAFETY: `rel` is the runtime's own offset for a field of this class,
         // and `field.ptr` is the FieldInfo it belongs to.
         let (addr, ftype) = unsafe { (base.byte_add(rel), (api.field_get_type)(field.ptr)) };
+        let name = normalise(&field.name);
         // SAFETY: `addr` is that field's storage and `ftype` describes it.
-        let value = unsafe { read(addr, ftype, walk) };
-        map.insert(normalise(&field.name), value);
+        let value = walk.enter(&name, |w| unsafe { read(addr, ftype, w) });
+        map.insert(name, value);
     }
     Value::Object(map)
 }
@@ -316,10 +354,7 @@ unsafe fn read(addr: *mut c_void, ftype: *mut c_void, walk: &mut Walk) -> Value 
             // R8
             0x0D => finite(*addr.cast::<f64>()),
             // STRING, CLASS, SZARRAY, ARRAY, OBJECT, GENERICINST
-            0x0E | 0x12 | 0x1C | 0x1D | 0x14 | 0x15 => {
-                let target = *addr.cast::<*mut c_void>();
-                walk.deeper(|w| object(target, w))
-            }
+            0x0E | 0x12 | 0x1C | 0x1D | 0x14 | 0x15 => object(*addr.cast::<*mut c_void>(), walk),
             // VALUETYPE — an inline struct, an enum, or an Obscured wrapper.
             0x11 => value_type(addr, ftype, walk),
             // Anything else: report the width we can safely read rather than
@@ -335,7 +370,7 @@ unsafe fn value_type(addr: *mut c_void, ftype: *mut c_void, walk: &mut Walk) -> 
     // SAFETY: `ftype` is a live runtime type.
     let klass = unsafe { (api.class_from_type)(ftype) };
     if klass.is_null() {
-        return Value::String("<unknown struct>".to_string());
+        return walk.give_up("unknown struct");
     }
     // SAFETY: `klass` came from the runtime.
     let name = unsafe { name_of((api.class_get_name)(klass)) };
@@ -419,7 +454,7 @@ unsafe fn array(obj: *mut c_void, klass: *mut c_void, walk: &mut Walk) -> Value 
     // SAFETY: `obj` is an IL2CPP array object.
     let len = unsafe { (api.array_length)(obj) } as usize;
     if len > MAX_ARRAY {
-        return Value::String(format!("<array len={len}, not expanded>"));
+        return walk.give_up(&format!("array of {len} elements, not expanded"));
     }
     // Inline element storage begins after the array header.
     // SAFETY: `obj` is an array object; 0x20 is its data offset on 64-bit.
@@ -437,7 +472,7 @@ unsafe fn array(obj: *mut c_void, klass: *mut c_void, walk: &mut Walk) -> Value 
             // SAFETY: i < len, and reference elements are one pointer each.
             let item = unsafe { *data.cast::<*mut c_void>().add(i) };
             // SAFETY: `item` is a live element or null.
-            out.push(walk.deeper(|w| unsafe { object(item, w) }));
+            out.push(walk.enter(&i.to_string(), |w| unsafe { object(item, w) }));
         }
         return Value::Array(out);
     }
@@ -449,7 +484,7 @@ unsafe fn array(obj: *mut c_void, klass: *mut c_void, walk: &mut Walk) -> Value 
     // SAFETY: `element` came from the runtime.
     let stride = unsafe { (api.class_value_size)(element, &raw mut align) };
     let Ok(stride) = usize::try_from(stride).map(|s| s.max(1)) else {
-        return Value::String("<array of unknown stride>".to_string());
+        return walk.give_up("array of unknown stride");
     };
     // SAFETY: `element` came from the runtime.
     let is_enum = unsafe { (api.class_is_enum)(element) };
@@ -467,17 +502,45 @@ unsafe fn array(obj: *mut c_void, klass: *mut c_void, walk: &mut Walk) -> Value 
         } else if name.starts_with("Obscured") {
             // SAFETY: as above.
             unsafe { obscured(at, element, &name) }.unwrap_or(Value::Null)
+        } else if let Some(plain) = unsafe { primitive(at, &name) } {
+            // SAFETY: as above.
+            plain
         } else {
             // SAFETY: as above.
-            walk.deeper(|w| unsafe { fields(at, element, w) })
+            walk.enter(&i.to_string(), |w| unsafe { fields(at, element, w) })
         };
         out.push(value);
     }
     Value::Array(out)
 }
 
+/// A primitive stored inline as a value-type array element.
+///
+/// An `int[]` element is a `System.Int32`, which the metadata describes as a
+/// struct with one field. Walking it as one yields `{"m_value": 267}` where
+/// the wire has `267`; this reads the number the struct is.
+unsafe fn primitive(at: *mut c_void, class_name: &str) -> Option<Value> {
+    // SAFETY: `at` is one element's storage, and the class name says how wide.
+    unsafe {
+        Some(match class_name {
+            "Boolean" => Value::Bool(*at.cast::<u8>() != 0),
+            "SByte" => Value::from(*at.cast::<i8>()),
+            "Byte" => Value::from(*at.cast::<u8>()),
+            "Int16" => Value::from(*at.cast::<i16>()),
+            "UInt16" | "Char" => Value::from(*at.cast::<u16>()),
+            "Int32" => Value::from(*at.cast::<i32>()),
+            "UInt32" => Value::from(*at.cast::<u32>()),
+            "Int64" => Value::from(*at.cast::<i64>()),
+            "UInt64" => Value::from(*at.cast::<u64>()),
+            "Single" => finite(f64::from(*at.cast::<f32>())),
+            "Double" => finite(*at.cast::<f64>()),
+            _ => return None,
+        })
+    }
+}
+
 /// `System.String` → a JSON string. Layout: length at `0x10`, UTF-16 at `0x14`.
-unsafe fn read_string(obj: *mut c_void) -> Value {
+unsafe fn read_string(obj: *mut c_void, walk: &mut Walk) -> Value {
     // SAFETY: `obj` is a System.String object.
     let len = unsafe { *obj.byte_add(0x10).cast::<i32>() };
     let Ok(len) = usize::try_from(len) else {
@@ -487,7 +550,7 @@ unsafe fn read_string(obj: *mut c_void) -> Value {
         return Value::String(String::new());
     }
     if len > 1 << 20 {
-        return Value::String("<string too long>".to_string());
+        return walk.give_up("string too long");
     }
     // SAFETY: `len` UTF-16 units start at 0x14 and belong to this string.
     let units = unsafe { std::slice::from_raw_parts(obj.byte_add(0x14).cast::<u16>(), len) };
@@ -519,8 +582,36 @@ fn normalise(raw: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{finite, normalise};
+    use super::{finite, normalise, Walk, MAX_DEPTH};
     use serde_json::Value;
+
+    /// What `unreadable` records has to be a pointer the reader can follow
+    /// into the payload, so it is built to RFC 6901 and not by eye.
+    #[test]
+    fn giving_up_records_where_and_why() {
+        let mut walk = Walk::new();
+        assert_eq!(walk.give_up("root"), Value::Null);
+        walk.enter("data", |w| {
+            w.enter("odd/key~", |w| w.enter("3", |w| w.give_up("cycle")))
+        });
+        let at: Vec<&str> = walk.unreadable.iter().map(|u| u.at.as_str()).collect();
+        assert_eq!(at, ["", "/data/odd~1key~0/3"]);
+        assert_eq!(walk.unreadable[1].reason, "cycle");
+        assert!(walk.trail.is_empty(), "enter unwinds");
+    }
+
+    /// Past the depth limit nothing runs, and the file says so.
+    #[test]
+    fn depth_is_bounded() {
+        fn descend(w: &mut Walk, n: usize) -> Value {
+            w.enter("x", |w| if n == 0 { Value::from(1) } else { descend(w, n - 1) })
+        }
+        let mut walk = Walk::new();
+        assert_eq!(descend(&mut walk, MAX_DEPTH - 1), Value::from(1));
+        assert_eq!(descend(&mut walk, MAX_DEPTH), Value::Null);
+        assert_eq!(walk.unreadable.len(), 1);
+        assert_eq!(walk.unreadable[0].reason, "max depth");
+    }
 
     #[test]
     fn field_names_lose_their_decoration() {

@@ -130,18 +130,20 @@ async fn index(State(app): State<Arc<App>>) -> Response {
 }
 
 async fn detail(State(app): State<Arc<App>>, UrlPath(file): UrlPath<String>) -> Response {
-    let Some(value) = load(&app, &file) else {
+    let Some(doc) = load(&app, &file) else {
         return not_found(&file);
     };
-    let parsed = career::parse(&file, &value, &app.umdb);
+    let parsed = career::parse(&file, &doc, &app.umdb);
     Html(view::career(&parsed, &app.assets).into_string()).into_response()
 }
 
+/// The document as the plugin would write it today — so a pre-format file is
+/// served lifted into the envelope, the same as any other.
 async fn raw(State(app): State<Arc<App>>, UrlPath(file): UrlPath<String>) -> Response {
-    let Some(value) = load(&app, &file) else {
+    let Some(doc) = load(&app, &file) else {
         return not_found(&file);
     };
-    match serde_json::to_string_pretty(&value) {
+    match doc.to_json() {
         Ok(json) => ([(axum::http::header::CONTENT_TYPE, "application/json")], json).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
@@ -149,8 +151,8 @@ async fn raw(State(app): State<Arc<App>>, UrlPath(file): UrlPath<String>) -> Res
 
 /// Resolve and read, or `None` — the two failures a caller can do nothing
 /// different about, so they collapse into one answer.
-fn load(app: &App, file: &str) -> Option<serde_json::Value> {
-    career::read_json(&career::resolve(&app.careers_dir, file)?)
+fn load(app: &App, file: &str) -> Option<honse_career_meta::CareerDocument> {
+    career::read_document(&career::resolve(&app.careers_dir, file)?)
 }
 
 /// One answer for "refused" and "absent" alike.

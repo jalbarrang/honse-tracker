@@ -1,9 +1,11 @@
 //! Reading the exported career files: what is on disk, and what one contains.
 //!
-//! The export is a reflection dump of a server response, so it is read as
-//! untyped JSON rather than modelled with structs. Naming every field would
-//! mean this crate breaking whenever the game adds one — and the whole point of
-//! dumping the response was to keep the parts nobody has decoded yet.
+//! The file is a [`CareerDocument`] — the shared crate owns its envelope, so
+//! this module never sees a raw file — and the payload inside it is a
+//! reflection dump of a server response, read as untyped JSON rather than
+//! modelled with structs. Naming every field would mean this crate breaking
+//! whenever the game adds one, and the whole point of dumping the response
+//! was to keep the parts nobody has decoded yet.
 //!
 //! What is modelled here is only what a page actually renders, each field
 //! looked up defensively so a payload that has moved on renders a dash instead
@@ -11,13 +13,14 @@
 
 use std::path::{Path, PathBuf};
 
+use honse_career_meta::CareerDocument;
 use serde_json::Value;
 
 /// One file in the careers directory, as the index page needs it.
 pub struct Entry {
     /// The file name, which is also the URL segment.
     pub file: String,
-    /// `2026-09-01 22:07`, parsed out of the file name.
+    /// `2026-09-01 22:07`, in the plugin's local time when it wrote the file.
     pub when: String,
     pub card_id: i64,
     pub trainee: Option<String>,
@@ -30,7 +33,8 @@ pub struct Entry {
 pub struct Career {
     pub file: String,
     pub when: String,
-    pub source: String,
+    /// Which of the game's two callbacks produced it: `end` or `result`.
+    pub callback: &'static str,
     pub plugin_version: String,
     pub card_id: i64,
     /// From umdb when it is loaded; `None` leaves the page showing the id.
@@ -100,8 +104,8 @@ pub const STAT_LABELS: [&str; 5] = ["Speed", "Stamina", "Power", "Guts", "Wit"];
 ///
 /// The names are timestamp-prefixed, so lexical order is chronological and no
 /// file has to be opened to sort the list. A file that will not parse is
-/// skipped rather than failing the page — one bad export must not hide the
-/// rest.
+/// skipped (with a note on stderr) rather than failing the page — one bad
+/// export must not hide the rest.
 pub fn list(dir: &Path, umdb: &crate::umdb::Umdb) -> Vec<Entry> {
     let Ok(read) = std::fs::read_dir(dir) else {
         return Vec::new(); // no directory yet: nothing exported, not an error
@@ -117,11 +121,11 @@ pub fn list(dir: &Path, umdb: &crate::umdb::Umdb) -> Vec<Entry> {
     names
         .into_iter()
         .filter_map(|file| {
-            let value = read_json(&dir.join(&file))?;
-            let chara = chara_info(&value);
+            let doc = read_document(&dir.join(&file))?;
+            let chara = chara_info(&doc);
             let card_id = int(chara, "card_id");
             Some(Entry {
-                when: pretty_stamp(&file),
+                when: when(&doc),
                 card_id,
                 trainee: umdb.trainee(card_id),
                 chara_grade: int(chara, "chara_grade"),
@@ -152,23 +156,33 @@ pub fn resolve(dir: &Path, file: &str) -> Option<PathBuf> {
     real_path.starts_with(&real_dir).then_some(path)
 }
 
-pub fn read_json(path: &Path) -> Option<Value> {
-    serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
+/// One file as a document, or `None` with the reason on stderr. The file name
+/// is passed along because a pre-format file keeps its capture time there.
+pub fn read_document(path: &Path) -> Option<CareerDocument> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+    match CareerDocument::parse(name, &text) {
+        Ok(doc) => Some(doc),
+        Err(e) => {
+            eprintln!("note: skipping {}: {e}", path.display());
+            None
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
 // One career
 // ---------------------------------------------------------------------------
 
-pub fn parse(file: &str, value: &Value, umdb: &crate::umdb::Umdb) -> Career {
-    let chara = chara_info(value);
-    let log = value.pointer("/data/progress_log_info");
+pub fn parse(file: &str, doc: &CareerDocument, umdb: &crate::umdb::Umdb) -> Career {
+    let chara = chara_info(doc);
+    let log = doc.response().pointer("/data/progress_log_info");
 
     Career {
         file: file.to_string(),
-        when: pretty_stamp(file),
-        source: string(value.get("honse_source")),
-        plugin_version: string(value.get("honse_tracker_version")),
+        when: when(doc),
+        callback: doc.source().callback.as_str(),
+        plugin_version: doc.source().plugin_version.clone(),
         card_id: int(chara, "card_id"),
         trainee: umdb.trainee(int(chara, "card_id")),
         chara_grade: int(chara, "chara_grade"),
@@ -278,8 +292,13 @@ fn conditions(log: Option<&Value>) -> Vec<Condition> {
 // Field access
 // ---------------------------------------------------------------------------
 
-fn chara_info(value: &Value) -> Option<&Value> {
-    value.pointer("/data/end_info/chara_info")
+fn chara_info(doc: &CareerDocument) -> Option<&Value> {
+    doc.response().pointer("/data/end_info/chara_info")
+}
+
+/// `2026-09-01 22:07`, as the plugin's clock read when it wrote the file.
+fn when(doc: &CareerDocument) -> String {
+    doc.captured_at().format("%Y-%m-%d %H:%M").to_string()
 }
 
 fn stats_of(chara: Option<&Value>) -> [i64; 5] {
@@ -310,10 +329,6 @@ fn int(parent: Option<&Value>, key: &str) -> i64 {
     parent.and_then(|v| v.get(key)).and_then(Value::as_i64).unwrap_or(0)
 }
 
-fn string(value: Option<&Value>) -> String {
-    value.and_then(Value::as_str).unwrap_or("—").to_string()
-}
-
 fn array<'a>(parent: Option<&'a Value>, key: &str) -> &'a [Value] {
     parent
         .and_then(|v| v.get(key))
@@ -324,25 +339,6 @@ fn array<'a>(parent: Option<&'a Value>, key: &str) -> &'a [Value] {
 // ---------------------------------------------------------------------------
 // Labels
 // ---------------------------------------------------------------------------
-
-/// `20260901_220752-card100702-end.json` → `2026-09-01 22:07`.
-///
-/// Falls back to the raw name: a file someone renamed is still worth listing.
-fn pretty_stamp(file: &str) -> String {
-    let stamp = file.split('-').next().unwrap_or(file);
-    let (date, time) = stamp.split_once('_').unwrap_or((stamp, ""));
-    if date.len() != 8 || time.len() < 4 || !date.chars().all(|c| c.is_ascii_digit()) {
-        return file.to_string();
-    }
-    format!(
-        "{}-{}-{} {}:{}",
-        &date[0..4],
-        &date[4..6],
-        &date[6..8],
-        &time[0..2],
-        &time[2..4]
-    )
-}
 
 fn ground(v: i64) -> &'static str {
     match v {
@@ -377,18 +373,22 @@ fn running_style(v: i64) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use honse_career_meta::{Callback, Source};
     use serde_json::json;
 
-    #[test]
-    fn the_stamp_comes_out_of_the_file_name() {
-        assert_eq!(pretty_stamp("20260901_220752-card100702-end.json"), "2026-09-01 22:07");
+    /// A document around `response`, stamped like the plugin would.
+    fn document(response: Value) -> CareerDocument {
+        let at = chrono::DateTime::parse_from_rfc3339("2026-09-01T22:07:52-04:00").expect("stamp");
+        CareerDocument::capture(Source::new(Callback::End, "0.4.0"), at, response, Vec::new())
     }
 
-    /// A renamed file still belongs in the list, under whatever it is called.
+    /// The header line is the document's own stamp and source, not the file name's.
     #[test]
-    fn an_unparseable_name_falls_back_to_itself() {
-        assert_eq!(pretty_stamp("my-run.json"), "my-run.json");
-        assert_eq!(pretty_stamp("notadate_1200-end.json"), "notadate_1200-end.json");
+    fn the_header_comes_from_the_envelope() {
+        let career = parse("renamed.json", &document(json!({})), &crate::umdb::Umdb::empty());
+        assert_eq!(career.when, "2026-09-01 22:07");
+        assert_eq!(career.callback, "end");
+        assert_eq!(career.plugin_version, "0.4.0");
     }
 
     /// The one gate that matters: a URL segment must not be able to name a file
@@ -426,11 +426,11 @@ mod tests {
     /// real export, and rendered nothing without anyone noticing.
     #[test]
     fn skills_come_from_the_trainee() {
-        let value = json!({ "data": {
+        let doc = document(json!({ "data": {
             "end_info": { "chara_info": { "skill_array": [ { "skill_id": 110071, "level": 4 } ] } },
             "progress_log_info": { "gain_skill_id_array": [] }
-        } });
-        let career = parse("x.json", &value, &crate::umdb::Umdb::empty());
+        } }));
+        let career = parse("x.json", &doc, &crate::umdb::Umdb::empty());
         assert_eq!(career.skills.len(), 1);
         assert_eq!(career.skills[0].id, 110_071);
         assert_eq!(career.skills[0].level, 4);
@@ -439,10 +439,10 @@ mod tests {
     /// A payload that has moved on must render, not panic.
     #[test]
     fn an_empty_document_parses_to_an_empty_career() {
-        let career = parse("x.json", &json!({}), &crate::umdb::Umdb::empty());
+        let career = parse("x.json", &document(json!({})), &crate::umdb::Umdb::empty());
         assert_eq!(career.card_id, 0);
         assert!(career.races.is_empty());
         assert!(career.supports.is_empty());
-        assert_eq!(career.source, "—");
+        assert!(career.skills.is_empty());
     }
 }

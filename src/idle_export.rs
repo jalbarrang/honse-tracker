@@ -20,6 +20,12 @@
 //! `command_hooks` documents. They are hooked *after* the original runs, so a
 //! failure here can never cost the player their result.
 //!
+//! # What goes on disk
+//!
+//! A [`CareerDocument`]: the walked response, verbatim, under an envelope that
+//! says when and what wrote it. The shape is the shared crate's, not this
+//! module's — the career viewer reads the same type — and so is the file name.
+//!
 //! # Finding them without depending on a compiler counter
 //!
 //! Both live on generated closure classes — `<>c__DisplayClass70_0` and
@@ -40,7 +46,7 @@ use std::ffi::c_void;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use serde_json::Value;
+use honse_career_meta::{Callback, CareerDocument, Source};
 
 use crate::compat::{Il2CppObject, MethodInfo, Sdk};
 
@@ -128,12 +134,12 @@ fn resolve_override(raw: &str, home: Option<&std::path::Path>) -> PathBuf {
 
 extern "C" fn on_end(this: *mut Il2CppObject, response: *mut Il2CppObject, method: *const MethodInfo) {
     call_original(&ORIG_END, this, response, method);
-    capture("end", response);
+    capture(Callback::End, response);
 }
 
 extern "C" fn on_result(this: *mut Il2CppObject, response: *mut Il2CppObject, method: *const MethodInfo) {
     call_original(&ORIG_RESULT, this, response, method);
-    capture("result", response);
+    capture(Callback::Result, response);
 }
 
 /// The original runs first, always. Whatever this module does afterwards, the
@@ -149,71 +155,45 @@ fn call_original(slot: &AtomicUsize, this: *mut Il2CppObject, response: *mut Il2
     original(this, response, method);
 }
 
-/// Walk the response here (it is only live on this thread), then hand the JSON
-/// to a background thread to serialise and write.
-fn capture(source: &'static str, response: *mut Il2CppObject) {
+/// Walk the response here (it is only live on this thread), then hand the
+/// document to a background thread to serialise and write.
+fn capture(callback: Callback, response: *mut Il2CppObject) {
     if !is_enabled() || response.is_null() {
         return;
     }
     // SAFETY: `response` is the live argument the game just passed us, on the
     // thread that owns it, and the original has already returned.
-    let Some(value) = (unsafe { crate::il2cpp_json::object_to_json(response.cast()) }) else {
-        hlog_warn!(target: "training-tracker", "Idle export: could not read the {source} response");
+    let Some(walked) = (unsafe { crate::il2cpp_json::object_to_json(response.cast()) }) else {
+        hlog_warn!(target: "training-tracker", "Idle export: could not read the {} response", callback.as_str());
         return;
     };
+    for skipped in &walked.unreadable {
+        hlog_warn!(target: "training-tracker", "Idle export: {} unreadable at {}", skipped.reason, skipped.at);
+    }
+    let document = CareerDocument::capture(
+        Source::new(callback, env!("CARGO_PKG_VERSION")),
+        chrono::Local::now().fixed_offset(),
+        walked.value,
+        walked.unreadable,
+    );
     let dir = output_dir();
-    std::thread::spawn(move || write(&dir, source, value));
+    std::thread::spawn(move || write(&dir, &document));
 }
 
 // ---------------------------------------------------------------------------
 // Writing
 // ---------------------------------------------------------------------------
 
-/// Field names that identify the account rather than the run. Removed before
-/// anything reaches disk, at every depth.
-///
-/// A folder of exports is for analysis and may well be shared; an account id
-/// in each one is not something the player would knowingly hand over, and it
-/// contributes nothing to the analysis. Both spellings are listed because the
-/// walker normalises the game's `_ownerViewerId` backing fields to camelCase
-/// while the response types themselves use snake_case.
-const IDENTIFYING_FIELDS: &[&str] = &["viewer_id", "owner_viewer_id", "viewerId", "ownerViewerId"];
-
-/// Strip [`IDENTIFYING_FIELDS`] from every object in the tree.
-fn scrub(value: &mut Value) {
-    match value {
-        Value::Object(map) => {
-            map.retain(|key, _| !IDENTIFYING_FIELDS.contains(&key.as_str()));
-            map.values_mut().for_each(scrub);
-        }
-        Value::Array(items) => items.iter_mut().for_each(scrub),
-        _ => {}
-    }
-}
-
-fn write(dir: &std::path::Path, source: &str, mut value: Value) {
-    scrub(&mut value);
-
-    // Stamp what produced the file. A folder of these is worth nothing in six
-    // months if you cannot tell which plugin version or which callback wrote
-    // one, and the game's own payload has nowhere to say so.
-    if let Value::Object(map) = &mut value {
-        map.insert("honse_source".to_string(), Value::String(source.to_string()));
-        map.insert(
-            "honse_tracker_version".to_string(),
-            Value::String(env!("CARGO_PKG_VERSION").to_string()),
-        );
-    }
-
+fn write(dir: &std::path::Path, document: &CareerDocument) {
     if let Err(e) = std::fs::create_dir_all(dir) {
         hlog_error!(target: "training-tracker", "Idle export: cannot create {}: {e}", dir.display());
         return;
     }
-    let path = dir.join(file_name(source, &value));
-    let json = match serde_json::to_string_pretty(&value) {
+    let path = dir.join(document.file_name());
+    let json = match document.to_json() {
         Ok(json) => json,
         Err(e) => {
-            hlog_error!(target: "training-tracker", "Idle export: cannot serialise the {source} response: {e}");
+            hlog_error!(target: "training-tracker", "Idle export: cannot serialise {}: {e}", path.display());
             return;
         }
     };
@@ -221,30 +201,6 @@ fn write(dir: &std::path::Path, source: &str, mut value: Value) {
         Ok(()) => hlog_info!(target: "training-tracker", "Idle export: saved {}", path.display()),
         Err(e) => hlog_error!(target: "training-tracker", "Idle export: cannot write {}: {e}", path.display()),
     }
-}
-
-/// `20260902_014233-card101302-end.json`.
-///
-/// Timestamp first so the folder sorts chronologically, then the card so a run
-/// is identifiable without opening it. The card id is looked up rather than
-/// required: a payload that has moved on still gets written, just with a
-/// duller name.
-fn file_name(source: &str, value: &Value) -> String {
-    let stamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
-    match card_id(value) {
-        Some(card) => format!("{stamp}-card{card}-{source}.json"),
-        None => format!("{stamp}-{source}.json"),
-    }
-}
-
-/// `data.end_info.chara_info.card_id`, if the response still has that shape.
-fn card_id(value: &Value) -> Option<i64> {
-    value
-        .get("data")?
-        .get("end_info")?
-        .get("chara_info")?
-        .get("card_id")?
-        .as_i64()
 }
 
 // ---------------------------------------------------------------------------
@@ -344,32 +300,8 @@ fn closure_method_addr(parent: *mut c_void, method: &str) -> Option<*mut c_void>
 
 #[cfg(test)]
 mod tests {
-    use super::{card_id, file_name, resolve_override, scrub};
-    use serde_json::json;
+    use super::resolve_override;
     use std::path::{Path, PathBuf};
-
-    /// The one thing an export must never carry: the account it came from.
-    /// Checked at depth, because the id appears six times in a real response
-    /// and only one of them is near the top.
-    #[test]
-    fn the_account_id_is_stripped_at_every_depth() {
-        let mut value = json!({
-            "owner_viewer_id": 413,
-            "data": {
-                "end_info": { "chara_info": { "owner_viewer_id": 413, "card_id": 100702 } },
-                "list": [ { "viewer_id": 413 }, { "ownerViewerId": 413, "keep": 1 } ]
-            }
-        });
-        scrub(&mut value);
-        let text = value.to_string();
-        assert!(!text.contains("413"), "{text}");
-        assert!(!text.contains("viewer"), "{text}");
-        assert_eq!(
-            value["data"]["end_info"]["chara_info"]["card_id"], 100702,
-            "everything else survives"
-        );
-        assert_eq!(value["data"]["list"][1]["keep"], 1);
-    }
 
     /// A relative override means "under my profile", never "under the game
     /// folder" — which on a Steam install is somewhere Windows refuses writes.
@@ -395,37 +327,5 @@ mod tests {
             PathBuf::from("runs"),
             "no profile: taken as given"
         );
-    }
-
-    #[test]
-    fn the_card_id_names_the_file() {
-        let response = json!({ "data": { "end_info": { "chara_info": { "card_id": 101_302 } } } });
-        assert_eq!(card_id(&response), Some(101_302));
-        assert!(file_name("end", &response).ends_with("-card101302-end.json"));
-    }
-
-    /// A payload that has changed shape must still be written. Losing the run
-    /// because the filename could not be prettified would be the wrong trade.
-    #[test]
-    fn a_response_without_a_card_id_still_gets_a_name() {
-        for response in [
-            json!({}),
-            json!({ "data": {} }),
-            json!({ "data": { "end_info": null } }),
-        ] {
-            assert_eq!(card_id(&response), None);
-            let name = file_name("result", &response);
-            assert!(name.ends_with("-result.json"), "{name}");
-            assert!(!name.contains("card"), "{name}");
-        }
-    }
-
-    /// Timestamp first, so a folder of these sorts chronologically.
-    #[test]
-    fn names_sort_chronologically() {
-        let name = file_name("end", &json!({}));
-        let stamp = name.split('-').next().expect("a stamp");
-        assert_eq!(stamp.len(), 15, "YYYYMMDD_HHMMSS: {name}");
-        assert!(stamp.chars().all(|c| c.is_ascii_digit() || c == '_'), "{name}");
     }
 }

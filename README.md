@@ -149,8 +149,14 @@ Files are named `20260902_014233-card101302-end.json`: timestamp first so the
 folder sorts chronologically, then the trainee's card id, then which of the
 game's two result callbacks produced it: `end` when the run is finalised,
 `result` when you open its log later. Same trainee, same payload shape; the
-suffix keeps the two apart. Each file also carries `honse_source` and
-`honse_tracker_version`.
+suffix keeps the two apart.
+
+Inside, the game's response sits untouched under `response`, and everything
+around it — when it was captured, which plugin build and callback wrote it,
+anything the walk could not read — is ours. The full shape is in
+[`docs/idle-career-format.md`](docs/idle-career-format.md), with a complete
+example next to it. Files written by 0.3 and 0.4 have an older shape; the
+viewer still opens them.
 
 ## Browsing saved careers
 

@@ -98,7 +98,7 @@ pub fn career(c: &Career, assets: &Assets) -> Markup {
                     }
                     p.sub {
                         (c.when) " · card " (c.card_id) " · grade " (c.chara_grade)
-                        " · " (c.source) " · plugin " (c.plugin_version)
+                        " · " (c.callback) " · plugin " (c.plugin_version)
                     }
                     .statrow {
                         @for (i, value) in c.stats.iter().enumerate() {

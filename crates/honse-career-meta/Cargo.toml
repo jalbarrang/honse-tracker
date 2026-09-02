@@ -9,5 +9,10 @@ description = "Career presentation tables shared by the plugin and the career vi
 [lib]
 name = "honse_career_meta"
 
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+
 [lints]
 workspace = true

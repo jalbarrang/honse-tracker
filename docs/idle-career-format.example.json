@@ -1,0 +1,118 @@
+{
+  "format": "honse-tracker/idle-career",
+  "format_version": 1,
+  "captured_at": "2026-09-02T01:24:56-04:00",
+  "source": {
+    "plugin_version": "0.4.0",
+    "callback": "end",
+    "response_type": "IdleSingleModeEndResponse"
+  },
+  "unreadable": [
+    {
+      "at": "/data/end_info/chara_info/evaluation_info_array/3/group_outing_info_array",
+      "reason": "cycle"
+    }
+  ],
+  "response": {
+    "data": {
+      "end_info": {
+        "chara_info": {
+          "card_id": 100702,
+          "chara_grade": 10,
+          "evaluation_info_array": [
+            { "evaluation": 100, "group_outing_info_array": [], "is_appear": 1, "is_outing": 0, "story_step": 5, "target_id": 1007 },
+            { "evaluation": 80, "group_outing_info_array": [], "is_appear": 1, "is_outing": 0, "story_step": 4, "target_id": 3034 },
+            { "evaluation": 80, "group_outing_info_array": [], "is_appear": 1, "is_outing": 0, "story_step": 4, "target_id": 3007 },
+            { "evaluation": 80, "group_outing_info_array": null, "is_appear": 1, "is_outing": 0, "story_step": 4, "target_id": 3101 }
+          ],
+          "fans": 621191,
+          "guts": 527,
+          "max_guts": 1500,
+          "max_power": 1356,
+          "max_speed": 1621,
+          "max_stamina": 1313,
+          "max_wiz": 1302,
+          "power": 961,
+          "rarity": 3,
+          "route_race_id_array": [267, 268, 269, 270, 271, 272, 273, 274, 275, 276, 277, 278],
+          "scenario_id": 3,
+          "skill_array": [
+            { "level": 4, "skill_id": 110071 }
+          ],
+          "skill_point": 3369,
+          "speed": 1017,
+          "stamina": 637,
+          "start_time": "2026-09-02 04:34:47",
+          "support_card_array": [
+            { "exp": 82935, "limit_break_count": 3, "position": 1, "rental_type": 0, "support_card_id": 30034, "training_partner_state": 0 },
+            { "exp": 118185, "limit_break_count": 4, "position": 2, "rental_type": 0, "support_card_id": 30007, "training_partner_state": 0 }
+          ],
+          "talent_level": 5,
+          "turn": 78,
+          "wiz": 764
+        },
+        "is_umaplan": false,
+        "prev_chara_grade": 0,
+        "race_scenario": null
+      },
+      "progress_log_info": {
+        "race_history_array": [
+          {
+            "lose_tips_id": 0,
+            "race_history": {
+              "frame_order": 6,
+              "ground_condition": 2,
+              "npc_count": 0,
+              "program_id": 1068,
+              "result_rank": 1,
+              "running_style": 4,
+              "turn": 12,
+              "weather": 2
+            },
+            "race_reward_info": {
+              "campaign_id_array": [],
+              "gained_fans": 1188,
+              "race_reward": [
+                { "item_id": 59, "item_num": 200, "item_type": 91 }
+              ],
+              "race_reward_limit": null,
+              "result_rank": 1,
+              "result_time": 0
+            }
+          }
+        ],
+        "succession_factor_gain_array": [
+          {
+            "gain_factor_info_array": [
+              { "factor_id": 302, "level": 0 },
+              { "factor_id": 10600102, "level": 0 }
+            ],
+            "year": 1
+          }
+        ],
+        "support_card_gain_info_array": [
+          {
+            "gain_info": {
+              "guts": { "sign": 0, "value": 22 },
+              "max_guts": 0,
+              "max_power": 0,
+              "max_speed": 0,
+              "max_stamina": 0,
+              "max_wiz": 0,
+              "power": { "sign": 0, "value": 84 },
+              "skill_point": 151,
+              "skill_tips_array": [
+                { "group_id": 20006, "level": 2, "rarity": 1 }
+              ],
+              "speed": { "sign": 0, "value": 22 },
+              "stamina": { "sign": 0, "value": 61 },
+              "wiz": { "sign": 0, "value": 22 }
+            },
+            "support_card_id": 30034
+          }
+        ],
+        "total_skill_point": 3369
+      }
+    }
+  }
+}
