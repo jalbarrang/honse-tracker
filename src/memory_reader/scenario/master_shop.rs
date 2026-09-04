@@ -1,11 +1,10 @@
 //! Master-data enrichment for the Trackblazer shop: localized item names and
 //! effect values, resolved on the Unity main thread.
 //!
-//! Access chains (all verified against `il2cpp_classes.txt`, build 2026-05-30):
+//! Access chains (all verified against `il2cpp_classes.txt`, build 2026-05-30).
+//! Localized names come from `super::super::master_string`; the rest is here:
 //! ```text
 //! Singleton<MasterDataManager>
-//!   ._<masterString>k__BackingField -> Gallop.MasterString
-//!       .GetText(Category category, Int32 index) -> String   (localized name)
 //!   .get_masterSingleModeFreeShopItem()   -> MasterSingleModeFreeShopItem
 //!       .GetWithItemId(Int32 itemId)       -> SingleModeFreeShopItem  (EffectGroupId)
 //!   .get_masterSingleModeFreeShopEffect() -> MasterSingleModeFreeShopEffect
@@ -17,15 +16,10 @@
 //! runtime**: we probe category ints and pick the one that resolves the most
 //! lineup item ids to non-empty names. The winner is cached and logged.
 
-use std::ffi::c_void;
 use std::sync::atomic::{AtomicI32, Ordering};
-use std::sync::OnceLock;
 
-use crate::compat::Sdk;
-
-use super::super::il2cpp::{
-    call_obj, call_obj_with_2i32, call_obj_with_i32, read_i32_field, read_il2cpp_string, resolve_obj_method,
-};
+use super::super::il2cpp::{call_obj, call_obj_with_i32, read_i32_field, resolve_obj_method};
+use super::super::master_string::{self, master_data_manager};
 
 /// Highest category int to probe when discovering the item-name category.
 const CATEGORY_PROBE_MAX: i32 = 600;
@@ -33,68 +27,9 @@ const CATEGORY_PROBE_MAX: i32 = 600;
 /// `-2` = not yet attempted, `-1` = attempted but not found.
 static NAME_CATEGORY: AtomicI32 = AtomicI32::new(-2);
 
-/// Cached `MasterString` object pointer + its `GetText` MethodInfo.
-struct StringTable {
-    obj: *mut c_void,
-    get_text: *const c_void,
-}
-// SAFETY: IL2CPP object/method pointers are stable for the process lifetime.
-unsafe impl Send for StringTable {}
-// SAFETY: IL2CPP object/method pointers are stable for the process lifetime.
-unsafe impl Sync for StringTable {}
-
-static MASTER_DATA_KLASS: OnceLock<usize> = OnceLock::new();
-
-/// Resolve the `MasterDataManager` singleton object, or `None`.
-pub(super) fn master_data_manager() -> Option<*mut c_void> {
-    let sdk = Sdk::get();
-    let klass = *MASTER_DATA_KLASS.get_or_init(|| {
-        sdk.get_assembly_image("umamusume.dll")
-            .and_then(|img| sdk.get_class(img.cast(), "Gallop", "MasterDataManager"))
-            .map_or(0usize, |k| k as usize)
-    });
-    if klass == 0 {
-        return None;
-    }
-    sdk.get_singleton(klass as *mut c_void).map(|p| p.cast())
-}
-
-/// Resolve the cached `MasterString` table (object + `GetText`).
-fn string_table() -> Option<&'static StringTable> {
-    static TABLE: OnceLock<Option<StringTable>> = OnceLock::new();
-    TABLE
-        .get_or_init(|| {
-            let mdm = master_data_manager()?;
-            let sdk = Sdk::get();
-            // SAFETY: IL2CPP object header — klass pointer at offset 0.
-            let klass = unsafe { *(mdm as *const *mut c_void) };
-            let field = sdk.get_field_from_name(klass.cast(), "<masterString>k__BackingField")?;
-            let mut obj: *mut c_void = std::ptr::null_mut();
-            // SAFETY: reading a managed-ref field from the singleton.
-            unsafe {
-                sdk.get_field_value(mdm.cast(), field, &mut obj as *mut _ as *mut c_void);
-            }
-            if obj.is_null() {
-                return None;
-            }
-            // SAFETY: `obj` is a non-null MasterString object.
-            let get_text = unsafe { resolve_obj_method(obj, "GetText", 2)? };
-            Some(StringTable { obj, get_text })
-        })
-        .as_ref()
-}
-
-/// Call `MasterString.GetText(category, index)` and return a Rust string.
-fn get_text(table: &StringTable, category: i32, index: i32) -> Option<String> {
-    // SAFETY: `table.obj` is a valid MasterString; `get_text` is its GetText(2).
-    let s = unsafe { call_obj_with_2i32(table.obj, table.get_text, category, index) };
-    // SAFETY: GetText returns a managed String (or null).
-    unsafe { read_il2cpp_string(s) }.filter(|t| !t.is_empty())
-}
-
 /// Discover (once) and return the `SingleModeScenarioFreeItemName` category int.
 /// Picks the category that resolves the most `item_ids` to non-empty names.
-fn name_category(table: &StringTable, item_ids: &[i32]) -> Option<i32> {
+fn name_category(item_ids: &[i32]) -> Option<i32> {
     let cached = NAME_CATEGORY.load(Ordering::Relaxed);
     if cached >= 0 {
         return Some(cached);
@@ -107,7 +42,7 @@ fn name_category(table: &StringTable, item_ids: &[i32]) -> Option<i32> {
     for category in 0..CATEGORY_PROBE_MAX {
         let hits = item_ids
             .iter()
-            .filter(|&&id| get_text(table, category, id).is_some())
+            .filter(|&&id| master_string::text(category, id).is_some())
             .count();
         if hits == item_ids.len() {
             best = Some((category, hits));
@@ -139,9 +74,8 @@ fn name_category(table: &StringTable, item_ids: &[i32]) -> Option<i32> {
 
 /// Localized display name for `item_id`, or `None` if unresolved.
 pub(super) fn item_name(item_id: i32, lineup_ids: &[i32]) -> Option<String> {
-    let table = string_table()?;
-    let category = name_category(table, lineup_ids)?;
-    get_text(table, category, item_id)
+    let category = name_category(lineup_ids)?;
+    master_string::text(category, item_id)
 }
 
 /// Effect value (`EffectValue1`) advertised by the shop item, or `None`.

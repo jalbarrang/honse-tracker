@@ -144,6 +144,32 @@ fn idle_training_row(ui: &mut egui::Ui) {
         super::idle::clock(countdown.remaining)
     );
     row(ui, "idle training", &value, colour);
+    trainee_row(ui);
+}
+
+/// Who is out on the session: the card id, and the character behind it. Painted
+/// faint because nothing depends on it — it answers whether the notification
+/// could name the trainee, not anything about the run itself.
+fn trainee_row(ui: &mut egui::Ui) {
+    let (value, colour) = match crate::idle_training::trainee_card_id() {
+        Some(card_id) => {
+            let value = match honse_career_meta::chara_id_from_card_id(card_id) {
+                Some(chara) => format!("{card_id} \u{00b7} chara {chara}"),
+                None => card_id.to_string(),
+            };
+            (value, theme::TEXT_SECONDARY)
+        }
+        None => ("none".to_owned(), theme::TEXT_UNKNOWN),
+    };
+    row(ui, "idle trainee", &value, colour);
+
+    // The line the toast will actually carry. Worth showing because the whole
+    // point of resolving it 45 minutes early is that nothing checks it later.
+    let (line, line_colour) = match crate::idle_training::armed_greeting() {
+        Some(greeting) => (greeting.line, theme::TEXT_SECONDARY),
+        None => ("default text".to_owned(), theme::TEXT_UNKNOWN),
+    };
+    row(ui, "idle line", &line, line_colour);
 }
 
 /// One `label  ······  value` line, value right-aligned so the column scans.

@@ -118,6 +118,21 @@ fn plugin_init() -> bool {
         });
     });
 
+    // The narrow counterpart to the full dump: one class into the log, for
+    // deciding whether the Independent Training notification can name the
+    // trainee. Cheap enough to leave in place next to the dump it complements.
+    edge_sdk::gui::register_menu_item("Dump Independent Training class", || {
+        std::thread::spawn(|| {
+            class_dump::dump_named_class("Gallop", "WorkIdleSingleModeData");
+        });
+    });
+
+    // Deliberately manual: the automatic version of this crashed the game at
+    // the arming moment. See `idle_training::probe_trainee_line`.
+    edge_sdk::gui::register_menu_item("Look up trainee line", || {
+        crate::idle_training::probe_trainee_line();
+    });
+
     // Toggle for the screen/debug readout. `register_menu_item` is label +
     // callback only, so it carries no egui types across the boundary and none of
     // the ABI-lockstep rules apply.

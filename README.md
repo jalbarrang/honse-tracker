@@ -40,7 +40,7 @@ load it.
 | **Performance** | top-left | Grand Live only. Your five tokens against their current ceiling, then the songs you still owe for and what they cost. |
 | **Lessons** | bottom-right | Grand Live only, on the Techniques Shop. Every square on offer in the game's own order, and what the ones you cannot take are short by. |
 | **Planner** | top-left | Opened with a key. Pick which songs you are saving for, per concert. |
-| **Independent Training** | top-right | How long is left on the real-world timer, and the clock time it lands at. The only panel that shows outside a career. |
+| **Independent Training** | top-right | How long is left on the real-world timer, and the clock time it lands at. The only panel that shows outside a career. When it lands you get a Windows notification in your trainee's own words — the same line the mobile client uses, read from the game's text data. |
 | **Debug** | bottom-left | Off by default. Which screen you are on and why panels are or are not painting. |
 
 Panels dim when the numbers are not fresh, and disappear entirely during races

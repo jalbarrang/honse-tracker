@@ -32,9 +32,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::compat::Sdk;
 use crate::memory_reader::{self, IdleSession};
+use crate::read_gate::CareerState;
 
 /// Re-exported so a consumer of the countdown has one place to import from.
-pub use crate::memory_reader::IdleState;
+pub use crate::memory_reader::{IdleState, TraineeGreeting};
 
 /// How often the game's session is re-read. Only affects how fast a new or
 /// cancelled session is noticed — never how late the notification is.
@@ -70,6 +71,11 @@ static WATCH: Mutex<Watch> = Mutex::new(Watch::IDLE);
 /// Mirror of `WATCH.deadline`, so the per-frame check costs one atomic load.
 static DEADLINE: AtomicI64 = AtomicI64::new(0);
 
+/// The deadline [`GREETING`] was resolved for; `0` when nothing has been tried.
+/// Keeps a trainee the text table has no line for from being looked up again on
+/// every poll for the rest of the session.
+static GREETING_FOR: AtomicI64 = AtomicI64::new(0);
+
 /// Unix second of the last poll, so [`tick`] can pace itself.
 static LAST_POLL_SECS: AtomicI64 = AtomicI64::new(0);
 /// Whether a poll callback is scheduled or running.
@@ -77,6 +83,16 @@ static POLL_SCHEDULED: AtomicBool = AtomicBool::new(false);
 
 /// Last observation, for the diagnostic panel. `None` until the first poll.
 static LAST_SEEN: Mutex<Option<IdleSession>> = Mutex::new(None);
+
+/// What the trainee will say, resolved ahead of the deadline by
+/// [`resolve_greeting_if_safe`].
+///
+/// It has to be resolved ahead of time and off the render thread, because
+/// [`announce`] can run there and master data must not be touched from it.
+/// `None` means nothing has been resolved yet, or the text table had no line
+/// for this trainee; the notification then falls back to the plugin's own
+/// words.
+static GREETING: Mutex<Option<TraineeGreeting>> = Mutex::new(None);
 
 // ---------------------------------------------------------------------------
 // Pure rules
@@ -183,42 +199,172 @@ extern "C" fn poll_cb() {
     let session = memory_reader::read_idle_session();
     *LAST_SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = session;
 
-    {
+    // The lock covers the watch and nothing else. Everything the arming does
+    // afterwards reads master data or talks to the shell, and neither belongs
+    // under a lock the render thread takes on every frame.
+    let armed = {
         let mut watch = WATCH.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let before = *watch;
         *watch = observe(*watch, session, now);
         DEADLINE.store(watch.deadline, Ordering::Release);
-        if watch.deadline != 0 && watch.deadline != before.deadline {
-            hlog_info!(
-                target: "training-tracker",
-                "Independent Training lands in {}s",
-                watch.deadline - now
-            );
-            // Get the tray icon in place now rather than at the moment the
-            // notification fires: the shell refuses a balloon on an icon it has
-            // not finished establishing, and "now" is usually three quarters of
-            // an hour of head start.
-            #[cfg(windows)]
-            honse_services::toast::prepare();
-        }
+        (watch.deadline != 0 && watch.deadline != before.deadline).then_some(watch.deadline)
+    };
+
+    if let Some(deadline) = armed {
+        hlog_info!(
+            target: "training-tracker",
+            "Independent Training lands in {}s ({})",
+            deadline - now,
+            describe_trainee(session)
+        );
+        // Whatever the last session's trainee said does not apply to this one.
+        // No IL2CPP here — the lookup itself waits for a quiet poll below.
+        *GREETING.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        // Get the tray icon in place now rather than at the moment the
+        // notification fires: the shell refuses a balloon on an icon it has
+        // not finished establishing, and "now" is usually three quarters of
+        // an hour of head start.
+        #[cfg(windows)]
+        honse_services::toast::prepare();
     }
 
+    resolve_greeting_if_safe();
+
     POLL_SCHEDULED.store(false, Ordering::Release);
+}
+
+/// Resolve the armed trainee's line, once, at a moment the game is quiet.
+///
+/// # Why this waits instead of happening at arm time
+///
+/// Doing it at arm time took the game down. Arming lands in the middle of the
+/// transition into view 6600, and the master-data walk does not survive there —
+/// the same walk runs fine on the home screen, so it is the moment that is
+/// wrong, not the walk.
+///
+/// Nothing needs it to be prompt. The deadline is three quarters of an hour
+/// out and the poll comes round every [`POLL_INTERVAL_SECS`], so this waits for
+/// one where the career lifecycle is [`CareerState::Idle`] — no cutscene, no
+/// asset transition, no career view in play, which is exactly where a player
+/// sits while an Independent Training runs.
+///
+/// One attempt per deadline whether or not a line is found, so a trainee the
+/// table has nothing for is not looked up again every fifteen seconds.
+///
+/// Unity main thread, called from [`poll_cb`].
+fn resolve_greeting_if_safe() {
+    let deadline = DEADLINE.load(Ordering::Acquire);
+    if deadline == 0 || GREETING_FOR.load(Ordering::Acquire) == deadline {
+        return;
+    }
+    if crate::career_poll::current_lifecycle_state() != CareerState::Idle {
+        return; // Mid-transition. The next poll will come round soon enough.
+    }
+    // No card id yet means the poll that reads it has not landed; try again
+    // rather than recording an attempt against this deadline.
+    let Some(chara) = trainee_card_id()
+        .and_then(honse_career_meta::chara_id_from_card_id)
+        .and_then(|chara| i32::try_from(chara).ok())
+    else {
+        return;
+    };
+
+    let greeting = memory_reader::read_trainee_greeting(chara);
+    match &greeting {
+        Some(g) => hlog_info!(target: "training-tracker", "Trainee will say: {}", g.line),
+        None => hlog_info!(target: "training-tracker", "No line for chara {chara}; using the default"),
+    }
+    *GREETING.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = greeting;
+    GREETING_FOR.store(deadline, Ordering::Release);
+}
+
+/// Look up the trainee's line now, from the menu, whatever the poll has done.
+///
+/// [`resolve_greeting_if_safe`] does this on its own during a session; this is
+/// the way to make it happen at a chosen moment and see the answer in the log —
+/// which is how the crash at arm time was pinned on the moment rather than on
+/// the walk. Worth keeping for the next time the two need telling apart.
+///
+/// Scheduled onto the Unity main thread; the menu callback runs on the render
+/// thread. Logs what it finds, and keeps it for the notification if it worked.
+pub fn probe_trainee_line() {
+    extern "C" fn probe_cb() {
+        let card_id = trainee_card_id();
+        let Some(chara) = card_id
+            .and_then(honse_career_meta::chara_id_from_card_id)
+            .and_then(|chara| i32::try_from(chara).ok())
+        else {
+            hlog_warn!(target: "training-tracker", "No trainee on the session; nothing to look up");
+            return;
+        };
+        hlog_info!(target: "training-tracker", "Looking up the line for chara {chara}...");
+        let greeting = memory_reader::read_trainee_greeting(chara);
+        match &greeting {
+            Some(g) => hlog_info!(
+                target: "training-tracker",
+                "Trainee line found: {:?} says {:?}",
+                g.name.as_deref().unwrap_or("?"),
+                g.line
+            ),
+            None => hlog_warn!(target: "training-tracker", "No line for chara {chara}"),
+        }
+        if greeting.is_some() {
+            *GREETING.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = greeting;
+        }
+    }
+    Sdk::get().schedule_on_main_thread(probe_cb);
+}
+
+/// How the arming log names the trainee: the card id, and the character behind
+/// it, because the card id alone does not say who is out.
+fn describe_trainee(session: Option<IdleSession>) -> String {
+    session.and_then(|s| s.card_id).map_or_else(
+        || "trainee unknown".to_owned(),
+        |card_id| match honse_career_meta::chara_id_from_card_id(card_id) {
+            Some(chara) => format!("card {card_id}, chara {chara}"),
+            None => format!("card {card_id}"),
+        },
+    )
+}
+
+/// What the notification says: the trainee's own line when the game gave us one,
+/// and the plugin's own words when it did not.
+///
+/// Pure, so the fallback rule is testable without a game attached. Returns
+/// `(title, body)` for the toast; the title is the character's name because
+/// that is what makes the toast recognisable at a glance in the Action Centre,
+/// and falls back to naming the feature when there is no name to use.
+fn notification_text(greeting: Option<&TraineeGreeting>) -> (String, String) {
+    match greeting {
+        Some(TraineeGreeting { name: Some(name), line }) => (name.clone(), line.clone()),
+        Some(TraineeGreeting { name: None, line }) => ("Independent Training".to_owned(), line.clone()),
+        None => (
+            "Independent Training".to_owned(),
+            "Your trainee is back \u{2014} the run is ready to collect.".to_owned(),
+        ),
+    }
 }
 
 /// Say it everywhere a player might be: in the game if they are watching it, on
 /// the taskbar if they are in another window, and in the notification centre if
 /// they are not at the machine at all.
+///
+/// May run on the render thread, so it touches no IL2CPP — the trainee's line
+/// was resolved when the deadline was armed (see [`arm_greeting`]).
 fn announce() {
     hlog_info!(target: "training-tracker", "Independent Training complete");
-    Sdk::get().show_notification("Independent Training is done!");
+    let (title, body) = {
+        let greeting = GREETING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        notification_text(greeting.as_ref())
+    };
+
+    // The overlay is inside the game, so whoever sees it is already looking at
+    // the result screen behind it; one line carries both halves.
+    Sdk::get().show_notification(&format!("{title}: {body}"));
     #[cfg(windows)]
     {
         honse_services::input_block::flash_window();
-        honse_services::toast::show(
-            "Independent Training",
-            "Your trainee is back \u{2014} the run is ready to collect.",
-        );
+        honse_services::toast::show(&title, &body);
     }
 }
 
@@ -230,6 +376,27 @@ fn announce() {
 #[must_use]
 pub fn is_armed() -> bool {
     DEADLINE.load(Ordering::Acquire) != 0
+}
+
+/// The line the armed trainee will say, once a deadline is armed and the game
+/// had one for them. `None` is the same three cases as the fallback in
+/// [`notification_text`], and reads as such in the panel.
+#[must_use]
+pub fn armed_greeting() -> Option<TraineeGreeting> {
+    GREETING
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+}
+
+/// The trained outfit the last poll saw out on the session, as a *card* id.
+///
+/// `None` covers three different things — not polled yet, no session, or a
+/// build that dropped the accessor — which is why the diagnostic panel says so
+/// rather than leaving the row blank.
+#[must_use]
+pub fn trainee_card_id() -> Option<i32> {
+    (*LAST_SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner))?.card_id
 }
 
 /// The countdown as it stands right now, or `None` before the first poll.
@@ -275,7 +442,9 @@ fn countdown_at(session: IdleSession, now: i64) -> Countdown {
 
 #[cfg(test)]
 mod tests {
-    use super::{countdown_at, observe, settle, IdleSession, IdleState, Watch, MAX_LEAD_SECS};
+    use super::{
+        countdown_at, notification_text, observe, settle, IdleSession, IdleState, TraineeGreeting, Watch, MAX_LEAD_SECS,
+    };
 
     const NOW: i64 = 1_700_000_000;
 
@@ -284,7 +453,44 @@ mod tests {
             state,
             start_time: end_time - 2700,
             end_time,
+            card_id: None,
         })
+    }
+
+    /// The point of reading the game's own text: the toast is the trainee
+    /// speaking, titled with their name so it is recognisable in the Action
+    /// Centre without opening it.
+    #[test]
+    fn the_trainee_speaks_for_themselves_when_the_game_has_a_line() {
+        let greeting = TraineeGreeting {
+            name: Some("Narita Brian".to_owned()),
+            line: "Solo training has sharpened my fangs.".to_owned(),
+        };
+        let (title, body) = notification_text(Some(&greeting));
+        assert_eq!(title, "Narita Brian");
+        assert_eq!(body, "Solo training has sharpened my fangs.");
+    }
+
+    /// A character the name table has not caught up with still has something
+    /// worth quoting, so the line survives and only the title falls back.
+    #[test]
+    fn a_line_without_a_name_keeps_the_line() {
+        let greeting = TraineeGreeting {
+            name: None,
+            line: "All done with training!".to_owned(),
+        };
+        let (title, body) = notification_text(Some(&greeting));
+        assert_eq!(title, "Independent Training");
+        assert_eq!(body, "All done with training!");
+    }
+
+    /// No line at all — an unreleased character, or master data that would not
+    /// answer — must still produce a notification rather than an empty toast.
+    #[test]
+    fn no_line_falls_back_to_the_plugins_own_words() {
+        let (title, body) = notification_text(None);
+        assert_eq!(title, "Independent Training");
+        assert!(body.contains("ready to collect"), "{body}");
     }
 
     #[test]
@@ -368,6 +574,7 @@ mod tests {
             state: IdleState::Playing,
             start_time: NOW,
             end_time: NOW + 3600,
+            card_id: None,
         };
         let halfway = countdown_at(hour, NOW + 1800);
         assert_eq!(halfway.remaining, 1800);
@@ -396,6 +603,7 @@ mod tests {
             state: IdleState::Finished,
             start_time: NOW,
             end_time: NOW,
+            card_id: None,
         };
         let c = countdown_at(instant, NOW);
         assert_eq!(c.remaining, 0);

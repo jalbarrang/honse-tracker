@@ -26,6 +26,7 @@ mod eval_master;
 mod evaluations;
 mod idle_training;
 mod il2cpp;
+mod master_string;
 #[allow(dead_code)]
 mod presentation;
 mod reserve;
@@ -40,7 +41,7 @@ pub use chain::get_chara_ptr;
 pub(crate) use chain::{diag_read_current_turn, ensure_resolved};
 pub use eval_master::probe as probe_eval_master;
 pub use evaluations::{read_evaluations, EvaluationInfo};
-pub use idle_training::{read_idle_session, IdleSession, IdleState};
+pub use idle_training::{read_idle_session, read_trainee_greeting, IdleSession, IdleState, TraineeGreeting};
 #[allow(unused_imports)]
 pub use presentation::mood_label;
 // Only referenced by a unit test now (the Training tab that used it was removed).

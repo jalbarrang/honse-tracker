@@ -94,7 +94,11 @@ calls it `IdleSingleMode` internally, which is why grepping the class dump for
 (`IdleSingleModePlayCut`), and the deadline itself is
 `WorkIdleSingleModeData.EndTime` — the same value the on-screen gauge counts
 down. `idle_training.rs` watches that clock so the notification lands whether or
-not you are looking at the game.
+not you are looking at the game. The same object's `get_CharaId()` returns a
+**card** id (101601), not a chara id (1016), which is the opposite of what the
+name promises; `chara_id_from_card_id` takes the leading four digits. The chara
+id is what `text_data` category 469 is keyed on — the trainee's completion line,
+one per character, which is what the notification quotes.
 
 **Cut-in** — the animation that interrupts a race when a skill fires. A unique
 reserves two: the eye flash (`Eye`) and the animation itself (`Unique` /

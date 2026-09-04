@@ -293,7 +293,7 @@ unsafe fn read_owned(live: *mut c_void) -> Vec<OwnedSong> {
 
 /// Resolve a `LiveId` to its song name via `MasterSingleModeLiveSongList`.
 fn music_name(live_id: i32) -> Option<String> {
-    let mdm = super::master_shop::master_data_manager()?;
+    let mdm = super::super::master_string::master_data_manager()?;
     // SAFETY: `mdm` is the live MasterDataManager singleton; each call is a
     // resolved getter on a pointer checked non-null before use.
     unsafe {
@@ -322,7 +322,7 @@ fn music_name(live_id: i32) -> Option<String> {
 /// field per token, so it is assembled rather than read.
 fn master_square(square_id: i32) -> (Option<String>, PerformanceTokens) {
     let mut cost = PerformanceTokens::default();
-    let Some(mdm) = super::master_shop::master_data_manager() else {
+    let Some(mdm) = super::super::master_string::master_data_manager() else {
         return (None, cost);
     };
     // SAFETY: `mdm` is the live MasterDataManager singleton; every call below
