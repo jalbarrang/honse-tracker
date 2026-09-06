@@ -27,6 +27,33 @@ pub fn read_acquired_skill_list() -> Option<(*mut c_void, i32)> {
     }
 }
 
+/// The ids of the skills a trainee has learned, and nothing else.
+///
+/// [`read_acquired_skills`] resolves names too, which means `get_MasterData()`
+/// and a master-data lookup per skill — the kind of call this codebase has
+/// already had take the game down on a screen that was still settling (see
+/// `idle_training`). The planner only needs ids, so this reads
+/// `_masterId` off each element and calls nothing.
+pub fn read_acquired_skill_ids(chara: *mut c_void) -> Vec<i32> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        // SAFETY: `chara` is a live WorkSingleModeCharaData; both reads yield
+        // nothing rather than dereferencing what they did not find.
+        unsafe {
+            super::il2cpp::read_list_items(chara, &["_acquiredSkillList"])
+                .into_iter()
+                .map(|item| super::il2cpp::read_obscured_int(item, "masterId"))
+                .filter(|&id| id > 0)
+                .collect()
+        }
+    })) {
+        Ok(ids) => ids,
+        Err(_) => {
+            hlog_error!("read_acquired_skill_ids PANICKED");
+            Vec::new()
+        }
+    }
+}
+
 /// Read all acquired skills with names.
 pub fn read_acquired_skills() -> Vec<AcquiredSkillInfo> {
     match get_chara_ptr() {
@@ -35,9 +62,7 @@ pub fn read_acquired_skills() -> Vec<AcquiredSkillInfo> {
     }
 }
 
-/// The same, off a chara the caller resolved — an Independent Training career
-/// is not the active one, so it cannot be found from here.
-pub fn read_acquired_skills_of(chara: *mut c_void) -> Vec<AcquiredSkillInfo> {
+fn read_acquired_skills_of(chara: *mut c_void) -> Vec<AcquiredSkillInfo> {
     // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         read_acquired_skills_inner(chara)

@@ -260,6 +260,38 @@ pub unsafe fn read_list_field(obj: *mut c_void, field_name: &str) -> Option<(*mu
     Some((list_ptr, count, m_item.cast()))
 }
 
+/// The elements of a `List<T>` field, read out of the list rather than asked
+/// for.
+///
+/// `List<T>` keeps its storage in `_items` (a `T[]`, usually longer than the
+/// list) and its length in `_size`. Reading both is equivalent to calling
+/// `get_Count` and `get_Item`, minus the two managed calls — and a call into
+/// game code can throw, which across this FFI boundary aborts the process.
+///
+/// Empty when the field is missing, the list is null, or the length is not
+/// plausible for the array behind it.
+pub(super) unsafe fn read_list_items(obj: *mut c_void, names: &[&str]) -> Vec<*mut c_void> {
+    // SAFETY: reads a named managed field; null when it is not there.
+    let list = unsafe { read_ref_field(obj, names) };
+    if list.is_null() {
+        return Vec::new();
+    }
+    // SAFETY: `list` is a live List<T>.
+    let items = unsafe { read_ref_field(list, &["items"]) };
+    // SAFETY: as above.
+    let size = unsafe { read_i32_field_any(list, &["size"]) };
+    // SAFETY: `items` is the live backing array, or null.
+    let Some((base, capacity)) = (unsafe { read_obj_array(items) }) else {
+        return Vec::new();
+    };
+    let len = usize::try_from(size).unwrap_or(0).min(capacity);
+    (0..len)
+        // SAFETY: i < len <= capacity, and each slot holds an object pointer.
+        .map(|i| unsafe { *base.add(i) })
+        .filter(|item| !item.is_null())
+        .collect()
+}
+
 /// Read an IL2CPP managed reference-type array (`T[]`).
 /// Layout (64-bit): bounds/length live in the array header; `max_length`
 /// (element count) is at offset `0x18` and the inline element buffer starts at

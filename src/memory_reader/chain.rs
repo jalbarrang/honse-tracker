@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 
 use crate::compat::Sdk;
 
-use super::il2cpp::{call_bool, call_obj};
+use super::il2cpp::{call_bool, call_obj, read_i32_field_any, read_ref_field};
 
 /// All resolved MethodInfo pointers for the singleton chain.
 pub(super) struct ResolvedChain {
@@ -16,12 +16,6 @@ pub(super) struct ResolvedChain {
 
     // WorkDataManager → WorkSingleModeData
     pub(super) m_get_single_mode: *const c_void,
-
-    // WorkDataManager → WorkIdleSingleModeData → WorkSingleModeCharaData.
-    // Both `None` on a build without Independent Training, which costs only
-    // that path.
-    pub(super) m_get_idle_single_mode: Option<*const c_void>,
-    pub(super) m_get_idle_work_chara: Option<*const c_void>,
 
     // WorkSingleModeData getters
     pub(super) m_get_is_playing: *const c_void,
@@ -126,21 +120,9 @@ fn try_resolve() -> Result<ResolvedChain, &'static str> {
     hlog_info!("try_resolve: resolving methods...");
 
     // Resolve methods
-    // Optional: an Independent Training career hangs its chara off here
-    // instead of off WorkSingleModeData. Missing is not fatal — every other
-    // read works without it.
-    let idle = resolve_class(image, c"Gallop", c"WorkIdleSingleModeData").ok();
-    let m_get_idle_single_mode = resolve_method(wdm, c"get_IdleSingleModeData", 0).ok();
-    let m_get_idle_work_chara = idle.and_then(|k| resolve_method(k, c"get_WorkCharaData", 0).ok());
-    if m_get_idle_single_mode.is_none() || m_get_idle_work_chara.is_none() {
-        hlog_warn!("Independent Training chara path unavailable; the skill planner will only see live careers");
-    }
-
     let chain = ResolvedChain {
         wdm_klass: wdm,
         m_get_single_mode: resolve_method(wdm, c"get_SingleMode", 0)?,
-        m_get_idle_single_mode,
-        m_get_idle_work_chara,
 
         m_get_is_playing: resolve_method(wsmd, c"get_IsPlaying", 0)?,
         m_get_character: resolve_method(wsmd, c"get_Character", 0)?,
@@ -265,33 +247,60 @@ pub fn get_single_mode_data() -> Option<*mut c_void> {
 /// The trainee whose skills the shop screens are spending points on, from
 /// whichever mode is holding one.
 ///
-/// Independent Training does not run through `WorkSingleModeData` — its career
-/// hangs off `WorkIdleSingleModeData._workCharaData`, so `get_chara_ptr` finds
-/// nothing on the pre-complete and skills screens that follow one. Same class
-/// either way (`WorkSingleModeCharaData`), so everything downstream of this is
-/// unchanged.
+/// # Every hop is a field read, not a call
 ///
-/// Only for reads that are about the trainee. The capture path deliberately
-/// stays on the live-career chain: an Independent Training run has no turns to
-/// settle and nothing to publish.
+/// Calling a property getter runs game code, and game code can throw. A
+/// managed exception unwinding through an `extern "C"` Rust frame is not
+/// something Rust can catch — it aborts the process, which is what
+/// `0xc0000409` was in the two crashes this path caused. So this walks
+/// backing fields instead: a read cannot throw, cannot allocate, and cannot
+/// have side effects.
+///
+/// ```text
+/// WorkDataManager (singleton)
+///   <SingleMode>k__BackingField        → WorkSingleModeData
+///       _isPlaying, <Character>k__BackingField
+///   <IdleSingleModeData>k__BackingField → WorkIdleSingleModeData
+///       _workCharaData
+/// ```
+/// Both end at a `WorkSingleModeCharaData`, so callers cannot tell which mode
+/// answered. Names from `il2cpp_classes.txt` (Global 2026-08-30), resolved by
+/// their logical form so the decoration can change without this having to.
+///
+/// Only for reads about the trainee. The capture path stays on the live-career
+/// chain: an Independent Training run has no turns to settle.
 pub fn get_skills_chara_ptr() -> Option<*mut c_void> {
     // The capture path resolves the chain on its first settled turn, and an
-    // Independent Training run never has one — so this cannot assume anyone
-    // else has been here first.
+    // Independent Training run never has one.
     if !ensure_resolved() {
         return None;
     }
-    if let Some(chara) = get_chara_ptr() {
-        log_source("live career");
-        return Some(chara);
+    let chain = CHAIN.get()?;
+    let singleton = Sdk::get().get_singleton(chain.wdm_klass.cast())?.cast::<c_void>();
+
+    // SAFETY: reading named managed fields off live work-data objects. Each
+    // read yields null rather than dereferencing anything it did not find.
+    unsafe {
+        let single_mode = read_ref_field(singleton, &["singleMode"]);
+        // `_isPlaying` is a `System.Boolean`, so only its first byte is
+        // written into the wider read; the rest stays zero.
+        if !single_mode.is_null() && read_i32_field_any(single_mode, &["isPlaying"]) != 0 {
+            let chara = read_ref_field(single_mode, &["character"]);
+            if !chara.is_null() {
+                log_source("live career");
+                return Some(chara);
+            }
+        }
+
+        let idle = read_ref_field(singleton, &["idleSingleModeData"]);
+        let chara = read_ref_field(idle, &["workCharaData"]);
+        log_source(if chara.is_null() {
+            "neither mode"
+        } else {
+            "Independent Training"
+        });
+        (!chara.is_null()).then_some(chara)
     }
-    let chara = get_idle_chara_ptr();
-    log_source(if chara.is_some() {
-        "Independent Training"
-    } else {
-        "neither mode"
-    });
-    chara
 }
 
 /// Say once where the trainee came from. Which of the two paths answered is
@@ -302,23 +311,6 @@ fn log_source(source: &str) {
     if !LOGGED.swap(true, Ordering::Relaxed) {
         hlog_info!("skills chara resolved from: {source}");
     }
-}
-
-/// The Independent Training career's chara, or `None` when there is not one.
-fn get_idle_chara_ptr() -> Option<*mut c_void> {
-    let chain = CHAIN.get()?;
-    let m_idle = chain.m_get_idle_single_mode?;
-    let m_chara = chain.m_get_idle_work_chara?;
-    let singleton = Sdk::get().get_singleton(chain.wdm_klass.cast())?.cast::<c_void>();
-
-    // SAFETY: resolved 0-arg getter on the live WorkDataManager singleton.
-    let idle = unsafe { call_obj(singleton, m_idle) };
-    if idle.is_null() {
-        return None;
-    }
-    // SAFETY: resolved 0-arg getter on a live WorkIdleSingleModeData.
-    let chara = unsafe { call_obj(idle, m_chara) };
-    (!chara.is_null()).then_some(chara)
 }
 
 pub fn get_chara_ptr() -> Option<*mut c_void> {

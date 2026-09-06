@@ -13,7 +13,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::compat::Sdk;
-use crate::memory_reader::{AcquiredSkillInfo, PlannerBasics, SkillTip};
+use crate::memory_reader::{PlannerBasics, SkillTip};
 
 /// The wire format version this writes. Bump only alongside torena-hub.
 const VERSION: u8 = 1;
@@ -128,7 +128,7 @@ impl PlannerExport {
 /// value per group on import — the encoding has the room, and sending the real
 /// grades costs nothing.
 #[must_use]
-pub fn from_career(basics: &PlannerBasics, skills: &[AcquiredSkillInfo], tips: &[SkillTip]) -> PlannerExport {
+pub fn from_career(basics: &PlannerBasics, obtained_skills: Vec<i32>, tips: &[SkillTip]) -> PlannerExport {
     let apt = &basics.aptitudes;
     let aptitudes = [
         apt.dist_short,
@@ -142,7 +142,6 @@ pub fn from_career(basics: &PlannerBasics, skills: &[AcquiredSkillInfo], tips: &
         apt.style_sashi,
         apt.style_oikomi,
     ];
-    let obtained_skills: Vec<i32> = skills.iter().map(|s| s.master_id).collect();
 
     PlannerExport {
         card_id: basics.card_id,
@@ -221,18 +220,18 @@ extern "C" fn export_cb() {
     let chara = crate::memory_reader::get_skills_chara_ptr();
     let basics = crate::memory_reader::read_planner_basics();
     let skills = chara
-        .map(crate::memory_reader::read_acquired_skills_of)
+        .map(crate::memory_reader::read_acquired_skill_ids)
         .unwrap_or_default();
     let tips = crate::memory_reader::read_skill_tips();
 
     std::thread::spawn(move || {
-        finish(basics.as_ref(), &skills, tips.as_deref());
+        finish(basics.as_ref(), skills, tips.as_deref());
         RUNNING.store(false, Ordering::Release);
     });
 }
 
 /// Encode, copy, open, and say what happened. Off the game's threads.
-fn finish(basics: Option<&PlannerBasics>, skills: &[AcquiredSkillInfo], tips: Option<&[SkillTip]>) {
+fn finish(basics: Option<&PlannerBasics>, skills: Vec<i32>, tips: Option<&[SkillTip]>) {
     let sdk = Sdk::get();
     let Some(basics) = basics else {
         hlog_warn!(target: "training-tracker", "Skill planner: no career to export");

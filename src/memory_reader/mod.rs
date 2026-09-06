@@ -57,7 +57,7 @@ pub use scenario::{
 };
 pub(crate) use skill_points::{read_skill_points, read_skill_points_of};
 pub use skill_tips::{read_skill_tips, SkillTip};
-pub use skills::{read_acquired_skill_list, read_acquired_skills, read_acquired_skills_of, AcquiredSkillInfo};
+pub use skills::{read_acquired_skill_ids, read_acquired_skill_list, read_acquired_skills, AcquiredSkillInfo};
 pub use snapshot::{
     read_light_refresh, read_planner_basics, read_snapshot, CareerSnapshot, LightRefresh, PlannerBasics,
 };

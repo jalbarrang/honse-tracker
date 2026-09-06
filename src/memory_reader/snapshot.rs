@@ -9,7 +9,8 @@ use crate::compat::Sdk;
 use super::chain::{ResolvedChain, CHAIN};
 use super::command_info::{read_command_infos, CommandInfo};
 use super::il2cpp::{
-    call_bool, call_i32, call_i32_with_i32, call_obj, read_obscured_int_array, read_obscured_int_field,
+    call_bool, call_i32, call_i32_with_i32, call_obj, read_obscured_int, read_obscured_int_array,
+    read_obscured_int_field,
 };
 use super::scenario::{read_scenario_state, ScenarioState};
 use crate::evaluation::Aptitudes;
@@ -209,9 +210,9 @@ pub struct PlannerBasics {
 /// career or an Independent Training one — see
 /// [`super::chain::get_skills_chara_ptr`].
 ///
-/// Safe on a menu screen, where [`read_snapshot`] is not: it calls getters on
-/// `WorkSingleModeCharaData` and touches no per-screen UI object, so there is
-/// nothing here for asset unloading to pull out from under it.
+/// Safe on a menu screen, where [`read_snapshot`] is not: every value is a
+/// field read off `WorkSingleModeCharaData`, so it runs no game code and
+/// touches no per-screen UI object.
 ///
 /// `None` when neither mode holds a trainee. Unity main thread, like every
 /// read here.
@@ -226,21 +227,33 @@ pub fn read_planner_basics() -> Option<PlannerBasics> {
 }
 
 fn read_planner_basics_inner() -> Option<PlannerBasics> {
-    // Resolves the chain if nothing has yet, so this has to come first.
     let chara = super::chain::get_skills_chara_ptr()?;
-    let chain = CHAIN.get()?;
-    // SAFETY: every call is a resolved 0-arg getter on the non-null
-    // WorkSingleModeCharaData `get_chara_ptr` just validated.
+    // SAFETY: every one of these is a named `ObscuredInt` field on a live
+    // `WorkSingleModeCharaData` (`il2cpp_classes.txt`, Global 2026-08-30).
+    // Read rather than called for the reason in `get_skills_chara_ptr`: a
+    // getter is game code, and game code can throw where a field cannot.
     unsafe {
+        let apt = |name: &str| read_obscured_int(chara, name);
         Some(PlannerBasics {
-            card_id: call_i32(chara, chain.m_get_card_id),
-            speed: call_i32(chara, chain.m_get_speed),
-            stamina: call_i32(chara, chain.m_get_stamina),
-            power: call_i32(chara, chain.m_get_power),
-            guts: call_i32(chara, chain.m_get_guts),
-            wiz: call_i32(chara, chain.m_get_wiz),
-            motivation: call_i32(chara, chain.m_get_motivation),
-            aptitudes: read_aptitudes(chara, chain),
+            card_id: read_obscured_int(chara, "cardId"),
+            speed: read_obscured_int(chara, "speed"),
+            stamina: read_obscured_int(chara, "stamina"),
+            power: read_obscured_int(chara, "power"),
+            guts: read_obscured_int(chara, "guts"),
+            wiz: read_obscured_int(chara, "wiz"),
+            motivation: read_obscured_int(chara, "motivation"),
+            aptitudes: Aptitudes {
+                dist_short: apt("properDistanceShort"),
+                dist_mile: apt("properDistanceMile"),
+                dist_middle: apt("properDistanceMiddle"),
+                dist_long: apt("properDistanceLong"),
+                style_nige: apt("properRunningStyleNige"),
+                style_senko: apt("properRunningStyleSenko"),
+                style_sashi: apt("properRunningStyleSashi"),
+                style_oikomi: apt("properRunningStyleOikomi"),
+                ground_turf: apt("properGroundTurf"),
+                ground_dirt: apt("properGroundDirt"),
+            },
             skill_point: super::read_skill_points_of(chara).unwrap_or(0),
         })
     }

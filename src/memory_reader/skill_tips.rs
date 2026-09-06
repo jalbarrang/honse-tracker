@@ -16,7 +16,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::chain::get_skills_chara_ptr;
-use super::il2cpp::{call_obj_with_i32, read_list_field, read_obscured_int};
+use super::il2cpp::{read_list_items, read_obscured_int};
 
 /// One hint the career is holding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,7 +34,7 @@ const TIPS_FIELD: &str = "skillTipsList";
 
 /// Nothing bigger than this is a hint list; a bigger count means the field is
 /// not what we think it is.
-const MAX_TIPS: i32 = 512;
+const MAX_TIPS: usize = 512;
 
 /// Every hint the current career holds.
 ///
@@ -56,22 +56,24 @@ pub fn read_skill_tips() -> Option<Vec<SkillTip>> {
 
 unsafe fn read_inner() -> Option<Vec<SkillTip>> {
     let chara = get_skills_chara_ptr()?;
-    // SAFETY: chara is a live active-career object; a missing field yields None.
-    let (list, count, get_item) = unsafe { read_list_field(chara, TIPS_FIELD) }.or_else(|| {
-        warn_once();
-        None
-    })?;
-    if !(0..=MAX_TIPS).contains(&count) {
+    // SAFETY: chara is a live WorkSingleModeCharaData.
+    let items = unsafe { read_list_items(chara, &[TIPS_FIELD]) };
+    if items.is_empty() {
+        // Told apart from "no hints" by the field being there at all: a career
+        // with none still has the list.
+        // SAFETY: as above.
+        if unsafe { super::il2cpp::read_ref_field(chara, &[TIPS_FIELD]) }.is_null() {
+            warn_once();
+            return None;
+        }
+        return Some(Vec::new());
+    }
+    if items.len() > MAX_TIPS {
         return None;
     }
 
-    let mut tips = Vec::with_capacity(count as usize);
-    for i in 0..count {
-        // SAFETY: i < count on a live List<T>; `get_Item` is a pure getter.
-        let item = unsafe { call_obj_with_i32(list, get_item, i) };
-        if item.is_null() {
-            continue;
-        }
+    let mut tips = Vec::with_capacity(items.len());
+    for item in items {
         // SAFETY: three named ObscuredInt fields on a live SkillTips.
         let tip = unsafe {
             SkillTip {
