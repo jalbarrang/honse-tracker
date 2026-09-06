@@ -115,6 +115,9 @@ Everything the plugin remembers lives in one file, `hachimi/honse-tracker.json`:
     "idle_career_dir": ""
   },
   "hosted_data": {},
+  "uma-moe": {
+    "api-key": ""
+  },
   "layout": {},
   "song_plan": {}
 }
@@ -122,7 +125,9 @@ Everything the plugin remembers lives in one file, `hachimi/honse-tracker.json`:
 
 `layout` is where you dragged each panel and `song_plan` is what you are saving
 for; both are written for you and there is no reason to edit them by hand. The
-`settings` block is the part worth opening the file for.
+`settings` and `uma-moe` blocks are the parts worth opening the file for.
+
+**`uma-moe.api-key`** — your uma.moe API key. Empty by default.
 
 **`skip_race_skill_cutins`** — when a unique skill fires in a race, the game
 stops to play a cinematic. Turn this on and it does not play: the skill banner

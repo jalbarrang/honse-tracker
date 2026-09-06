@@ -295,7 +295,7 @@ instead. Safe blocks are listed in `overlay/theme.rs`.
 there, and it is the first place to look.
 
 **`honse-tracker.json`** — everything this plugin remembers, in one document:
-settings, panel positions, song plan. One owner (`config.rs`) writes it, because
+settings, integration credentials, panel positions and song plan. One owner (`config.rs`) writes it, because
 `PluginConfig` round-trips a whole file and two owners sharing one path would
 erase each other. Replaces `honseTrackerConfig.json`, `overlayLayout.json` and
 `songPlan.json`, which the first launch folds in and then leaves alone.
