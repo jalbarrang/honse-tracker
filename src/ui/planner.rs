@@ -22,6 +22,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::time::Instant;
 
 use honse_services::overlay::theme;
 
@@ -34,6 +35,17 @@ use crate::read_gate::View;
 static BASICS: Mutex<Option<PlannerBasics>> = Mutex::new(None);
 /// Whether a read has been asked for on this visit to the screen.
 static PROBED: AtomicBool = AtomicBool::new(false);
+/// When this visit to the screen began, for [`SETTLE`].
+static ARRIVED: Mutex<Option<Instant>> = Mutex::new(None);
+
+/// How long the screen has to have been up before the trainee is read.
+///
+/// The view id changes while the screen is still being built, and reading at
+/// that edge is what the whole read gate exists to avoid — the first version
+/// of this probe fired 20&nbsp;ms after the change and took the game down. The
+/// scenario refresh, the only other read outside a settled turn, paces itself
+/// at 400 ms for the same reason.
+const SETTLE: std::time::Duration = std::time::Duration::from_millis(600);
 /// Whether the panel is on screen, so the interactive flag is only written
 /// when it changes rather than every frame.
 static INTERACTIVE: AtomicBool = AtomicBool::new(false);
@@ -42,12 +54,16 @@ static INTERACTIVE: AtomicBool = AtomicBool::new(false);
 /// screen. Runs before the paint; see the module header.
 pub fn sync() {
     if on_planner_screen() {
+        if !settled() {
+            return;
+        }
         // One read per visit. The balance moves as you buy, so it is read
         // again on the click that actually uses it.
         if !PROBED.swap(true, Ordering::AcqRel) && !Sdk::get().schedule_on_main_thread(probe_cb) {
             PROBED.store(false, Ordering::Release);
         }
     } else {
+        *arrived() = None;
         // Cleared on every off-screen frame, not just the first: a probe
         // queued before the screen closed can land after it, and a result
         // nobody clears leaves the panel drawing over the game.
@@ -63,19 +79,42 @@ pub fn sync() {
     }
 }
 
+/// Whether the screen has been up long enough to read from, starting the
+/// clock on the first frame of a visit.
+fn settled() -> bool {
+    let mut arrived = arrived();
+    let since = arrived.get_or_insert_with(Instant::now);
+    since.elapsed() >= SETTLE
+}
+
+fn arrived() -> std::sync::MutexGuard<'static, Option<Instant>> {
+    ARRIVED.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 /// Unity main thread: read the trainee, or record that there is no career.
 ///
-/// Re-checks the screen, because this runs a frame or more after it was asked
-/// for and the player may have left in between.
+/// Nothing may escape this: it is called through a C ABI, so a panic crossing
+/// it aborts the process rather than unwinding.
 extern "C" fn probe_cb() {
-    if !on_planner_screen() {
-        return;
+    let read = std::panic::catch_unwind(|| {
+        // Re-checked because this runs a frame or more after it was asked for,
+        // and the player may have left in between.
+        if !on_planner_screen() {
+            return None;
+        }
+        hlog_info!(target: "training-tracker", "Skill planner: reading the trainee");
+        let basics = read_planner_basics();
+        hlog_info!(
+            target: "training-tracker",
+            "Skill planner: trainee read {}",
+            if basics.is_some() { "ok" } else { "found no career" }
+        );
+        basics
+    });
+    match read {
+        Ok(basics) => *lock() = basics,
+        Err(_) => hlog_error!(target: "training-tracker", "Skill planner: probe PANICKED"),
     }
-    let basics = read_planner_basics();
-    if basics.is_none() {
-        hlog_info!(target: "training-tracker", "Skill planner: no career to read on this screen");
-    }
-    *lock() = basics;
 }
 
 pub fn draw(ui: &mut egui::Ui) {

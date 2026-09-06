@@ -281,7 +281,27 @@ pub fn get_skills_chara_ptr() -> Option<*mut c_void> {
     if !ensure_resolved() {
         return None;
     }
-    get_chara_ptr().or_else(get_idle_chara_ptr)
+    if let Some(chara) = get_chara_ptr() {
+        log_source("live career");
+        return Some(chara);
+    }
+    let chara = get_idle_chara_ptr();
+    log_source(if chara.is_some() {
+        "Independent Training"
+    } else {
+        "neither mode"
+    });
+    chara
+}
+
+/// Say once where the trainee came from. Which of the two paths answered is
+/// the first thing worth knowing when this screen misbehaves.
+fn log_source(source: &str) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static LOGGED: AtomicBool = AtomicBool::new(false);
+    if !LOGGED.swap(true, Ordering::Relaxed) {
+        hlog_info!("skills chara resolved from: {source}");
+    }
 }
 
 /// The Independent Training career's chara, or `None` when there is not one.
