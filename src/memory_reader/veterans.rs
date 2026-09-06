@@ -277,7 +277,7 @@ unsafe fn factor_extends(position_id: i32, array: *mut c_void) -> Vec<FactorExte
         // SAFETY: named field on a live FactorData.
         let base_factor_id = unsafe { read_obscured_int(factor, "baseFactorId") };
         // SAFETY: as above — a List<UpgradeHistory> or nothing.
-        let Some((list, count, item)) = (unsafe { read_list_field(factor, c"upgradeHistoryList") }) else {
+        let Some((list, count, item)) = (unsafe { read_list_field(factor, "upgradeHistoryList") }) else {
             continue;
         };
         for index in 0..count {
@@ -303,7 +303,7 @@ unsafe fn factor_extends(position_id: i32, array: *mut c_void) -> Vec<FactorExte
 /// The inherited parents and grandparents, from `successionCharaList`.
 unsafe fn succession_charas(obj: *mut c_void) -> Vec<SuccessionChara> {
     // SAFETY: a named List<SuccessionCharaData> field on a live TrainedCharaData.
-    let Some((list, count, item)) = (unsafe { read_list_field(obj, c"successionCharaList") }) else {
+    let Some((list, count, item)) = (unsafe { read_list_field(obj, "successionCharaList") }) else {
         return Vec::new();
     };
     let mut out = Vec::with_capacity(count.max(0) as usize);

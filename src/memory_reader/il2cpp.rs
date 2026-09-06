@@ -146,22 +146,22 @@ pub(super) unsafe fn dict_try_get_obj(dict: *mut c_void, mi: *const c_void, key:
     }
 }
 
-/// Read an IL2CPP `List<T>` field from an object.
+/// Read an IL2CPP `List<T>` field from an object, by logical name.
+///
+/// Resolved through [`field_by_name`], so `"successionCharaList"` finds
+/// `<SuccessionCharaList>k__BackingField` and `"upgradeHistoryList"` finds
+/// `_upgradeHistoryList` without the caller knowing which.
+///
 /// Returns (list_ptr, count, get_Item method) or None.
-pub unsafe fn read_list_field(
-    obj: *mut c_void,
-    field_name: &std::ffi::CStr,
-) -> Option<(*mut c_void, i32, *const c_void)> {
+pub unsafe fn read_list_field(obj: *mut c_void, field_name: &str) -> Option<(*mut c_void, i32, *const c_void)> {
     let sdk = Sdk::get();
-    let field_s = field_name.to_str().ok()?;
-    // SAFETY: IL2CPP object header — klass pointer at offset 0.
-    let obj_klass = unsafe { *(obj as *const *mut c_void) };
-    let field = sdk.get_field_from_name(obj_klass.cast(), field_s)?;
+    // SAFETY: `obj` is a live IL2CPP object; a missing field yields None.
+    let field = unsafe { field_by_name(obj, &[field_name]) }?;
 
     let mut list_ptr: *mut c_void = std::ptr::null_mut();
     // SAFETY: IL2CPP object and field from resolved metadata.
     unsafe {
-        sdk.get_field_value(obj.cast(), field, &mut list_ptr as *mut _ as *mut c_void);
+        sdk.get_field_value(obj.cast(), field.cast(), &mut list_ptr as *mut _ as *mut c_void);
     }
     if list_ptr.is_null() {
         return None;
@@ -333,13 +333,44 @@ pub(super) unsafe fn read_i32_field(obj: *mut c_void, field_name: &str) -> i32 {
 // Reading by field name
 // ---------------------------------------------------------------------------
 
-/// Resolve an instance field by name from an object's runtime klass, trying
-/// each candidate in turn.
+/// The spellings the game gives one field, in the order they are tried.
 ///
-/// Several names because the same field is spelled differently across builds
-/// and across the two `Dictionary` implementations Unity has shipped
-/// (`entries` vs `_entries`), and a reader that binds to one of them is a
-/// reader that silently returns nothing on the other.
+/// C# writes the same value four ways depending on how the field was declared,
+/// and the game uses all four in the same class: `_viewerId` (private field),
+/// `<ScenarioId>k__BackingField` (auto-property), `Type` (public field), and
+/// occasionally the bare name. A reader that asks for one spelling gets a
+/// silent zero on a class that chose another — which is worse than an error,
+/// because a zero looks like data.
+///
+/// Callers pass the logical name (`"viewerId"`) and this covers the rest.
+fn field_name_variants(name: &str) -> [String; 4] {
+    let base = name.strip_prefix('_').unwrap_or(name);
+    let mut capitalized = String::with_capacity(base.len());
+    let mut chars = base.chars();
+    if let Some(first) = chars.next() {
+        capitalized.extend(first.to_uppercase());
+        capitalized.push_str(chars.as_str());
+    }
+    [
+        name.to_string(),
+        format!("_{base}"),
+        format!("<{capitalized}>k__BackingField"),
+        capitalized,
+    ]
+}
+
+/// Resolve an instance field from an object's runtime klass, trying each
+/// candidate name and each spelling of it.
+///
+/// Several *names* because the same field is called different things across
+/// builds and across the two `Dictionary` implementations Unity has shipped
+/// (`entries` vs `_entries`); several *spellings* of each because of
+/// [`field_name_variants`]. The exact name given is always tried first, so a
+/// caller that knows the real spelling is never second-guessed.
+///
+/// The runtime's own lookup walks the class hierarchy, so a field declared on
+/// a base class (`AcquiredSkill` keeps `_masterId` on `SkillDataBase`) resolves
+/// from the derived klass.
 unsafe fn field_by_name(obj: *mut c_void, names: &[&str]) -> Option<*mut c_void> {
     if obj.is_null() {
         return None;
@@ -349,7 +380,8 @@ unsafe fn field_by_name(obj: *mut c_void, names: &[&str]) -> Option<*mut c_void>
     let sdk = Sdk::get();
     names
         .iter()
-        .find_map(|name| sdk.get_field_from_name(klass.cast(), name))
+        .flat_map(|name| field_name_variants(name))
+        .find_map(|name| sdk.get_field_from_name(klass.cast(), &name))
         .map(|f| f.cast())
 }
 
@@ -588,7 +620,7 @@ static FIELD_OFFSET_FN: OnceLock<Option<usize>> = OnceLock::new();
 
 #[cfg(test)]
 mod tests {
-    use super::decode_obscured_string;
+    use super::{decode_obscured_string, field_name_variants};
 
     /// The encryption is its own inverse, so the test can build the ciphertext
     /// the way the game does and check the reader gets the plaintext back.
@@ -618,5 +650,21 @@ mod tests {
     fn nothing_readable_decodes_to_nothing() {
         assert_eq!(decode_obscured_string("", &[1, 2]), "");
         assert_eq!(decode_obscured_string("key", &[]), "");
+    }
+
+    /// The four spellings, against real names from the Global build's dump.
+    /// A regression here is a reader that silently returns zero, so the cases
+    /// are the exact fields that caught it: `_viewerId` (private),
+    /// `<ScenarioId>k__BackingField` (auto-property) and `Type` (public).
+    #[test]
+    fn one_logical_name_covers_the_four_ways_csharp_spells_a_field() {
+        assert!(field_name_variants("viewerId").contains(&"_viewerId".to_string()));
+        assert!(field_name_variants("scenarioId").contains(&"<ScenarioId>k__BackingField".to_string()));
+        assert!(field_name_variants("type").contains(&"Type".to_string()));
+        // The name as given is always tried first, so a caller that already
+        // knows the real spelling is never second-guessed.
+        assert_eq!(field_name_variants("_dataDic")[0], "_dataDic");
+        // An underscored name still reaches the undecorated spellings.
+        assert!(field_name_variants("_skillTipsList").contains(&"<SkillTipsList>k__BackingField".to_string()));
     }
 }

@@ -40,7 +40,7 @@ unsafe fn read_evaluations_inner() -> Vec<EvaluationInfo> {
     };
 
     // Try known field names for the evaluation list
-    let field_names = [c"_evaluationList", c"_evaluationInfoList", c"_evaluations"];
+    let field_names = ["_evaluationList", "_evaluationInfoList", "_evaluations"];
 
     let mut list_data = None;
     for name in &field_names {

@@ -22,7 +22,7 @@ pub fn read_acquired_skill_list() -> Option<(*mut c_void, i32)> {
     let chara = get_chara_ptr()?;
     // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
     unsafe {
-        let (list_ptr, count, _) = read_list_field(chara, c"_acquiredSkillList")?;
+        let (list_ptr, count, _) = read_list_field(chara, "_acquiredSkillList")?;
         Some((list_ptr, count))
     }
 }
@@ -46,7 +46,7 @@ unsafe fn read_acquired_skills_inner() -> Vec<AcquiredSkillInfo> {
     };
 
     // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
-    let (list_ptr, count, m_get_item) = match unsafe { read_list_field(chara, c"_acquiredSkillList") } {
+    let (list_ptr, count, m_get_item) = match unsafe { read_list_field(chara, "_acquiredSkillList") } {
         Some(v) => v,
         None => return Vec::new(),
     };
