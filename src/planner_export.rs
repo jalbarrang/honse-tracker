@@ -204,7 +204,11 @@ pub fn request() {
         hlog_info!(target: "training-tracker", "Skill planner export already running");
         return;
     }
-    Sdk::get().schedule_on_main_thread(export_cb);
+    if !Sdk::get().schedule_on_main_thread(export_cb) {
+        // Nothing was queued, so nothing will ever clear the flag.
+        RUNNING.store(false, Ordering::Release);
+        hlog_warn!(target: "training-tracker", "Skill planner: could not reach the main thread");
+    }
 }
 
 /// Unity main thread: read the trainee as they are right now, then hand off.
@@ -219,13 +223,13 @@ extern "C" fn export_cb() {
     let tips = crate::memory_reader::read_skill_tips();
 
     std::thread::spawn(move || {
-        finish(basics.as_ref(), &skills, &tips);
+        finish(basics.as_ref(), &skills, tips.as_deref());
         RUNNING.store(false, Ordering::Release);
     });
 }
 
 /// Encode, copy, open, and say what happened. Off the game's threads.
-fn finish(basics: Option<&PlannerBasics>, skills: &[AcquiredSkillInfo], tips: &[SkillTip]) {
+fn finish(basics: Option<&PlannerBasics>, skills: &[AcquiredSkillInfo], tips: Option<&[SkillTip]>) {
     let sdk = Sdk::get();
     let Some(basics) = basics else {
         hlog_warn!(target: "training-tracker", "Skill planner: no career to export");
@@ -233,19 +237,26 @@ fn finish(basics: Option<&PlannerBasics>, skills: &[AcquiredSkillInfo], tips: &[
         return;
     };
 
-    let export = from_career(basics, skills, tips);
-    // Hints the catalogue could not place are the one silent failure worth
-    // naming: the planner would price every skill at full cost and look right
-    // doing it.
-    let unmapped_hints = !tips.is_empty() && export.candidate_skills.is_empty();
-    if unmapped_hints {
-        hlog_warn!(
-            target: "training-tracker",
-            "Skill planner: {} hint(s) read but none matched the skill catalogue (gametora data available: {})",
-            tips.len(),
-            crate::gametora_data::is_available()
-        );
-    }
+    let export = from_career(basics, skills, tips.unwrap_or_default());
+    // A plan priced without the discounts looks right and is wrong, so both
+    // ways of losing them are reported rather than left to the log: the list
+    // not reading at all, and it reading but matching no catalogue skill.
+    let hints_lost = match tips {
+        None => {
+            hlog_warn!(target: "training-tracker", "Skill planner: hint list unreadable");
+            true
+        }
+        Some(tips) if !tips.is_empty() && export.candidate_skills.is_empty() => {
+            hlog_warn!(
+                target: "training-tracker",
+                "Skill planner: {} hint(s) read but none matched the skill catalogue (gametora data available: {})",
+                tips.len(),
+                crate::gametora_data::is_available()
+            );
+            true
+        }
+        Some(_) => false,
+    };
     let url = export.url(&crate::config::read(|file| file.settings.skill_planner_url.clone()));
 
     let copied = honse_services::shell::copy_text(&url);
@@ -258,7 +269,7 @@ fn finish(basics: Option<&PlannerBasics>, skills: &[AcquiredSkillInfo], tips: &[
         export.budget
     );
 
-    sdk.show_notification(match (opened, copied, unmapped_hints) {
+    sdk.show_notification(match (opened, copied, hints_lost) {
         (true, _, false) => "Skill planner opened in your browser",
         (true, _, true) => "Skill planner opened — hint discounts are missing",
         (false, true, _) => "Skill planner link copied — paste it in your browser",

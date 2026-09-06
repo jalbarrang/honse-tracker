@@ -189,8 +189,8 @@ impl Sdk {
         EdgeSdk::get().class_get_methods(klass.cast(), iter).cast()
     }
 
-    pub fn schedule_on_main_thread(&self, callback: unsafe extern "C" fn()) {
-        EdgeSdk::get().schedule_on_main_thread(callback);
+    pub fn schedule_on_main_thread(&self, callback: unsafe extern "C" fn()) -> bool {
+        EdgeSdk::get().schedule_on_main_thread(callback)
     }
 
     pub fn free_il2cpp_string(&self, ptr: *mut c_char) {

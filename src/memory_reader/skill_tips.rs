@@ -36,31 +36,33 @@ const TIPS_FIELD: &str = "skillTipsList";
 /// not what we think it is.
 const MAX_TIPS: i32 = 512;
 
-/// Read every hint the current career holds. Empty outside a career, and empty
-/// (with a warning, once) when the list cannot be found.
+/// Every hint the current career holds.
+///
+/// `None` means the list could not be read; `Some(vec![])` means it was read
+/// and the career has no hints. The difference decides whether a plan built
+/// from this is missing its discounts or genuinely has none, so it is not
+/// flattened into an empty vector.
 ///
 /// Must run on the Unity main thread.
-pub fn read_skill_tips() -> Vec<SkillTip> {
+pub fn read_skill_tips() -> Option<Vec<SkillTip>> {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe { read_inner() })) {
         Ok(tips) => tips,
         Err(_) => {
             hlog_error!("read_skill_tips PANICKED");
-            Vec::new()
+            None
         }
     }
 }
 
-unsafe fn read_inner() -> Vec<SkillTip> {
-    let Some(chara) = get_chara_ptr() else {
-        return Vec::new();
-    };
+unsafe fn read_inner() -> Option<Vec<SkillTip>> {
+    let chara = get_chara_ptr()?;
     // SAFETY: chara is a live active-career object; a missing field yields None.
-    let Some((list, count, get_item)) = (unsafe { read_list_field(chara, TIPS_FIELD) }) else {
+    let (list, count, get_item) = unsafe { read_list_field(chara, TIPS_FIELD) }.or_else(|| {
         warn_once();
-        return Vec::new();
-    };
-    if count <= 0 || count > MAX_TIPS {
-        return Vec::new();
+        None
+    })?;
+    if !(0..=MAX_TIPS).contains(&count) {
+        return None;
     }
 
     let mut tips = Vec::with_capacity(count as usize);
@@ -85,7 +87,7 @@ unsafe fn read_inner() -> Vec<SkillTip> {
         }
     }
     log_once(&tips);
-    tips
+    Some(tips)
 }
 
 fn log_once(tips: &[SkillTip]) {

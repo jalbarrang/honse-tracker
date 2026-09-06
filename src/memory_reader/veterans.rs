@@ -333,6 +333,9 @@ unsafe fn factor_extends(position_id: i32, array: *mut c_void) -> Vec<FactorExte
         let Some((list, count, item)) = (unsafe { read_list_field(factor, "upgradeHistoryList") }) else {
             continue;
         };
+        if !plausible(count, "upgradeHistoryList") {
+            continue;
+        }
         for index in 0..count {
             // SAFETY: index < count on a live List<T>; `get_Item` is a pure getter.
             let history = unsafe { call_obj_with_i32(list, item, index) };
@@ -353,13 +356,33 @@ unsafe fn factor_extends(position_id: i32, array: *mut c_void) -> Vec<FactorExte
     out
 }
 
+/// Whether a list length is worth walking.
+///
+/// `get_Count` is the game's number, not ours, and both lists here are small by
+/// the game's own rules — six inherited characters, a handful of upgrades per
+/// factor. A count past this bound means the field resolved to something other
+/// than what we think it is, and reserving for it or calling `get_Item` that
+/// many times on the Unity main thread would be the export's problem to wear.
+/// `read_acquired_skills` draws the same line at 200.
+fn plausible(count: i32, list: &str) -> bool {
+    const MAX: i32 = 256;
+    if (0..=MAX).contains(&count) {
+        return true;
+    }
+    hlog_warn!(target: "training-tracker", "veterans: {list} reports {count} entries; skipped");
+    false
+}
+
 /// The inherited parents and grandparents, from `successionCharaList`.
 unsafe fn succession_charas(obj: *mut c_void) -> Vec<SuccessionChara> {
     // SAFETY: a named List<SuccessionCharaData> field on a live TrainedCharaData.
     let Some((list, count, item)) = (unsafe { read_list_field(obj, "successionCharaList") }) else {
         return Vec::new();
     };
-    let mut out = Vec::with_capacity(count.max(0) as usize);
+    if !plausible(count, "successionCharaList") {
+        return Vec::new();
+    }
+    let mut out = Vec::with_capacity(count as usize);
     for index in 0..count {
         // SAFETY: index < count on a live List<T>; `get_Item` is a pure getter.
         let chara = unsafe { call_obj_with_i32(list, item, index) };

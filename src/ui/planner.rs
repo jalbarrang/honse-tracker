@@ -44,11 +44,18 @@ pub fn sync() {
     if on_planner_screen() {
         // One read per visit. The balance moves as you buy, so it is read
         // again on the click that actually uses it.
-        if !PROBED.swap(true, Ordering::AcqRel) {
-            Sdk::get().schedule_on_main_thread(probe_cb);
+        if !PROBED.swap(true, Ordering::AcqRel) && !Sdk::get().schedule_on_main_thread(probe_cb) {
+            PROBED.store(false, Ordering::Release);
         }
-    } else if PROBED.swap(false, Ordering::AcqRel) {
-        *lock() = None;
+    } else {
+        // Cleared on every off-screen frame, not just the first: a probe
+        // queued before the screen closed can land after it, and a result
+        // nobody clears leaves the panel drawing over the game.
+        PROBED.store(false, Ordering::Release);
+        let mut basics = lock();
+        if basics.is_some() {
+            *basics = None;
+        }
     }
     let showing = lock().is_some();
     if INTERACTIVE.swap(showing, Ordering::AcqRel) != showing {
@@ -57,7 +64,13 @@ pub fn sync() {
 }
 
 /// Unity main thread: read the trainee, or record that there is no career.
+///
+/// Re-checks the screen, because this runs a frame or more after it was asked
+/// for and the player may have left in between.
 extern "C" fn probe_cb() {
+    if !on_planner_screen() {
+        return;
+    }
     let basics = read_planner_basics();
     if basics.is_none() {
         hlog_info!(target: "training-tracker", "Skill planner: no career to read on this screen");

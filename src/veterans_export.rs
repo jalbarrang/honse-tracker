@@ -13,6 +13,13 @@
 //! no second program. What is ported from umadump is the part worth keeping:
 //! the field selection and the output schema.
 //!
+//! # It carries account identifiers
+//!
+//! `viewer_id` and `owner_viewer_id` are in umadump's schema and so are in
+//! ours. That makes `veterans.json` a file about the account, not just about
+//! the characters — unlike an idle-career export, it is not something to hand
+//! to someone else without reading it first.
+//!
 //! # The schema is the contract
 //!
 //! The types here serialise to exactly umadump's `trained_chara_data.json`, so
@@ -230,7 +237,11 @@ pub fn request() {
         hlog_info!(target: "training-tracker", "Veteran export already running");
         return;
     }
-    Sdk::get().schedule_on_main_thread(export_cb);
+    if !Sdk::get().schedule_on_main_thread(export_cb) {
+        // Nothing was queued, so nothing will ever clear the flag.
+        RUNNING.store(false, Ordering::Release);
+        hlog_warn!(target: "training-tracker", "Veteran export: could not reach the main thread");
+    }
 }
 
 /// Unity main thread: read everything, then hand the writing off.

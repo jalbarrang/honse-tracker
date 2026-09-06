@@ -122,10 +122,75 @@ pub(super) unsafe fn read_il2cpp_string(str_obj: *mut c_void) -> Option<String> 
 /// export made thousands of them. 64 leaves room for a field being added.
 const OBSCURED_BUF: usize = 64;
 
+/// `(class_from_type, class_value_size)`, resolved once, or `None` on a build
+/// that does not export them.
+fn value_size_api() -> Option<&'static (
+    unsafe extern "C" fn(*const c_void) -> *mut c_void,
+    unsafe extern "C" fn(*mut c_void, *mut u32) -> i32,
+)> {
+    #[allow(clippy::type_complexity)]
+    static API: OnceLock<
+        Option<(
+            unsafe extern "C" fn(*const c_void) -> *mut c_void,
+            unsafe extern "C" fn(*mut c_void, *mut u32) -> i32,
+        )>,
+    > = OnceLock::new();
+    API.get_or_init(|| {
+        let sdk = Sdk::get();
+        // SAFETY: both are IL2CPP C API exports with the signatures declared here.
+        unsafe {
+            Some((
+                std::mem::transmute(sdk.resolve_symbol("il2cpp_class_from_type")?),
+                std::mem::transmute(sdk.resolve_symbol("il2cpp_class_value_size")?),
+            ))
+        }
+    })
+    .as_ref()
+}
+
+/// Whether a value-type field fits [`OBSCURED_BUF`], asked of the runtime
+/// rather than assumed.
+///
+/// The buffer is sized from layouts read out of a metadata dump, and a dump is
+/// a fact about one build. This is the same question the runtime can answer
+/// about the build actually running, so a field that outgrows the buffer is
+/// skipped instead of overrunning it. `true` when the runtime cannot be asked,
+/// which leaves the documented sizes as the fallback.
+unsafe fn value_fits_buffer(field: *mut c_void) -> bool {
+    let Some((class_from_type, class_value_size)) = value_size_api() else {
+        return true;
+    };
+    // SAFETY: IL2CPP FieldInfo — the type pointer follows the name pointer.
+    let ftype = unsafe { *(field as *const *const c_void).add(1) };
+    if ftype.is_null() {
+        return true;
+    }
+    // SAFETY: `ftype` came from a resolved FieldInfo.
+    let klass = unsafe { class_from_type(ftype) };
+    if klass.is_null() {
+        return true;
+    }
+    let mut align: u32 = 0;
+    // SAFETY: `klass` came from the runtime.
+    let size = unsafe { class_value_size(klass, &raw mut align) };
+    if size <= OBSCURED_BUF as i32 {
+        return true;
+    }
+    static LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if !LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        hlog_error!("obscured read skipped: field wants {size} bytes, buffer is {OBSCURED_BUF}");
+    }
+    false
+}
+
 /// Read a CodeStage `ObscuredInt` field and decrypt it.
 /// Layout: the struct's first 8 bytes are `currentCryptoKey` (i32 LE) then
 /// `hiddenValue` (i32 LE); the plaintext is `hiddenValue ^ currentCryptoKey`.
 pub(super) unsafe fn read_obscured_int_field(obj: *mut c_void, field: *mut c_void) -> i32 {
+    // SAFETY: `field` is a resolved FieldInfo.
+    if !unsafe { value_fits_buffer(field) } {
+        return 0;
+    }
     let mut buf = [0u8; OBSCURED_BUF];
     // SAFETY: IL2CPP object and field pointers from resolved metadata.
     unsafe {
@@ -453,6 +518,10 @@ pub(super) unsafe fn read_obscured_long(obj: *mut c_void, name: &str) -> i64 {
     let Some(field) = (unsafe { field_by_name(obj, &[name]) }) else {
         return 0;
     };
+    // SAFETY: `field` was just resolved from this object's klass.
+    if !unsafe { value_fits_buffer(field) } {
+        return 0;
+    }
     let mut buf = [0u8; OBSCURED_BUF];
     // SAFETY: IL2CPP object and field pointers from resolved metadata.
     unsafe {
@@ -472,6 +541,10 @@ pub(super) unsafe fn read_obscured_bool(obj: *mut c_void, name: &str) -> bool {
     let Some(field) = (unsafe { field_by_name(obj, &[name]) }) else {
         return false;
     };
+    // SAFETY: `field` was just resolved from this object's klass.
+    if !unsafe { value_fits_buffer(field) } {
+        return false;
+    }
     let mut buf = [0u8; OBSCURED_BUF];
     // SAFETY: IL2CPP object and field pointers from resolved metadata.
     unsafe {
