@@ -27,6 +27,7 @@
 //! Unity main thread. These are live managed objects; reading them from
 //! anywhere else is reading memory the GC may be moving.
 
+use std::collections::HashMap;
 use std::ffi::c_void;
 
 use crate::compat::Sdk;
@@ -35,8 +36,9 @@ use crate::veterans_export::{
 };
 
 use super::il2cpp::{
-    call_obj_with_i32, dict_values, read_list_field, read_obj_array, read_obscured_bool, read_obscured_int,
-    read_obscured_int_array, read_obscured_long, read_obscured_string, read_ref_field,
+    call_obj_with_i32, dict_values, read_i32_field_any, read_il2cpp_string, read_list_field, read_obj_array,
+    read_obscured_bool, read_obscured_int, read_obscured_int_array, read_obscured_long, read_obscured_string,
+    read_ref_field,
 };
 
 /// Every veteran on the account, or an empty list with the reason in the log.
@@ -87,18 +89,63 @@ unsafe fn inner() -> Vec<Veteran> {
         return Vec::new();
     }
 
+    // SAFETY: `work` is a live WorkTrainedCharaData.
+    let favorites = unsafe { favorite_markers(work) };
+
     // SAFETY: `dict` is a live Dictionary<int, TrainedCharaData>.
     let entries = unsafe { dict_values(dict) };
-    hlog_info!(target: "training-tracker", "veterans: {} entries in dataDic", entries.len());
+    hlog_info!(
+        target: "training-tracker",
+        "veterans: {} entries in dataDic, {} favourite marker(s)",
+        entries.len(),
+        favorites.len()
+    );
     entries
         .into_iter()
         // SAFETY: each value is a live TrainedCharaData the dictionary holds.
-        .map(|obj| unsafe { veteran(obj) })
+        .map(|obj| unsafe { veteran(obj, &favorites) })
+        .collect()
+}
+
+/// The favourite marker (icon, note) for every veteran that carries one, keyed
+/// by `trained_chara_id`.
+///
+/// # Why the account-wide dictionary and not the per-veteran field
+///
+/// `TrainedCharaData._favoriteData` is filled in as the list UI walks the
+/// roster, so exporting from the home screen finds it null on every entry and
+/// silently reports no markers at all — 61 of them missing, in the export that
+/// caught this. `WorkTrainedCharaData._favoriteDataDict` is built from the
+/// server's own response instead, so it is complete whatever screen you are on.
+///
+/// Each `FavoriteData` carries the id it belongs to, so the values alone are
+/// enough and the dictionary's keys never have to be read.
+unsafe fn favorite_markers(work: *mut c_void) -> HashMap<i32, (i32, String)> {
+    // SAFETY: `work` is a live WorkTrainedCharaData.
+    let dict = unsafe { read_ref_field(work, &["favoriteDataDict"]) };
+    if dict.is_null() {
+        return HashMap::new();
+    }
+    // SAFETY: `dict` is a live Dictionary<int, FavoriteData>.
+    unsafe { dict_values(dict) }
+        .into_iter()
+        .filter_map(|entry| {
+            // SAFETY: `entry` is a live FavoriteData.
+            let id = unsafe { read_i32_field_any(entry, &["trainedCharaId"]) };
+            if id == 0 {
+                return None;
+            }
+            // SAFETY: as above — a plain enum and a plain string.
+            let icon = unsafe { read_i32_field_any(entry, &["type"]) };
+            // SAFETY: as above.
+            let memo = unsafe { read_il2cpp_string(read_ref_field(entry, &["memo"])) }.unwrap_or_default();
+            Some((id, (icon, memo)))
+        })
         .collect()
 }
 
 /// One `Gallop.WorkTrainedCharaData.TrainedCharaData`.
-unsafe fn veteran(obj: *mut c_void) -> Veteran {
+unsafe fn veteran(obj: *mut c_void, favorites: &HashMap<i32, (i32, String)>) -> Veteran {
     // SAFETY: `obj` is a live TrainedCharaData; every helper below reads one
     // named field off it. Repeated for each read rather than wrapping the
     // whole struct literal, which would hide which reads are the unsafe ones.
@@ -113,11 +160,22 @@ unsafe fn veteran(obj: *mut c_void) -> Veteran {
     // SAFETY: as above; a plain int32, not obscured.
     let use_type = unsafe { super::il2cpp::read_i32_field_any(obj, &["useType"]) };
     // SAFETY: as above.
-    let favorite = unsafe { read_ref_field(obj, &["favoriteData"]) };
+    let trained_chara_id = unsafe { read_obscured_int(obj, "id") };
+    // The account-wide dictionary first; the per-veteran field is the fallback
+    // for a build that does not keep the dictionary (see `favorite_markers`).
+    let marker = favorites.get(&trained_chara_id).cloned().unwrap_or_else(|| {
+        // SAFETY: `obj` is a live TrainedCharaData; the field may be null.
+        let favorite = unsafe { read_ref_field(obj, &["favoriteData"]) };
+        // SAFETY: `favorite` is a live FavoriteData or null.
+        let icon = unsafe { read_i32_field_any(favorite, &["type"]) };
+        // SAFETY: as above.
+        let memo = unsafe { read_il2cpp_string(read_ref_field(favorite, &["memo"])) }.unwrap_or_default();
+        (icon, memo)
+    });
 
     Veteran {
         viewer_id: long("viewerId"),
-        trained_chara_id: int("id"),
+        trained_chara_id,
         owner_viewer_id: long("ownerViewerId"),
         owner_trained_chara_id: int("ownerTrainedCharaId"),
         single_mode_chara_id: 0,
@@ -171,10 +229,8 @@ unsafe fn veteran(obj: *mut c_void) -> Veteran {
         factor_extend_array: unsafe { factor_extends(SELF_POSITION, factors) },
         // SAFETY: `obj`'s successionCharaList is a List<SuccessionCharaData>.
         succession_chara_array: unsafe { succession_charas(obj) },
-        // SAFETY: `favorite` is a live FavoriteData or null.
-        icon_type: unsafe { super::il2cpp::read_i32_field_any(favorite, &["type"]) },
-        // SAFETY: as above; `memo` is a plain System.String.
-        memo: unsafe { super::il2cpp::read_il2cpp_string(read_ref_field(favorite, &["memo"])) }.unwrap_or_default(),
+        icon_type: marker.0,
+        memo: marker.1,
     }
 }
 
