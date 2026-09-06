@@ -475,8 +475,9 @@ fn skills_by_group() -> &'static HashMap<(i64, i64), Vec<i64>> {
 ///
 /// A hint names a group and a rarity, and a group at one rarity can hold
 /// several skills — group 20006 rarity 1 is Kyoto Racecourse ○, ◎ and ×. All
-/// of them are offered: they are alternatives you pick between, so listing the
-/// family cannot make a plan wrong, while dropping the one you wanted would.
+/// of them get the hint, which is how the game itself prices them: the white
+/// variants share one hint level, and the gold in the same group is a
+/// separate skill with its own (confirmed in play, 2026-09-06).
 ///
 /// Empty when the catalogue is unavailable — indistinguishable here from a
 /// career with no hints, so callers that care have to check.
