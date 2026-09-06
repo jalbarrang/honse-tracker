@@ -137,13 +137,27 @@ fn value_size_api() -> Option<&'static (
     > = OnceLock::new();
     API.get_or_init(|| {
         let sdk = Sdk::get();
-        // SAFETY: both are IL2CPP C API exports with the signatures declared here.
-        unsafe {
+        // SAFETY: both are IL2CPP C API exports with the signatures declared
+        // here — the same two `il2cpp_json` resolves and calls on every
+        // value-type field it walks.
+        let api = unsafe {
             Some((
-                std::mem::transmute(sdk.resolve_symbol("il2cpp_class_from_type")?),
+                std::mem::transmute(sdk.resolve_symbol("il2cpp_class_from_il2cpp_type")?),
                 std::mem::transmute(sdk.resolve_symbol("il2cpp_class_value_size")?),
             ))
-        }
+        };
+        // Said once, because a guard that silently never ran is what this
+        // replaced: it was resolving `il2cpp_class_from_type`, which is not an
+        // export, and passing every read on the strength of that.
+        hlog_info!(
+            "obscured size guard: {}",
+            if api.is_some() {
+                "active"
+            } else {
+                "unavailable, trusting documented layouts"
+            }
+        );
+        api
     })
     .as_ref()
 }
