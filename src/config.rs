@@ -67,12 +67,22 @@ pub struct HonseTrackerFile {
     /// Hosted-data URL overrides.
     #[serde(default)]
     pub hosted_data: HostedDataUrls,
+    /// Credentials for the uma.moe API.
+    #[serde(default, rename = "uma-moe")]
+    pub uma_moe: UmaMoeConfig,
     /// Where each panel sits, keyed by panel id.
     #[serde(default)]
     pub layout: LayoutSection,
     /// Which songs you are saving for.
     #[serde(default)]
     pub song_plan: SongPlanFile,
+}
+
+/// Configuration for the uma.moe API.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UmaMoeConfig {
+    #[serde(default, rename = "api-key")]
+    pub api_key: String,
 }
 
 /// Settings proper: the things a menu item toggles.
@@ -244,6 +254,7 @@ mod tests {
             serde_json::from_str(r#"{"settings":{"skip_race_skill_cutins":true}}"#).expect("partial document");
         assert!(file.settings.skip_race_skill_cutins);
         assert!(file.settings.save_idle_careers, "an absent field takes its default");
+        assert!(file.uma_moe.api_key.is_empty());
         assert!(file.layout.panels.is_empty());
     }
 
@@ -252,6 +263,17 @@ mod tests {
         let file: HonseTrackerFile = serde_json::from_str("{}").expect("empty document");
         assert!(!file.settings.skip_race_skill_cutins);
         assert!(file.settings.save_idle_careers);
+        assert!(file.uma_moe.api_key.is_empty());
+    }
+
+    #[test]
+    fn uma_moe_uses_the_public_config_keys() {
+        let file: HonseTrackerFile =
+            serde_json::from_str(r#"{"uma-moe":{"api-key":"test-key"}}"#).expect("uma.moe config");
+        assert_eq!(file.uma_moe.api_key, "test-key");
+
+        let json = serde_json::to_value(&file).expect("serialise");
+        assert_eq!(json["uma-moe"], serde_json::json!({ "api-key": "test-key" }));
     }
 
     /// The real `honseTrackerConfig.json` this replaced. A rename that quietly
@@ -284,9 +306,11 @@ mod tests {
         let mut file = HonseTrackerFile::default();
         file.settings.skip_race_skill_cutins = true;
         file.settings.idle_career_dir = "D:\\runs".to_string();
+        file.uma_moe.api_key = "test-key".to_string();
         let json = serde_json::to_string(&file).expect("serialise");
         let back: HonseTrackerFile = serde_json::from_str(&json).expect("deserialise");
         assert!(back.settings.skip_race_skill_cutins);
         assert_eq!(back.settings.idle_career_dir, "D:\\runs");
+        assert_eq!(back.uma_moe.api_key, "test-key");
     }
 }
