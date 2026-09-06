@@ -226,8 +226,9 @@ pub fn read_planner_basics() -> Option<PlannerBasics> {
 }
 
 fn read_planner_basics_inner() -> Option<PlannerBasics> {
-    let chain = CHAIN.get()?;
+    // Resolves the chain if nothing has yet, so this has to come first.
     let chara = super::chain::get_skills_chara_ptr()?;
+    let chain = CHAIN.get()?;
     // SAFETY: every call is a resolved 0-arg getter on the non-null
     // WorkSingleModeCharaData `get_chara_ptr` just validated.
     unsafe {

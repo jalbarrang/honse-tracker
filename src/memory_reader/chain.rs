@@ -199,11 +199,10 @@ fn try_resolve() -> Result<ResolvedChain, &'static str> {
 /// Idempotent lazy resolution of the IL2CPP method chain (the same `CHAIN`
 /// cell every entity reader uses). Returns whether the chain is resolved.
 ///
-/// Caller contract: Unity main thread only — the settled-turn capture callback
-/// (and the temporary settle diagnostics) are the only callers, both already
-/// behind the two crash-safety gates. There is no manual start/stop lifecycle:
-/// DLL load performs no career-state reads, and the first resolution happens
-/// on the first settled edge that requests a capture.
+/// Caller contract: Unity main thread only. Resolution is metadata lookup —
+/// no career state is read — so any main-thread reader that needs the chain
+/// may call it, and the first one to do so pays for it. DLL load resolves
+/// nothing.
 pub(crate) fn ensure_resolved() -> bool {
     if CHAIN.get().is_some() {
         return true;
@@ -276,6 +275,12 @@ pub fn get_single_mode_data() -> Option<*mut c_void> {
 /// stays on the live-career chain: an Independent Training run has no turns to
 /// settle and nothing to publish.
 pub fn get_skills_chara_ptr() -> Option<*mut c_void> {
+    // The capture path resolves the chain on its first settled turn, and an
+    // Independent Training run never has one — so this cannot assume anyone
+    // else has been here first.
+    if !ensure_resolved() {
+        return None;
+    }
     get_chara_ptr().or_else(get_idle_chara_ptr)
 }
 

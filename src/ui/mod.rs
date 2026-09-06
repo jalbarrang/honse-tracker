@@ -249,7 +249,11 @@ pub fn install() {
     // during the paint; see `planner::sync`.
     honse_services::frame::register_frame_job(Box::new(planner::sync));
     keys::install();
-    hlog_info!(target: "training-tracker", "Overlay: training + performance + lessons + idle + debug panels registered");
+    hlog_info!(
+        target: "training-tracker",
+        "Overlay: registered panels: {}",
+        honse_services::overlay::panel_ids().join(", ")
+    );
 }
 
 /// Songs the current run has already learned, resolved to catalogue ids.
