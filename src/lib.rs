@@ -96,6 +96,7 @@ mod idle_export;
 mod idle_training;
 pub(crate) mod il2cpp_json;
 mod memory_reader;
+pub(crate) mod planner_export;
 pub(crate) mod race_cutin;
 mod song_catalog;
 mod song_plan;

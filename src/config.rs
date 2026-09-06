@@ -93,6 +93,17 @@ pub struct Settings {
     /// resolves under the user profile, never under the game folder.
     #[serde(default)]
     pub idle_career_dir: String,
+    /// Where the skills-screen button sends you. Here rather than hardcoded so
+    /// a local planner build (`http://localhost:5173/skill-planner`) can be
+    /// pointed at without a rebuild. Not in the menu — this is a developer
+    /// escape hatch, not a setting.
+    #[serde(default = "default_skill_planner_url")]
+    pub skill_planner_url: String,
+}
+
+/// The public Skill Planner.
+fn default_skill_planner_url() -> String {
+    "https://torena-sim.pages.dev/skill-planner".to_string()
 }
 
 /// serde needs a function for a default that is not `false`.
@@ -106,6 +117,7 @@ impl Default for Settings {
             skip_race_skill_cutins: false,
             save_idle_careers: true,
             idle_career_dir: String::new(),
+            skill_planner_url: default_skill_planner_url(),
         }
     }
 }

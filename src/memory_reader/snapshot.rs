@@ -37,9 +37,9 @@ pub struct CareerSnapshot {
     /// Trained outfit/card id (matches gametora `card_id`); `0` if unknown.
     /// Used to detect the trainee's built-in (unique/innate/awakening) recoveries.
     pub card_id: i32,
-    // NOTE: get_SkillPoint returns ObscuredInt (struct), not i32.
-    // Needs special decryption handling — skipped for now.
-    #[allow(dead_code)]
+    /// Skill points available to spend. Decrypted from the `ObscuredInt`
+    /// backing field by [`super::read_skill_points`]; `0` when it could not be
+    /// read.
     pub skill_point: i32,
 
     #[allow(dead_code)] // read from memory; no longer shown in the redesigned UI
@@ -126,12 +126,15 @@ pub struct LightRefresh {
     pub wiz: i32,
     pub hp: i32,
     pub max_hp: i32,
+    /// The balance, which a shop screen spends. `0` when it could not be read.
+    pub skill_point: i32,
     pub scenario_state: Option<ScenarioState>,
 }
 
-/// Re-read only what a purchase can move: the five stats, energy, and the
-/// active scenario's state. Skips skills, evaluations, the deck, command info
-/// and every master-data lookup that does not belong to the scenario.
+/// Re-read only what a purchase can move: the five stats, energy, the skill
+/// point balance, and the active scenario's state. Skips skills, evaluations,
+/// the deck, command info and every master-data lookup that does not belong to
+/// the scenario.
 ///
 /// Exists so a shop screen stays truthful — you buy `Guts +5` for `Pa10` and
 /// both sides of that trade should move. It is a far smaller read than
@@ -181,6 +184,7 @@ fn read_light_refresh_inner() -> Option<LightRefresh> {
             wiz: call_i32(chara, chain.m_get_wiz),
             hp: call_i32(chara, chain.m_get_hp),
             max_hp: call_i32(chara, chain.m_get_max_hp),
+            skill_point: super::read_skill_points().unwrap_or(0),
             scenario_state: read_scenario_state(chara, wsmd, scenario_id),
         })
     }
@@ -362,7 +366,7 @@ fn read_snapshot_inner() -> Option<CareerSnapshot> {
         motivation,
         fan_count,
         card_id,
-        skill_point: 0, // ObscuredInt — needs decryption, not yet implemented
+        skill_point: super::read_skill_points().unwrap_or(0),
         total_races,
         win_count,
         training_levels,

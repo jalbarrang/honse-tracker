@@ -29,6 +29,7 @@ pub mod layout;
 pub mod menu;
 pub mod performance;
 pub mod plan;
+pub mod planner;
 pub mod training;
 
 /// The most recent settled capture, or `None` outside a career.
@@ -111,8 +112,8 @@ pub fn refreshed_face() -> Face {
     }
 }
 
-/// Patch the fields a purchase can move — stats, energy, scenario state —
-/// leaving everything else at its last settled value.
+/// Patch the fields a purchase can move — stats, energy, the balance, scenario
+/// state — leaving everything else at its last settled value.
 ///
 /// Deliberately partial: training projections and failure rates are *not*
 /// touched, because nothing re-derives them while you are in a shop. Writing
@@ -127,6 +128,7 @@ pub fn patch_light(refresh: &LightRefresh) {
             snapshot.wiz = refresh.wiz;
             snapshot.hp = refresh.hp;
             snapshot.max_hp = refresh.max_hp;
+            snapshot.skill_point = refresh.skill_point;
             snapshot.scenario_state = refresh.scenario_state.clone();
             REFRESH_LIVE.store(true, Ordering::Release);
         }
@@ -154,6 +156,13 @@ pub fn clear() {
         *guard = None;
     }
     clear_refresh_live();
+}
+
+/// A copy of the latest capture, for a caller that needs the whole thing
+/// rather than a field — the planner export builds a payload from it off the
+/// game's threads, so it cannot hold the lock while it works.
+pub fn latest_snapshot() -> Option<CareerSnapshot> {
+    with_snapshot(Clone::clone)
 }
 
 /// Run `f` against the latest capture, if there is one.
@@ -218,6 +227,16 @@ pub fn install() {
         overlay::theme::WIDTH_WIDE,
         plan::draw,
     );
+    // Bottom-left, and only on the two screens that spend skill points. It
+    // shares the corner with the debug panel, which is off by default — and
+    // both are draggable, so a player who wants them together can say so.
+    overlay::register_panel(
+        "planner",
+        Anchor::BottomLeft,
+        egui::vec2(overlay::theme::GAP, overlay::theme::GAP),
+        300.0,
+        planner::draw,
+    );
     // Hold the view poll open for as long as the plugin is loaded. This is not
     // a diagnostic convenience: view changes are what drive the read gate, and
     // without them the lifecycle never leaves `Idle`, which means every panel
@@ -232,6 +251,10 @@ pub fn install() {
     // A mouse drag moves a panel on the render thread; this is what writes the
     // result to disk once the button comes up.
     honse_services::frame::register_frame_job(Box::new(layout::flush_drag));
+    // Decides whether the planner button is on screen — and so whether it takes
+    // the mouse — before the frame it applies to is painted. It cannot be done
+    // during the paint; see `planner::sync`.
+    honse_services::frame::register_frame_job(Box::new(planner::sync));
     keys::install();
     hlog_info!(target: "training-tracker", "Overlay: training + performance + lessons + idle + debug panels registered");
 }

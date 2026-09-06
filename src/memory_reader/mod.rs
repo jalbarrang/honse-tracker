@@ -32,6 +32,7 @@ mod presentation;
 mod reserve;
 mod scenario;
 mod skill_points;
+mod skill_tips;
 mod skills;
 mod snapshot;
 mod story_events;
@@ -55,6 +56,7 @@ pub use scenario::{
     TrackblazerShopItem, Worth,
 };
 pub(crate) use skill_points::read_skill_points;
+pub use skill_tips::{read_skill_tips, SkillTip};
 pub use skills::{read_acquired_skill_list, read_acquired_skills, AcquiredSkillInfo};
 pub use snapshot::{read_light_refresh, read_snapshot, CareerSnapshot, LightRefresh};
 pub use story_events::{read_fired_events, FiredEvent};
