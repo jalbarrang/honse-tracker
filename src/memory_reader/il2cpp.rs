@@ -104,11 +104,31 @@ pub(super) unsafe fn read_il2cpp_string(str_obj: *mut c_void) -> Option<String> 
     }
 }
 
+/// Scratch space for reading one `Obscured*` value out of a field.
+///
+/// `il2cpp_field_get_value` copies the **whole** value type, not the part the
+/// caller wants, so the buffer has to fit the largest of them. Measured from
+/// the game's own metadata (`il2cpp_classes.txt`, Global build):
+///
+/// ```text
+/// ObscuredInt    currentCryptoKey i32, hiddenValue i32, inited bool,
+///                fakeValue i32, fakeValueActive bool        →  20 bytes
+/// ObscuredLong   the same shape in i64                      →  40 bytes
+/// ObscuredBool   byte key, i32 hidden, three bools          →  12 bytes
+/// ```
+///
+/// These buffers used to be 16 and 32 bytes, which the runtime overran by 4 and
+/// 8 — a stack smash on every read. It survived while the readers were used a
+/// few times a turn, and crashed the game (`0xc0000005`) the moment the veteran
+/// export walked 211 characters at ~40 obscured reads each. 64 leaves room for
+/// a future field without another crash to find it.
+const OBSCURED_BUF: usize = 64;
+
 /// Read a CodeStage `ObscuredInt` field and decrypt it.
-/// Layout: the struct's first 8 bytes are `cryptoKey` (i32 LE) then `hiddenValue`
-/// (i32 LE); the plaintext is `hiddenValue ^ cryptoKey`.
+/// Layout: the struct's first 8 bytes are `currentCryptoKey` (i32 LE) then
+/// `hiddenValue` (i32 LE); the plaintext is `hiddenValue ^ currentCryptoKey`.
 pub(super) unsafe fn read_obscured_int_field(obj: *mut c_void, field: *mut c_void) -> i32 {
-    let mut buf = [0u8; 16];
+    let mut buf = [0u8; OBSCURED_BUF];
     // SAFETY: IL2CPP object and field pointers from resolved metadata.
     unsafe {
         Sdk::get().get_field_value(obj.cast(), field.cast(), buf.as_mut_ptr() as *mut c_void);
@@ -387,16 +407,23 @@ unsafe fn field_by_name(obj: *mut c_void, names: &[&str]) -> Option<*mut c_void>
 
 /// Read a managed reference field (object, array or string) by name.
 /// Null when the object is null, the field is missing, or the field is null.
+///
+/// The destination is over-sized and only its first word is read, because
+/// `il2cpp_field_get_value` copies whatever the field's type is: a caller that
+/// names a value-type field by mistake then gets a wrong answer instead of a
+/// smashed stack. Same guard, same reason as [`dict_try_get_obj`].
 pub(super) unsafe fn read_ref_field(obj: *mut c_void, names: &[&str]) -> *mut c_void {
     let Some(field) = (unsafe { field_by_name(obj, names) }) else {
         return std::ptr::null_mut();
     };
-    let mut ptr: *mut c_void = std::ptr::null_mut();
+    let mut out = [0u8; OBSCURED_BUF];
     // SAFETY: IL2CPP object and field from resolved metadata.
     unsafe {
-        Sdk::get().get_field_value(obj.cast(), field.cast(), (&raw mut ptr).cast());
+        Sdk::get().get_field_value(obj.cast(), field.cast(), out.as_mut_ptr().cast());
     }
-    ptr
+    // SAFETY: the buffer is at least word-wide; read unaligned because a `u8`
+    // array carries no alignment guarantee of its own.
+    unsafe { out.as_ptr().cast::<*mut c_void>().read_unaligned() }
 }
 
 /// Read a plain `System.Int32` field by name, trying each candidate.
@@ -429,7 +456,7 @@ pub(super) unsafe fn read_obscured_long(obj: *mut c_void, name: &str) -> i64 {
     let Some(field) = (unsafe { field_by_name(obj, &[name]) }) else {
         return 0;
     };
-    let mut buf = [0u8; 32];
+    let mut buf = [0u8; OBSCURED_BUF];
     // SAFETY: IL2CPP object and field pointers from resolved metadata.
     unsafe {
         Sdk::get().get_field_value(obj.cast(), field.cast(), buf.as_mut_ptr().cast());
@@ -448,7 +475,7 @@ pub(super) unsafe fn read_obscured_bool(obj: *mut c_void, name: &str) -> bool {
     let Some(field) = (unsafe { field_by_name(obj, &[name]) }) else {
         return false;
     };
-    let mut buf = [0u8; 16];
+    let mut buf = [0u8; OBSCURED_BUF];
     // SAFETY: IL2CPP object and field pointers from resolved metadata.
     unsafe {
         Sdk::get().get_field_value(obj.cast(), field.cast(), buf.as_mut_ptr().cast());
