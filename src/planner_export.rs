@@ -28,7 +28,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::compat::Sdk;
-use crate::memory_reader::{AcquiredSkillInfo, CareerSnapshot, SkillTip};
+use crate::memory_reader::{AcquiredSkillInfo, PlannerBasics, SkillTip};
 
 /// The wire format version this writes. Bump only alongside torena-hub.
 const VERSION: u8 = 1;
@@ -136,20 +136,15 @@ impl PlannerExport {
     }
 }
 
-/// Assemble a session from a settled capture plus the three things that move
-/// while you shop: the balance, what you have learned, and your hints.
+/// Assemble a session from the trainee plus what they have learned and been
+/// hinted at.
 ///
 /// Aptitudes are sent per-field even though the planner collapses them to one
 /// value per group on import — the encoding has the room, and sending the real
 /// grades costs nothing.
 #[must_use]
-pub fn from_career(
-    snapshot: &CareerSnapshot,
-    budget: i32,
-    skills: &[AcquiredSkillInfo],
-    tips: &[SkillTip],
-) -> PlannerExport {
-    let apt = &snapshot.aptitudes;
+pub fn from_career(basics: &PlannerBasics, skills: &[AcquiredSkillInfo], tips: &[SkillTip]) -> PlannerExport {
+    let apt = &basics.aptitudes;
     let aptitudes = [
         apt.dist_short,
         apt.dist_mile,
@@ -165,16 +160,16 @@ pub fn from_career(
     let obtained_skills: Vec<i32> = skills.iter().map(|s| s.master_id).collect();
 
     PlannerExport {
-        card_id: snapshot.card_id,
-        speed: snapshot.speed,
-        stamina: snapshot.stamina,
-        power: snapshot.power,
-        guts: snapshot.guts,
-        wiz: snapshot.wiz,
+        card_id: basics.card_id,
+        speed: basics.speed,
+        stamina: basics.stamina,
+        power: basics.power,
+        guts: basics.guts,
+        wiz: basics.wiz,
         aptitudes,
         strategy: strategy_from_aptitudes(apt),
-        mood: mood_from_motivation(snapshot.motivation),
-        budget,
+        mood: mood_from_motivation(basics.motivation),
+        budget: basics.skill_point,
         fast_learner: obtained_skills.contains(&FAST_LEARNER_SKILL_ID),
         candidate_skills: crate::gametora_data::hinted_skills(tips)
             .into_iter()
@@ -227,32 +222,33 @@ pub fn request() {
     Sdk::get().schedule_on_main_thread(export_cb);
 }
 
-/// Unity main thread: read the three live things, then hand off.
+/// Unity main thread: read the trainee as they are right now, then hand off.
 ///
-/// Only `WorkSingleModeCharaData` is touched — the same career-lifetime work
-/// data the shop-screen light refresh reads, not per-screen UI objects.
+/// Read fresh rather than reused from the panel, because the balance and the
+/// learned list are exactly what the last few clicks were changing. Only
+/// `WorkSingleModeCharaData` is touched — career-lifetime work data, not
+/// per-screen UI objects.
 extern "C" fn export_cb() {
-    let snapshot = crate::ui::latest_snapshot();
-    let budget = crate::memory_reader::read_skill_points().unwrap_or(0);
+    let basics = crate::memory_reader::read_planner_basics();
     let skills = crate::memory_reader::read_acquired_skills();
     let tips = crate::memory_reader::read_skill_tips();
 
     std::thread::spawn(move || {
-        finish(snapshot.as_ref(), budget, &skills, &tips);
+        finish(basics.as_ref(), &skills, &tips);
         RUNNING.store(false, Ordering::Release);
     });
 }
 
 /// Encode, copy, open, and say what happened. Off the game's threads.
-fn finish(snapshot: Option<&CareerSnapshot>, budget: i32, skills: &[AcquiredSkillInfo], tips: &[SkillTip]) {
+fn finish(basics: Option<&PlannerBasics>, skills: &[AcquiredSkillInfo], tips: &[SkillTip]) {
     let sdk = Sdk::get();
-    let Some(snapshot) = snapshot else {
-        hlog_warn!(target: "training-tracker", "Skill planner: no career capture to export");
+    let Some(basics) = basics else {
+        hlog_warn!(target: "training-tracker", "Skill planner: no career to export");
         sdk.show_notification("Skill planner: no career loaded");
         return;
     };
 
-    let export = from_career(snapshot, budget, skills, tips);
+    let export = from_career(basics, skills, tips);
     // Hints the catalogue could not place are the one silent failure worth
     // naming: the planner would price every skill at full cost and look right
     // doing it.

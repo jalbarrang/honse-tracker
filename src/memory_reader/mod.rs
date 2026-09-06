@@ -58,7 +58,9 @@ pub use scenario::{
 pub(crate) use skill_points::read_skill_points;
 pub use skill_tips::{read_skill_tips, SkillTip};
 pub use skills::{read_acquired_skill_list, read_acquired_skills, AcquiredSkillInfo};
-pub use snapshot::{read_light_refresh, read_snapshot, CareerSnapshot, LightRefresh};
+pub use snapshot::{
+    read_light_refresh, read_planner_basics, read_snapshot, CareerSnapshot, LightRefresh, PlannerBasics,
+};
 pub use story_events::{read_fired_events, FiredEvent};
 pub use support_deck::read_equipped_support_ids;
 pub use veterans::read_veterans;

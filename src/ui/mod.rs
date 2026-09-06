@@ -158,13 +158,6 @@ pub fn clear() {
     clear_refresh_live();
 }
 
-/// A copy of the latest capture, for a caller that needs the whole thing
-/// rather than a field — the planner export builds a payload from it off the
-/// game's threads, so it cannot hold the lock while it works.
-pub fn latest_snapshot() -> Option<CareerSnapshot> {
-    with_snapshot(Clone::clone)
-}
-
 /// Run `f` against the latest capture, if there is one.
 fn with_snapshot<R>(f: impl FnOnce(&CareerSnapshot) -> R) -> Option<R> {
     let guard = LATEST.lock().ok()?;

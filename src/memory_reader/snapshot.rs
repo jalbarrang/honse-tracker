@@ -190,6 +190,67 @@ fn read_light_refresh_inner() -> Option<LightRefresh> {
     }
 }
 
+/// Exactly what the skill planner needs about the trainee, and nothing else.
+#[derive(Debug, Clone, Default)]
+pub struct PlannerBasics {
+    pub card_id: i32,
+    pub speed: i32,
+    pub stamina: i32,
+    pub power: i32,
+    pub guts: i32,
+    pub wiz: i32,
+    /// `RaceDefine.Motivation`, 1–5.
+    pub motivation: i32,
+    pub aptitudes: Aptitudes,
+    pub skill_point: i32,
+}
+
+/// Read the trainee's identity, stats, aptitudes and balance.
+///
+/// # Why this is not [`read_snapshot`]
+///
+/// The skills shop is a menu, and the read gate only lets the full capture run
+/// in `CommandSelectActive` — for good reason: it walks command info and
+/// per-screen UI objects, which is what races asset unloading. This reads
+/// nothing but getters on `WorkSingleModeCharaData`, career-lifetime work data
+/// that outlives any one screen, which is the same argument
+/// [`read_light_refresh`] makes for itself.
+///
+/// `None` when no career is loaded — which is the answer the planner panel
+/// needs, because a career reached through Independent Training never produces
+/// a settled capture to read instead.
+///
+/// Unity main thread, like every read here.
+pub fn read_planner_basics() -> Option<PlannerBasics> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(read_planner_basics_inner)) {
+        Ok(basics) => basics,
+        Err(_) => {
+            hlog_error!("read_planner_basics PANICKED");
+            None
+        }
+    }
+}
+
+fn read_planner_basics_inner() -> Option<PlannerBasics> {
+    let chain = CHAIN.get()?;
+    let chara = super::get_chara_ptr()?;
+    // SAFETY: every call is a resolved 0-arg getter on the non-null
+    // WorkSingleModeCharaData `get_chara_ptr` just validated.
+    unsafe {
+        Some(PlannerBasics {
+            card_id: call_i32(chara, chain.m_get_card_id),
+            speed: call_i32(chara, chain.m_get_speed),
+            stamina: call_i32(chara, chain.m_get_stamina),
+            power: call_i32(chara, chain.m_get_power),
+            guts: call_i32(chara, chain.m_get_guts),
+            wiz: call_i32(chara, chain.m_get_wiz),
+            motivation: call_i32(chara, chain.m_get_motivation),
+            aptitudes: read_aptitudes(chara, chain),
+            skill_point: super::read_skill_points().unwrap_or(0),
+        })
+    }
+}
+
 fn read_snapshot_inner() -> Option<CareerSnapshot> {
     let chain = CHAIN.get()?;
     let sdk = Sdk::get();
