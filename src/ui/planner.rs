@@ -1,35 +1,24 @@
 //! One button: hand this run to torena-hub's Skill Planner.
 //!
-//! # Only where it means something
+//! Draws on the Skills Shop and pre-complete screens, which is where leftover
+//! skill points get spent.
 //!
-//! It draws on the two screens that spend skill points — the Skills Shop and
-//! the pre-complete summary — and nowhere else. A planner link built anywhere
-//! else would still be *correct*, but a button that is always on screen is a
-//! button you stop reading; this one appears exactly when the decision it
-//! helps with is in front of you.
+//! # It reads for itself
 //!
-//! # It cannot render from the capture cache
+//! The capture cache is empty here. A career finished through Independent
+//! Training reaches these screens from the home screen without ever passing
+//! through command select, so no capture is ever published for it — this panel
+//! rendering from the cache is what made the button invisible on the first run
+//! that tried it. So [`sync`] schedules its own read on the way in and drops it
+//! on the way out. `None` means no career, and no button: one that can only
+//! report failure when clicked is worse than none.
 //!
-//! Every other panel draws the last settled capture, and captures only happen
-//! in `CommandSelectActive`. A career finished through Independent Training
-//! goes straight from the home screen to the pre-complete summary and its
-//! skills shop without ever passing through one — so the cache is empty on
-//! exactly the screen this panel lives on, which is how the button came to be
-//! invisible on the first run that tried it.
+//! # The mouse claim cannot be set while drawing
 //!
-//! So it reads for itself: entering the screen schedules one narrow read of
-//! the trainee ([`read_planner_basics`]), the panel draws what came back, and
-//! leaving throws it away. `None` means no career is loaded and no button is
-//! drawn — a button that can only report failure is worse than no button.
-//!
-//! # Visibility is decided before the frame, not during it
-//!
-//! An interactive panel is one the game cannot be clicked through, so the flag
-//! has to follow visibility. It cannot be set from [`draw`], though: the
-//! overlay holds its panel list locked for the whole paint, so asking for the
-//! mouse mid-draw would deadlock the render thread. [`sync`] runs as a frame
-//! job — before the paint, like the hotkey poll — and [`draw`] renders what it
-//! settled.
+//! `overlay::draw_panels` holds the panel list locked for the whole paint, and
+//! `set_panel_interactive` wants that same lock — so calling it from [`draw`]
+//! deadlocks the render thread. [`sync`] is a frame job, which runs before the
+//! paint.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;

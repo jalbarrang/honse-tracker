@@ -1,19 +1,12 @@
 //! Handing something to the rest of the desktop: the clipboard, and the
 //! browser.
 //!
-//! # Both, in that order
+//! Copy first, open second. The game is usually fullscreen, so the browser
+//! launch is the step most likely to go wrong, and a link already on the
+//! clipboard survives it. Neither call is fatal; both report what happened.
 //!
-//! The game is usually fullscreen, and a browser opening over it is the moment
-//! most likely to go wrong — the window comes up behind, or focus bounces and
-//! the launch is lost. Copying first means there is always something to paste,
-//! whatever the shell does next. Neither call is fatal: both report what
-//! happened and let the caller say so.
-//!
-//! # Why raw Win32
-//!
-//! `ShellExecuteW` and the clipboard API need no registration, no crate, and no
-//! runtime beyond what the process already has — `windows` is here for the
-//! overlay anyway. Same reasoning as [`crate::toast`].
+//! Raw Win32 because `windows` is already a dependency here and neither API
+//! needs registering, unlike the toast in [`crate::toast`].
 
 #![cfg(windows)]
 

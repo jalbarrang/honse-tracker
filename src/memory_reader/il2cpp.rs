@@ -117,11 +117,9 @@ pub(super) unsafe fn read_il2cpp_string(str_obj: *mut c_void) -> Option<String> 
 /// ObscuredBool   byte key, i32 hidden, three bools          →  12 bytes
 /// ```
 ///
-/// These buffers used to be 16 and 32 bytes, which the runtime overran by 4 and
-/// 8 — a stack smash on every read. It survived while the readers were used a
-/// few times a turn, and crashed the game (`0xc0000005`) the moment the veteran
-/// export walked 211 characters at ~40 obscured reads each. 64 leaves room for
-/// a future field without another crash to find it.
+/// Sizing these to the two fields instead of the whole struct smashed the
+/// stack on every read, and took the game down (`0xc0000005`) once the veteran
+/// export made thousands of them. 64 leaves room for a field being added.
 const OBSCURED_BUF: usize = 64;
 
 /// Read a CodeStage `ObscuredInt` field and decrypt it.
@@ -356,11 +354,10 @@ pub(super) unsafe fn read_i32_field(obj: *mut c_void, field_name: &str) -> i32 {
 /// The spellings the game gives one field, in the order they are tried.
 ///
 /// C# writes the same value four ways depending on how the field was declared,
-/// and the game uses all four in the same class: `_viewerId` (private field),
-/// `<ScenarioId>k__BackingField` (auto-property), `Type` (public field), and
-/// occasionally the bare name. A reader that asks for one spelling gets a
-/// silent zero on a class that chose another — which is worse than an error,
-/// because a zero looks like data.
+/// and `WorkTrainedCharaData.TrainedCharaData` uses all four: `_viewerId`
+/// (private), `<ScenarioId>k__BackingField` (auto-property), `Type` (public),
+/// and the bare name. Asking for one spelling on a class that chose another
+/// returns a silent zero, which reads as data.
 ///
 /// Callers pass the logical name (`"viewerId"`) and this covers the rest.
 fn field_name_variants(name: &str) -> [String; 4] {

@@ -1,31 +1,17 @@
 //! Skill hints held by the current career — the discounts on the shop screen.
 //!
-//! # A hint is a group, not a skill
+//! Two facts that the code cannot show you, both from `il2cpp_classes.txt`
+//! (Global build, 2026-08-30):
 //!
-//! `WorkSingleModeCharaData.SkillTips` is `{ GroupId, Rarity, Level }`: hints
-//! are stored per skill *group* and rarity, never per skill id. Turning that
-//! into the skill ids a planner wants is
-//! [`crate::gametora_data::hinted_skills`]'s job; this module only reads what
-//! the game holds.
+//! - A hint names a skill *group* and rarity, never a skill id.
+//!   `WorkSingleModeCharaData._skillTipsList` holds
+//!   `SkillTips { GroupId, Rarity, Level }`; mapping that onto ids is
+//!   [`crate::gametora_data::hinted_skills`].
+//! - Those three are `ObscuredInt`. `get_GroupId()` hands back the struct,
+//!   whose first word is the crypto key, so only [`read_obscured_int`] gets
+//!   the number.
 //!
-//! # The three values are obscured
-//!
-//! They are `ObscuredInt`, so neither the getters nor a plain field read give
-//! the number: `get_GroupId()` returns the struct, whose first word is the
-//! crypto key. Only [`read_obscured_int`] gets the plaintext, which is the same
-//! trap `get_SkillPoint` sets one class up.
-//!
-//! Names verified against `il2cpp_classes.txt` (Global build, 2026-08-30):
-//! ```text
-//! WorkSingleModeCharaData
-//!   ._skillTipsList  List<WorkSingleModeCharaData.SkillTips>
-//!       <GroupId>k__BackingField / <Rarity>k__BackingField / <Level>k__BackingField
-//! ```
-//! Both hops are asked for by their logical name, so the decoration can change
-//! without this having to (see `il2cpp::field_name_variants`).
-//!
-//! Read tier: career-lifetime work data on the chara object, the same tier the
-//! shop-screen light refresh already reads. No per-screen UI objects.
+//! Reads nothing but that list off the chara object, on the Unity main thread.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 

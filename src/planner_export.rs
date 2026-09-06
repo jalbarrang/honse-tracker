@@ -1,29 +1,14 @@
 //! Hand the run to torena-hub's Skill Planner, as a link.
 //!
-//! # Why a link and not a file
+//! The wire format is torena-hub's, not ours: version 1 of
+//! `src/modules/skill-planner/share/ENCODING.md`, which
+//! `/skill-planner?planner=<code>` decodes on arrival. A writer only —
+//! [`tests::matches_the_typescript_encoder`] pins it to codes their encoder
+//! produced, which is what will catch the two drifting apart.
 //!
-//! The planner already accepts a session on its query string:
-//! `/skill-planner?planner=<code>` decodes a v1 payload and hydrates runner,
-//! obtained skills, budget and hint discounts in one step (`usePlannerImport`
-//! in torena-hub). So there is nothing to write, nothing to import by hand,
-//! and no second format to keep in sync — the plugin builds the same code the
-//! web app builds, and opens the page with it.
-//!
-//! # The wire format is theirs
-//!
-//! The bit layout is specified in torena-hub's
-//! `src/modules/skill-planner/share/ENCODING.md` (version 1) and implemented in
-//! `share/encoding.ts` over `runners/share/bit-vector.ts`. This is a writer for
-//! that format and nothing more: no reader, because nothing here decodes, and
-//! no fields of our own, because a field the planner does not read is a field
-//! that will drift. [`tests::matches_the_typescript_encoder`] pins the two
-//! implementations together with codes the TypeScript one produced.
-//!
-//! # Where the work happens
-//!
-//! A click lands on the render thread, the reads have to happen on the Unity
-//! main thread, and opening a browser should happen on neither. [`request`]
-//! makes that split, the same way [`crate::veterans_export`] does.
+//! [`request`] splits the work three ways because it has to: the click lands
+//! on the render thread, the reads are only valid on the Unity main thread,
+//! and opening a browser belongs on neither.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 

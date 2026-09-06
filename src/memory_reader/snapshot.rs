@@ -207,20 +207,11 @@ pub struct PlannerBasics {
 
 /// Read the trainee's identity, stats, aptitudes and balance.
 ///
-/// # Why this is not [`read_snapshot`]
+/// Safe on a menu screen, where [`read_snapshot`] is not: it calls getters on
+/// `WorkSingleModeCharaData` and touches no per-screen UI object, so there is
+/// nothing here for asset unloading to pull out from under it.
 ///
-/// The skills shop is a menu, and the read gate only lets the full capture run
-/// in `CommandSelectActive` — for good reason: it walks command info and
-/// per-screen UI objects, which is what races asset unloading. This reads
-/// nothing but getters on `WorkSingleModeCharaData`, career-lifetime work data
-/// that outlives any one screen, which is the same argument
-/// [`read_light_refresh`] makes for itself.
-///
-/// `None` when no career is loaded — which is the answer the planner panel
-/// needs, because a career reached through Independent Training never produces
-/// a settled capture to read instead.
-///
-/// Unity main thread, like every read here.
+/// `None` when no career is loaded. Unity main thread, like every read here.
 pub fn read_planner_basics() -> Option<PlannerBasics> {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(read_planner_basics_inner)) {
         Ok(basics) => basics,

@@ -453,9 +453,9 @@ fn released_skill_ids() -> &'static HashSet<i64> {
 /// Skill ids a hint applies to, keyed by `(group_id, rarity)`.
 ///
 /// The game stores a hint as a group and a rarity, never as a skill id, and
-/// `group_id == skill_id / 10` holds for every row of the game's own
-/// `skill_data` master table. So the index is arithmetic over the catalogue
-/// rather than a lookup we have to ship.
+/// `group_id == skill_id / 10` holds for all 712 rows of its own `skill_data`
+/// master table (`master.mdb`, checked 2026-09-06). So the index is arithmetic
+/// over the catalogue rather than a table we have to ship.
 fn skills_by_group() -> &'static HashMap<(i64, i64), Vec<i64>> {
     static S: OnceLock<HashMap<(i64, i64), Vec<i64>>> = OnceLock::new();
     S.get_or_init(|| {
@@ -478,8 +478,8 @@ fn skills_by_group() -> &'static HashMap<(i64, i64), Vec<i64>> {
 /// of them are offered: they are alternatives you pick between, so listing the
 /// family cannot make a plan wrong, while dropping the one you wanted would.
 ///
-/// Empty when the catalogue is unavailable, which the caller reports rather
-/// than papering over — a planner told "no discounts" prices every skill wrong.
+/// Empty when the catalogue is unavailable — indistinguishable here from a
+/// career with no hints, so callers that care have to check.
 #[must_use]
 pub fn hinted_skills(tips: &[crate::memory_reader::SkillTip]) -> Vec<(i32, u8)> {
     hinted_from_index(tips, skills_by_group())

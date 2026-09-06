@@ -81,7 +81,7 @@ unsafe fn inner() -> Vec<Veteran> {
     }
     // `dataDic` and not `allDataDic`: the former is the account's own stable,
     // the latter also carries borrowed and ghost entries the player does not
-    // own — which is what umadump exports too.
+    // own. umadump reads the same one (`json_encoders.py`, checked 2026-09-06).
     // SAFETY: `work` is a live WorkTrainedCharaData.
     let dict = unsafe { read_ref_field(work, &["dataDic"]) };
     if dict.is_null() {
@@ -110,13 +110,10 @@ unsafe fn inner() -> Vec<Veteran> {
 /// The favourite marker (icon, note) for every veteran that carries one, keyed
 /// by `trained_chara_id`.
 ///
-/// # Why the account-wide dictionary and not the per-veteran field
-///
 /// `TrainedCharaData._favoriteData` is filled in as the list UI walks the
-/// roster, so exporting from the home screen finds it null on every entry and
-/// silently reports no markers at all — 61 of them missing, in the export that
-/// caught this. `WorkTrainedCharaData._favoriteDataDict` is built from the
-/// server's own response instead, so it is complete whatever screen you are on.
+/// roster, so it is null on every entry until you have opened that screen, and
+/// null there reads as "not marked". `_favoriteDataDict` comes from the
+/// server's response and is complete from the start.
 ///
 /// Each `FavoriteData` carries the id it belongs to, so the values alone are
 /// enough and the dictionary's keys never have to be read.
