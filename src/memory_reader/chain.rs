@@ -17,6 +17,12 @@ pub(super) struct ResolvedChain {
     // WorkDataManager → WorkSingleModeData
     pub(super) m_get_single_mode: *const c_void,
 
+    // WorkDataManager → WorkIdleSingleModeData → WorkSingleModeCharaData.
+    // Both `None` on a build without Independent Training, which costs only
+    // that path.
+    pub(super) m_get_idle_single_mode: Option<*const c_void>,
+    pub(super) m_get_idle_work_chara: Option<*const c_void>,
+
     // WorkSingleModeData getters
     pub(super) m_get_is_playing: *const c_void,
     pub(super) m_get_character: *const c_void,
@@ -120,9 +126,21 @@ fn try_resolve() -> Result<ResolvedChain, &'static str> {
     hlog_info!("try_resolve: resolving methods...");
 
     // Resolve methods
+    // Optional: an Independent Training career hangs its chara off here
+    // instead of off WorkSingleModeData. Missing is not fatal — every other
+    // read works without it.
+    let idle = resolve_class(image, c"Gallop", c"WorkIdleSingleModeData").ok();
+    let m_get_idle_single_mode = resolve_method(wdm, c"get_IdleSingleModeData", 0).ok();
+    let m_get_idle_work_chara = idle.and_then(|k| resolve_method(k, c"get_WorkCharaData", 0).ok());
+    if m_get_idle_single_mode.is_none() || m_get_idle_work_chara.is_none() {
+        hlog_warn!("Independent Training chara path unavailable; the skill planner will only see live careers");
+    }
+
     let chain = ResolvedChain {
         wdm_klass: wdm,
         m_get_single_mode: resolve_method(wdm, c"get_SingleMode", 0)?,
+        m_get_idle_single_mode,
+        m_get_idle_work_chara,
 
         m_get_is_playing: resolve_method(wsmd, c"get_IsPlaying", 0)?,
         m_get_character: resolve_method(wsmd, c"get_Character", 0)?,
@@ -243,6 +261,39 @@ pub fn get_single_mode_data() -> Option<*mut c_void> {
         return None;
     }
     Some(wsmd)
+}
+
+/// The trainee whose skills the shop screens are spending points on, from
+/// whichever mode is holding one.
+///
+/// Independent Training does not run through `WorkSingleModeData` — its career
+/// hangs off `WorkIdleSingleModeData._workCharaData`, so `get_chara_ptr` finds
+/// nothing on the pre-complete and skills screens that follow one. Same class
+/// either way (`WorkSingleModeCharaData`), so everything downstream of this is
+/// unchanged.
+///
+/// Only for reads that are about the trainee. The capture path deliberately
+/// stays on the live-career chain: an Independent Training run has no turns to
+/// settle and nothing to publish.
+pub fn get_skills_chara_ptr() -> Option<*mut c_void> {
+    get_chara_ptr().or_else(get_idle_chara_ptr)
+}
+
+/// The Independent Training career's chara, or `None` when there is not one.
+fn get_idle_chara_ptr() -> Option<*mut c_void> {
+    let chain = CHAIN.get()?;
+    let m_idle = chain.m_get_idle_single_mode?;
+    let m_chara = chain.m_get_idle_work_chara?;
+    let singleton = Sdk::get().get_singleton(chain.wdm_klass.cast())?.cast::<c_void>();
+
+    // SAFETY: resolved 0-arg getter on the live WorkDataManager singleton.
+    let idle = unsafe { call_obj(singleton, m_idle) };
+    if idle.is_null() {
+        return None;
+    }
+    // SAFETY: resolved 0-arg getter on a live WorkIdleSingleModeData.
+    let chara = unsafe { call_obj(idle, m_chara) };
+    (!chara.is_null()).then_some(chara)
 }
 
 pub fn get_chara_ptr() -> Option<*mut c_void> {

@@ -15,7 +15,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use super::chain::get_chara_ptr;
+use super::chain::get_skills_chara_ptr;
 use super::il2cpp::{call_obj_with_i32, read_list_field, read_obscured_int};
 
 /// One hint the career is holding.
@@ -55,7 +55,7 @@ pub fn read_skill_tips() -> Option<Vec<SkillTip>> {
 }
 
 unsafe fn read_inner() -> Option<Vec<SkillTip>> {
-    let chara = get_chara_ptr()?;
+    let chara = get_skills_chara_ptr()?;
     // SAFETY: chara is a live active-career object; a missing field yields None.
     let (list, count, get_item) = unsafe { read_list_field(chara, TIPS_FIELD) }.or_else(|| {
         warn_once();

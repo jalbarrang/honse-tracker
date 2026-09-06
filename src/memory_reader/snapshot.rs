@@ -205,13 +205,16 @@ pub struct PlannerBasics {
     pub skill_point: i32,
 }
 
-/// Read the trainee's identity, stats, aptitudes and balance.
+/// Read the trainee's identity, stats, aptitudes and balance, from a live
+/// career or an Independent Training one — see
+/// [`super::chain::get_skills_chara_ptr`].
 ///
 /// Safe on a menu screen, where [`read_snapshot`] is not: it calls getters on
 /// `WorkSingleModeCharaData` and touches no per-screen UI object, so there is
 /// nothing here for asset unloading to pull out from under it.
 ///
-/// `None` when no career is loaded. Unity main thread, like every read here.
+/// `None` when neither mode holds a trainee. Unity main thread, like every
+/// read here.
 pub fn read_planner_basics() -> Option<PlannerBasics> {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(read_planner_basics_inner)) {
         Ok(basics) => basics,
@@ -224,7 +227,7 @@ pub fn read_planner_basics() -> Option<PlannerBasics> {
 
 fn read_planner_basics_inner() -> Option<PlannerBasics> {
     let chain = CHAIN.get()?;
-    let chara = super::get_chara_ptr()?;
+    let chara = super::chain::get_skills_chara_ptr()?;
     // SAFETY: every call is a resolved 0-arg getter on the non-null
     // WorkSingleModeCharaData `get_chara_ptr` just validated.
     unsafe {
@@ -237,7 +240,7 @@ fn read_planner_basics_inner() -> Option<PlannerBasics> {
             wiz: call_i32(chara, chain.m_get_wiz),
             motivation: call_i32(chara, chain.m_get_motivation),
             aptitudes: read_aptitudes(chara, chain),
-            skill_point: super::read_skill_points().unwrap_or(0),
+            skill_point: super::read_skill_points_of(chara).unwrap_or(0),
         })
     }
 }

@@ -39,8 +39,8 @@ mod story_events;
 mod support_deck;
 mod veterans;
 
-pub use chain::get_chara_ptr;
 pub(crate) use chain::{diag_read_current_turn, ensure_resolved};
+pub use chain::{get_chara_ptr, get_skills_chara_ptr};
 pub use eval_master::probe as probe_eval_master;
 pub use evaluations::{read_evaluations, EvaluationInfo};
 pub use idle_training::{read_idle_session, read_trainee_greeting, IdleSession, IdleState, TraineeGreeting};
@@ -55,9 +55,9 @@ pub use scenario::{
     GrandLivePerformance, GrandLiveSquare, PerformanceTokens, ScenarioState, TrackblazerOwnedItem, TrackblazerShop,
     TrackblazerShopItem, Worth,
 };
-pub(crate) use skill_points::read_skill_points;
+pub(crate) use skill_points::{read_skill_points, read_skill_points_of};
 pub use skill_tips::{read_skill_tips, SkillTip};
-pub use skills::{read_acquired_skill_list, read_acquired_skills, AcquiredSkillInfo};
+pub use skills::{read_acquired_skill_list, read_acquired_skills, read_acquired_skills_of, AcquiredSkillInfo};
 pub use snapshot::{
     read_light_refresh, read_planner_basics, read_snapshot, CareerSnapshot, LightRefresh, PlannerBasics,
 };

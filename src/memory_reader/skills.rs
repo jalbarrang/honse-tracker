@@ -29,8 +29,19 @@ pub fn read_acquired_skill_list() -> Option<(*mut c_void, i32)> {
 
 /// Read all acquired skills with names.
 pub fn read_acquired_skills() -> Vec<AcquiredSkillInfo> {
+    match get_chara_ptr() {
+        Some(chara) => read_acquired_skills_of(chara),
+        None => Vec::new(),
+    }
+}
+
+/// The same, off a chara the caller resolved — an Independent Training career
+/// is not the active one, so it cannot be found from here.
+pub fn read_acquired_skills_of(chara: *mut c_void) -> Vec<AcquiredSkillInfo> {
     // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe { read_acquired_skills_inner() })) {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        read_acquired_skills_inner(chara)
+    })) {
         Ok(v) => v,
         Err(_) => {
             hlog_error!("read_acquired_skills PANICKED");
@@ -39,12 +50,7 @@ pub fn read_acquired_skills() -> Vec<AcquiredSkillInfo> {
     }
 }
 
-unsafe fn read_acquired_skills_inner() -> Vec<AcquiredSkillInfo> {
-    let chara = match get_chara_ptr() {
-        Some(c) => c,
-        None => return Vec::new(),
-    };
-
+unsafe fn read_acquired_skills_inner(chara: *mut c_void) -> Vec<AcquiredSkillInfo> {
     // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
     let (list_ptr, count, m_get_item) = match unsafe { read_list_field(chara, "_acquiredSkillList") } {
         Some(v) => v,

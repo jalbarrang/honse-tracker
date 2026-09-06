@@ -218,8 +218,11 @@ pub fn request() {
 /// `WorkSingleModeCharaData` is touched — career-lifetime work data, not
 /// per-screen UI objects.
 extern "C" fn export_cb() {
+    let chara = crate::memory_reader::get_skills_chara_ptr();
     let basics = crate::memory_reader::read_planner_basics();
-    let skills = crate::memory_reader::read_acquired_skills();
+    let skills = chara
+        .map(crate::memory_reader::read_acquired_skills_of)
+        .unwrap_or_default();
     let tips = crate::memory_reader::read_skill_tips();
 
     std::thread::spawn(move || {
