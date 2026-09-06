@@ -29,7 +29,6 @@ pub mod layout;
 pub mod menu;
 pub mod performance;
 pub mod plan;
-pub mod planner;
 pub mod training;
 
 /// The most recent settled capture, or `None` outside a career.
@@ -220,16 +219,6 @@ pub fn install() {
         overlay::theme::WIDTH_WIDE,
         plan::draw,
     );
-    // Bottom-left, and only on the two screens that spend skill points. It
-    // shares the corner with the debug panel, which is off by default — and
-    // both are draggable, so a player who wants them together can say so.
-    overlay::register_panel(
-        "planner",
-        Anchor::BottomLeft,
-        egui::vec2(overlay::theme::GAP, overlay::theme::GAP),
-        300.0,
-        planner::draw,
-    );
     // Hold the view poll open for as long as the plugin is loaded. This is not
     // a diagnostic convenience: view changes are what drive the read gate, and
     // without them the lifecycle never leaves `Idle`, which means every panel
@@ -244,10 +233,6 @@ pub fn install() {
     // A mouse drag moves a panel on the render thread; this is what writes the
     // result to disk once the button comes up.
     honse_services::frame::register_frame_job(Box::new(layout::flush_drag));
-    // Decides whether the planner button is on screen — and so whether it takes
-    // the mouse — before the frame it applies to is painted. It cannot be done
-    // during the paint; see `planner::sync`.
-    honse_services::frame::register_frame_job(Box::new(planner::sync));
     keys::install();
     hlog_info!(
         target: "training-tracker",

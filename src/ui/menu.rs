@@ -58,6 +58,11 @@ fn draw(ui: *mut c_void) {
     if ui::button(ui, "Export Veterans") {
         veterans_export::request();
     }
+    // Reads the trainee on the click, whether from a live career or an
+    // Independent Training one, and says so if it finds neither.
+    if ui::button(ui, "Open in Skill Planner") {
+        crate::planner_export::request();
+    }
 
     let (idle_on, idle_changed) = ui::checkbox(ui, "Independent Training export", idle_export::is_enabled());
     if idle_changed {
@@ -119,6 +124,7 @@ fn start_class_dump() {
 /// the labels say so.
 fn install_flat_items() {
     edge_sdk::gui::register_menu_item("honse-tracker: Export Veterans", veterans_export::request);
+    edge_sdk::gui::register_menu_item("honse-tracker: Open in Skill Planner", crate::planner_export::request);
     edge_sdk::gui::register_menu_item("honse-tracker: Toggle Independent Training export", || {
         set_idle_export(!idle_export::is_enabled());
     });

@@ -294,10 +294,20 @@ pub fn get_skills_chara_ptr() -> Option<*mut c_void> {
 
         let idle = read_ref_field(singleton, &["idleSingleModeData"]);
         let chara = read_ref_field(idle, &["workCharaData"]);
+        if !chara.is_null() {
+            log_source("Independent Training");
+            return Some(chara);
+        }
+
+        // The result screens after an Independent Training run reported
+        // neither of the above: `_isPlaying` false, `_workCharaData` null. The
+        // last place a trainee can be is `Character` with `_isPlaying` off —
+        // possibly stale after a finished career, which the log makes visible.
+        let chara = read_ref_field(single_mode, &["character"]);
         log_source(if chara.is_null() {
             "neither mode"
         } else {
-            "Independent Training"
+            "live career object, not playing"
         });
         (!chara.is_null()).then_some(chara)
     }
