@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 
 use crate::compat::Sdk;
 
-use super::il2cpp::{call_bool, call_obj};
+use super::il2cpp::{call_bool, call_obj, read_i32_field_any, read_ref_field};
 
 /// All resolved MethodInfo pointers for the singleton chain.
 pub(super) struct ResolvedChain {
@@ -181,11 +181,10 @@ fn try_resolve() -> Result<ResolvedChain, &'static str> {
 /// Idempotent lazy resolution of the IL2CPP method chain (the same `CHAIN`
 /// cell every entity reader uses). Returns whether the chain is resolved.
 ///
-/// Caller contract: Unity main thread only — the settled-turn capture callback
-/// (and the temporary settle diagnostics) are the only callers, both already
-/// behind the two crash-safety gates. There is no manual start/stop lifecycle:
-/// DLL load performs no career-state reads, and the first resolution happens
-/// on the first settled edge that requests a capture.
+/// Caller contract: Unity main thread only. Resolution is metadata lookup —
+/// no career state is read — so any main-thread reader that needs the chain
+/// may call it, and the first one to do so pays for it. DLL load resolves
+/// nothing.
 pub(crate) fn ensure_resolved() -> bool {
     if CHAIN.get().is_some() {
         return true;
@@ -243,6 +242,85 @@ pub fn get_single_mode_data() -> Option<*mut c_void> {
         return None;
     }
     Some(wsmd)
+}
+
+/// The trainee whose skills the shop screens are spending points on, from
+/// whichever mode is holding one.
+///
+/// # Every hop is a field read, not a call
+///
+/// Calling a property getter runs game code, and game code can throw. A
+/// managed exception unwinding through an `extern "C"` Rust frame is not
+/// something Rust can catch — it aborts the process, which is what
+/// `0xc0000409` was in the two crashes this path caused. So this walks
+/// backing fields instead: a read cannot throw, cannot allocate, and cannot
+/// have side effects.
+///
+/// ```text
+/// WorkDataManager (singleton)
+///   <SingleMode>k__BackingField        → WorkSingleModeData
+///       _isPlaying, <Character>k__BackingField
+///   <IdleSingleModeData>k__BackingField → WorkIdleSingleModeData
+///       _workCharaData
+/// ```
+/// Both end at a `WorkSingleModeCharaData`, so callers cannot tell which mode
+/// answered. Names from `il2cpp_classes.txt` (Global 2026-08-30), resolved by
+/// their logical form so the decoration can change without this having to.
+///
+/// Only for reads about the trainee. The capture path stays on the live-career
+/// chain: an Independent Training run has no turns to settle.
+pub fn get_skills_chara_ptr() -> Option<*mut c_void> {
+    // The capture path resolves the chain on its first settled turn, and an
+    // Independent Training run never has one.
+    if !ensure_resolved() {
+        return None;
+    }
+    let chain = CHAIN.get()?;
+    let singleton = Sdk::get().get_singleton(chain.wdm_klass.cast())?.cast::<c_void>();
+
+    // SAFETY: reading named managed fields off live work-data objects. Each
+    // read yields null rather than dereferencing anything it did not find.
+    unsafe {
+        let single_mode = read_ref_field(singleton, &["singleMode"]);
+        // `_isPlaying` is a `System.Boolean`, so only its first byte is
+        // written into the wider read; the rest stays zero.
+        if !single_mode.is_null() && read_i32_field_any(single_mode, &["isPlaying"]) != 0 {
+            let chara = read_ref_field(single_mode, &["character"]);
+            if !chara.is_null() {
+                log_source("live career");
+                return Some(chara);
+            }
+        }
+
+        let idle = read_ref_field(singleton, &["idleSingleModeData"]);
+        let chara = read_ref_field(idle, &["workCharaData"]);
+        if !chara.is_null() {
+            log_source("Independent Training");
+            return Some(chara);
+        }
+
+        // The result screens after an Independent Training run reported
+        // neither of the above: `_isPlaying` false, `_workCharaData` null. The
+        // last place a trainee can be is `Character` with `_isPlaying` off —
+        // possibly stale after a finished career, which the log makes visible.
+        let chara = read_ref_field(single_mode, &["character"]);
+        log_source(if chara.is_null() {
+            "neither mode"
+        } else {
+            "live career object, not playing"
+        });
+        (!chara.is_null()).then_some(chara)
+    }
+}
+
+/// Say once where the trainee came from. Which of the two paths answered is
+/// the first thing worth knowing when this screen misbehaves.
+fn log_source(source: &str) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static LOGGED: AtomicBool = AtomicBool::new(false);
+    if !LOGGED.swap(true, Ordering::Relaxed) {
+        hlog_info!("skills chara resolved from: {source}");
+    }
 }
 
 pub fn get_chara_ptr() -> Option<*mut c_void> {

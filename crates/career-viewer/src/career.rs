@@ -11,6 +11,7 @@
 //! looked up defensively so a payload that has moved on renders a dash instead
 //! of failing.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use honse_career_meta::CareerDocument;
@@ -100,27 +101,38 @@ pub const STAT_LABELS: [&str; 5] = ["Speed", "Stamina", "Power", "Guts", "Wit"];
 // Directory
 // ---------------------------------------------------------------------------
 
-/// Every career file, newest first.
+/// Every career file across `dirs`, newest first.
 ///
 /// The names are timestamp-prefixed, so lexical order is chronological and no
 /// file has to be opened to sort the list. A file that will not parse is
 /// skipped (with a note on stderr) rather than failing the page — one bad
 /// export must not hide the rest.
-pub fn list(dir: &Path, umdb: &crate::umdb::Umdb) -> Vec<Entry> {
-    let Ok(read) = std::fs::read_dir(dir) else {
-        return Vec::new(); // no directory yet: nothing exported, not an error
-    };
-    let mut names: Vec<String> = read
-        .flatten()
-        .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
-        .filter_map(|e| e.file_name().into_string().ok())
-        .collect();
-    names.sort_unstable();
-    names.reverse();
+///
+/// Several directories because the export folder moved: careers saved by an
+/// older build are still on disk under the old name, and the list is the wrong
+/// place to make someone notice a rename. A name found in more than one
+/// directory is taken from the earliest in `dirs`.
+pub fn list(dirs: &[PathBuf], umdb: &crate::umdb::Umdb) -> Vec<Entry> {
+    let mut named: BTreeMap<String, PathBuf> = BTreeMap::new();
+    for dir in dirs {
+        let Ok(read) = std::fs::read_dir(dir) else {
+            continue; // no directory yet: nothing exported, not an error
+        };
+        for entry in read.flatten() {
+            if entry.path().extension().is_none_or(|x| x != "json") {
+                continue;
+            }
+            let Ok(name) = entry.file_name().into_string() else {
+                continue;
+            };
+            named.entry(name).or_insert_with(|| dir.clone());
+        }
+    }
 
-    names
+    named
         .into_iter()
-        .filter_map(|file| {
+        .rev()
+        .filter_map(|(file, dir)| {
             let doc = read_document(&dir.join(&file))?;
             let chara = chara_info(&doc);
             let card_id = int(chara, "card_id");
@@ -142,7 +154,7 @@ pub fn list(dir: &Path, umdb: &crate::umdb::Umdb) -> Vec<Entry> {
 /// the first place, and the resolved path must still be inside `dir`. The
 /// second alone would be enough on a well-behaved filesystem; the first is what
 /// makes the intent obvious.
-pub fn resolve(dir: &Path, file: &str) -> Option<PathBuf> {
+pub fn resolve(dirs: &[PathBuf], file: &str) -> Option<PathBuf> {
     if !file.ends_with(".json")
         || file.contains("..")
         || file.contains('/')
@@ -151,9 +163,11 @@ pub fn resolve(dir: &Path, file: &str) -> Option<PathBuf> {
     {
         return None;
     }
-    let path = dir.join(file);
-    let (real_dir, real_path) = (dir.canonicalize().ok()?, path.canonicalize().ok()?);
-    real_path.starts_with(&real_dir).then_some(path)
+    dirs.iter().find_map(|dir| {
+        let path = dir.join(file);
+        let (real_dir, real_path) = (dir.canonicalize().ok()?, path.canonicalize().ok()?);
+        real_path.starts_with(&real_dir).then_some(path)
+    })
 }
 
 /// One file as a document, or `None` with the reason on stderr. The file name
@@ -395,7 +409,7 @@ mod tests {
     /// outside the careers directory.
     #[test]
     fn traversal_is_refused() {
-        let dir = std::env::temp_dir();
+        let dirs = [std::env::temp_dir()];
         for bad in [
             "../secret.json",
             "..\\secret.json",
@@ -403,7 +417,7 @@ mod tests {
             "C:\\windows\\x.json",
             "notjson.txt",
         ] {
-            assert!(resolve(&dir, bad).is_none(), "{bad} should be refused");
+            assert!(resolve(&dirs, bad).is_none(), "{bad} should be refused");
         }
     }
 

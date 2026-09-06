@@ -47,6 +47,15 @@ fn try_resolve() -> Result<Resolved, &'static str> {
     })
 }
 
+/// Read the balance off a chara the caller has already resolved — which is how
+/// an Independent Training career is read, since it is not the active one.
+pub(crate) fn read_skill_points_of(chara: *mut c_void) -> Option<i32> {
+    let resolved = ensure_resolved()?;
+    // SAFETY: The field pointer was resolved from WorkSingleModeCharaData and
+    // the caller vouches for the object.
+    Some(unsafe { read_obscured_int_field(chara, resolved.field_skill_point) })
+}
+
 /// Read the current career skill-point balance from the active character.
 pub(crate) fn read_skill_points() -> Option<i32> {
     let resolved = ensure_resolved()?;

@@ -16,6 +16,8 @@ pub mod overlay;
 pub mod pointer;
 pub mod scene_views;
 #[cfg(windows)]
+pub mod shell;
+#[cfg(windows)]
 pub mod toast;
 pub mod view_hook;
 

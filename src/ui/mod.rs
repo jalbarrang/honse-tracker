@@ -26,6 +26,7 @@ pub mod debug;
 pub mod idle;
 pub mod keys;
 pub mod layout;
+pub mod menu;
 pub mod performance;
 pub mod plan;
 pub mod training;
@@ -110,8 +111,8 @@ pub fn refreshed_face() -> Face {
     }
 }
 
-/// Patch the fields a purchase can move — stats, energy, scenario state —
-/// leaving everything else at its last settled value.
+/// Patch the fields a purchase can move — stats, energy, the balance, scenario
+/// state — leaving everything else at its last settled value.
 ///
 /// Deliberately partial: training projections and failure rates are *not*
 /// touched, because nothing re-derives them while you are in a shop. Writing
@@ -126,6 +127,7 @@ pub fn patch_light(refresh: &LightRefresh) {
             snapshot.wiz = refresh.wiz;
             snapshot.hp = refresh.hp;
             snapshot.max_hp = refresh.max_hp;
+            snapshot.skill_point = refresh.skill_point;
             snapshot.scenario_state = refresh.scenario_state.clone();
             REFRESH_LIVE.store(true, Ordering::Release);
         }
@@ -232,7 +234,11 @@ pub fn install() {
     // result to disk once the button comes up.
     honse_services::frame::register_frame_job(Box::new(layout::flush_drag));
     keys::install();
-    hlog_info!(target: "training-tracker", "Overlay: training + performance + lessons + idle + debug panels registered");
+    hlog_info!(
+        target: "training-tracker",
+        "Overlay: registered panels: {}",
+        honse_services::overlay::panel_ids().join(", ")
+    );
 }
 
 /// Songs the current run has already learned, resolved to catalogue ids.

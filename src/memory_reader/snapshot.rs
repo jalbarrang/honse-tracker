@@ -9,7 +9,8 @@ use crate::compat::Sdk;
 use super::chain::{ResolvedChain, CHAIN};
 use super::command_info::{read_command_infos, CommandInfo};
 use super::il2cpp::{
-    call_bool, call_i32, call_i32_with_i32, call_obj, read_obscured_int_array, read_obscured_int_field,
+    call_bool, call_i32, call_i32_with_i32, call_obj, read_obscured_int, read_obscured_int_array,
+    read_obscured_int_field,
 };
 use super::scenario::{read_scenario_state, ScenarioState};
 use crate::evaluation::Aptitudes;
@@ -37,9 +38,9 @@ pub struct CareerSnapshot {
     /// Trained outfit/card id (matches gametora `card_id`); `0` if unknown.
     /// Used to detect the trainee's built-in (unique/innate/awakening) recoveries.
     pub card_id: i32,
-    // NOTE: get_SkillPoint returns ObscuredInt (struct), not i32.
-    // Needs special decryption handling — skipped for now.
-    #[allow(dead_code)]
+    /// Skill points available to spend. Decrypted from the `ObscuredInt`
+    /// backing field by [`super::read_skill_points`]; `0` when it could not be
+    /// read.
     pub skill_point: i32,
 
     #[allow(dead_code)] // read from memory; no longer shown in the redesigned UI
@@ -126,12 +127,15 @@ pub struct LightRefresh {
     pub wiz: i32,
     pub hp: i32,
     pub max_hp: i32,
+    /// The balance, which a shop screen spends. `0` when it could not be read.
+    pub skill_point: i32,
     pub scenario_state: Option<ScenarioState>,
 }
 
-/// Re-read only what a purchase can move: the five stats, energy, and the
-/// active scenario's state. Skips skills, evaluations, the deck, command info
-/// and every master-data lookup that does not belong to the scenario.
+/// Re-read only what a purchase can move: the five stats, energy, the skill
+/// point balance, and the active scenario's state. Skips skills, evaluations,
+/// the deck, command info and every master-data lookup that does not belong to
+/// the scenario.
 ///
 /// Exists so a shop screen stays truthful — you buy `Guts +5` for `Pa10` and
 /// both sides of that trade should move. It is a far smaller read than
@@ -181,7 +185,76 @@ fn read_light_refresh_inner() -> Option<LightRefresh> {
             wiz: call_i32(chara, chain.m_get_wiz),
             hp: call_i32(chara, chain.m_get_hp),
             max_hp: call_i32(chara, chain.m_get_max_hp),
+            skill_point: super::read_skill_points().unwrap_or(0),
             scenario_state: read_scenario_state(chara, wsmd, scenario_id),
+        })
+    }
+}
+
+/// Exactly what the skill planner needs about the trainee, and nothing else.
+#[derive(Debug, Clone, Default)]
+pub struct PlannerBasics {
+    pub card_id: i32,
+    pub speed: i32,
+    pub stamina: i32,
+    pub power: i32,
+    pub guts: i32,
+    pub wiz: i32,
+    /// `RaceDefine.Motivation`, 1–5.
+    pub motivation: i32,
+    pub aptitudes: Aptitudes,
+    pub skill_point: i32,
+}
+
+/// Read the trainee's identity, stats, aptitudes and balance, from a live
+/// career or an Independent Training one — see
+/// [`super::chain::get_skills_chara_ptr`].
+///
+/// Safe on a menu screen, where [`read_snapshot`] is not: every value is a
+/// field read off `WorkSingleModeCharaData`, so it runs no game code and
+/// touches no per-screen UI object.
+///
+/// `None` when neither mode holds a trainee. Unity main thread, like every
+/// read here.
+pub fn read_planner_basics() -> Option<PlannerBasics> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(read_planner_basics_inner)) {
+        Ok(basics) => basics,
+        Err(_) => {
+            hlog_error!("read_planner_basics PANICKED");
+            None
+        }
+    }
+}
+
+fn read_planner_basics_inner() -> Option<PlannerBasics> {
+    let chara = super::chain::get_skills_chara_ptr()?;
+    // SAFETY: every one of these is a named `ObscuredInt` field on a live
+    // `WorkSingleModeCharaData` (`il2cpp_classes.txt`, Global 2026-08-30).
+    // Read rather than called for the reason in `get_skills_chara_ptr`: a
+    // getter is game code, and game code can throw where a field cannot.
+    unsafe {
+        let apt = |name: &str| read_obscured_int(chara, name);
+        Some(PlannerBasics {
+            card_id: read_obscured_int(chara, "cardId"),
+            speed: read_obscured_int(chara, "speed"),
+            stamina: read_obscured_int(chara, "stamina"),
+            power: read_obscured_int(chara, "power"),
+            guts: read_obscured_int(chara, "guts"),
+            wiz: read_obscured_int(chara, "wiz"),
+            motivation: read_obscured_int(chara, "motivation"),
+            aptitudes: Aptitudes {
+                dist_short: apt("properDistanceShort"),
+                dist_mile: apt("properDistanceMile"),
+                dist_middle: apt("properDistanceMiddle"),
+                dist_long: apt("properDistanceLong"),
+                style_nige: apt("properRunningStyleNige"),
+                style_senko: apt("properRunningStyleSenko"),
+                style_sashi: apt("properRunningStyleSashi"),
+                style_oikomi: apt("properRunningStyleOikomi"),
+                ground_turf: apt("properGroundTurf"),
+                ground_dirt: apt("properGroundDirt"),
+            },
+            skill_point: super::read_skill_points_of(chara).unwrap_or(0),
         })
     }
 }
@@ -362,7 +435,7 @@ fn read_snapshot_inner() -> Option<CareerSnapshot> {
         motivation,
         fan_count,
         card_id,
-        skill_point: 0, // ObscuredInt — needs decryption, not yet implemented
+        skill_point: super::read_skill_points().unwrap_or(0),
         total_races,
         win_count,
         training_levels,

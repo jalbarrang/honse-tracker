@@ -53,7 +53,16 @@ static CAPTURING: AtomicBool = AtomicBool::new(false);
 /// pointer *is*, and a fast mouse can outpace the frame rate several times
 /// over.
 pub fn push(event: PointerEvent) {
-    let mut queue = QUEUE.lock();
+    push_into(&mut QUEUE.lock(), event);
+}
+
+/// The queue policy itself, against a queue passed in.
+///
+/// Split out from [`push`] so it can be exercised on a queue of the test's own
+/// rather than on the process-wide one: three tests sharing one global queue
+/// drained each other when cargo ran them in parallel, which made them fail
+/// only sometimes and only together.
+fn push_into(queue: &mut Vec<PointerEvent>, event: PointerEvent) {
     if let (PointerEvent::Moved(_), Some(PointerEvent::Moved(_))) = (&event, queue.last()) {
         queue.pop();
     }
@@ -89,35 +98,48 @@ mod tests {
         PointerEvent::Moved(egui::pos2(x, 0.0))
     }
 
+    /// Run the queue policy over `events`, starting empty. No global state, so
+    /// these tests do not care what order cargo runs them in.
+    fn queued(events: impl IntoIterator<Item = PointerEvent>) -> Vec<PointerEvent> {
+        let mut queue = Vec::new();
+        for event in events {
+            push_into(&mut queue, event);
+        }
+        queue
+    }
+
     #[test]
     fn consecutive_moves_collapse_to_the_latest() {
-        let _ = take();
-        push(at(1.0));
-        push(at(2.0));
-        push(at(3.0));
-        assert_eq!(take(), vec![at(3.0)], "only the final position matters");
+        assert_eq!(
+            queued([at(1.0), at(2.0), at(3.0)]),
+            vec![at(3.0)],
+            "only the final position matters"
+        );
     }
 
     #[test]
     fn a_click_between_moves_keeps_both_moves() {
-        let _ = take();
         let click = PointerEvent::Button {
             pos: egui::pos2(1.0, 1.0),
             button: egui::PointerButton::Primary,
             pressed: true,
         };
-        push(at(1.0));
-        push(click);
-        push(at(2.0));
-        assert_eq!(take(), vec![at(1.0), click, at(2.0)], "a click is not a move");
+        assert_eq!(
+            queued([at(1.0), click, at(2.0)]),
+            vec![at(1.0), click, at(2.0)],
+            "a click is not a move"
+        );
     }
 
     #[test]
     fn the_queue_is_bounded() {
-        let _ = take();
-        for i in 0..(MAX_QUEUED + 50) {
-            push(PointerEvent::Wheel(i as f32));
-        }
-        assert_eq!(take().len(), MAX_QUEUED, "oldest events are dropped, not memory");
+        let flood = (0..(MAX_QUEUED + 50)).map(|i| PointerEvent::Wheel(i as f32));
+        let queue = queued(flood);
+        assert_eq!(queue.len(), MAX_QUEUED, "oldest events are dropped, not memory");
+        assert_eq!(
+            queue.first(),
+            Some(&PointerEvent::Wheel(50.0)),
+            "the oldest go, not the newest"
+        );
     }
 }

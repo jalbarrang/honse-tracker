@@ -96,11 +96,13 @@ mod idle_export;
 mod idle_training;
 pub(crate) mod il2cpp_json;
 mod memory_reader;
+pub(crate) mod planner_export;
 pub(crate) mod race_cutin;
 mod song_catalog;
 mod song_plan;
 mod telemetry;
 mod ui;
+pub(crate) mod veterans_export;
 
 /// Mark a career command in flight before the original submit method runs.
 pub(crate) fn suspend_reads_for_command() {

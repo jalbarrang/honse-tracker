@@ -11,6 +11,15 @@
 //! the lockstep contract (README "Compatibility") applies to your build again.
 //! `register_menu_item` (label + callback, no egui) is lockstep-free.
 //!
+//! # The lockstep-free way to draw a menu section
+//!
+//! [`register_menu_section_raw`] plus the [`ui`] primitives are **exempt**: the
+//! host's `Ui` stays an opaque `*mut c_void` that we only ever hand straight
+//! back, and the host does the drawing. Nothing with a `repr(Rust)` layout
+//! crosses the boundary, so a section built that way works on any rustc — the
+//! same reason `register_menu_item` does. Prefer it; reach for the `egui::Ui`
+//! versions above only when a primitive genuinely does not exist.
+//!
 //! # Host window lifetime (edge ABI)
 //!
 //! `gui_show_window` creates a **decorated** egui window (title bar + close [X]).
@@ -273,6 +282,35 @@ extern "C" fn menu_section_trampoline(ui: *mut c_void, userdata: *mut c_void) {
     (data.callback)(ui);
 }
 
+/// Register a menu section that draws through the host's own widgets.
+///
+/// The callback receives the host `Ui` as the opaque pointer it really is;
+/// pass it to the [`ui`] primitives and nothing else. **No egui lockstep** —
+/// see the module header.
+///
+/// Returns `false` when the host does not export `gui_register_menu_section`,
+/// which is the caller's cue to fall back to [`register_menu_item`] rather
+/// than leave the menu empty.
+pub fn register_menu_section_raw(mut draw: impl FnMut(*mut c_void) + Send + 'static) -> bool {
+    let Some(api) = Api::try_get() else {
+        return Default::default();
+    };
+    let Some(f) = api.gui_register_menu_section else {
+        return false;
+    };
+    let data = Box::new(MenuSectionUserdata {
+        callback: Box::new(move |ui_ptr| {
+            if ui_ptr.is_null() {
+                return;
+            }
+            draw(ui_ptr);
+        }),
+    });
+    let userdata = Box::into_raw(data) as *mut c_void;
+    // SAFETY: trampoline + userdata remain valid for process lifetime (intentionally leaked).
+    unsafe { f(Some(menu_section_trampoline as GuiMenuSectionCallback), userdata) }
+}
+
 /// Register a menu section from a Rust closure (trampoline + leaked userdata).
 pub fn register_menu_section(mut draw: impl FnMut(&mut egui::Ui) + Send + 'static) -> bool {
     let Some(api) = Api::try_get() else {
@@ -336,6 +374,99 @@ pub fn register_menu_section_with_icon(
             Some(menu_section_trampoline as GuiMenuSectionCallback),
             userdata,
         )
+    }
+}
+
+/// Host-drawn widgets, for use inside a [`register_menu_section_raw`] callback.
+///
+/// Every function here takes the host `Ui` as the opaque pointer the callback
+/// was handed and passes only C types across the boundary, so none of the
+/// egui-lockstep rules in the module header apply. Each is a no-op when the
+/// host does not export it — a missing widget, never a crash.
+pub mod ui {
+    use std::ffi::{c_void, CString};
+
+    use crate::api::Api;
+
+    /// Call one `fn(ui, *const c_char) -> bool` text widget.
+    fn text_widget(
+        ui: *mut c_void,
+        text: &str,
+        pick: impl FnOnce(&Api) -> Option<unsafe extern "C" fn(*mut c_void, *const std::ffi::c_char) -> bool>,
+    ) -> bool {
+        let Some(api) = Api::try_get() else {
+            return false;
+        };
+        let Some(f) = pick(api) else {
+            return false;
+        };
+        let Ok(text_c) = CString::new(text) else {
+            return false;
+        };
+        // SAFETY: `ui` is the host's own pointer, passed straight back; the
+        // string is NUL-terminated and outlives the call.
+        unsafe { f(ui, text_c.as_ptr()) }
+    }
+
+    /// A section title.
+    pub fn heading(ui: *mut c_void, text: &str) {
+        let _ = text_widget(ui, text, |api| api.gui_ui_heading);
+    }
+
+    /// A line of body text.
+    pub fn label(ui: *mut c_void, text: &str) {
+        let _ = text_widget(ui, text, |api| api.gui_ui_label);
+    }
+
+    /// A line of small print — subheadings, hints, paths.
+    pub fn small(ui: *mut c_void, text: &str) {
+        let _ = text_widget(ui, text, |api| api.gui_ui_small);
+    }
+
+    /// A horizontal rule.
+    pub fn separator(ui: *mut c_void) {
+        let Some(api) = Api::try_get() else {
+            return;
+        };
+        let Some(f) = api.gui_ui_separator else {
+            return;
+        };
+        // SAFETY: `ui` is the host's own pointer, passed straight back.
+        let _ = unsafe { f(ui) };
+    }
+
+    /// A button. Returns `true` on the frame it was clicked.
+    #[must_use]
+    pub fn button(ui: *mut c_void, text: &str) -> bool {
+        text_widget(ui, text, |api| api.gui_ui_button)
+    }
+
+    /// A small button. Returns `true` on the frame it was clicked.
+    #[must_use]
+    pub fn small_button(ui: *mut c_void, text: &str) -> bool {
+        text_widget(ui, text, |api| api.gui_ui_small_button)
+    }
+
+    /// A checkbox over `value`, which the host writes through.
+    ///
+    /// Returns the state *after* the frame, and whether it changed — read from
+    /// `value` itself rather than from the host's return, so the answer does
+    /// not depend on which of `changed()`/`clicked()` the host chose to report.
+    pub fn checkbox(ui: *mut c_void, text: &str, value: bool) -> (bool, bool) {
+        let Some(api) = Api::try_get() else {
+            return (value, false);
+        };
+        let Some(f) = api.gui_ui_checkbox else {
+            return (value, false);
+        };
+        let Ok(text_c) = CString::new(text) else {
+            return (value, false);
+        };
+        let mut slot = value;
+        // SAFETY: `ui` is the host's own pointer; the string is NUL-terminated
+        // and `slot` is a live `bool` for the duration of the call.
+        unsafe { f(ui, text_c.as_ptr(), &raw mut slot) };
+        (slot, slot != value)
     }
 }
 

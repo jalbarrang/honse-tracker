@@ -278,43 +278,6 @@ fn resolve_greeting_if_safe() {
     GREETING_FOR.store(deadline, Ordering::Release);
 }
 
-/// Look up the trainee's line now, from the menu, whatever the poll has done.
-///
-/// [`resolve_greeting_if_safe`] does this on its own during a session; this is
-/// the way to make it happen at a chosen moment and see the answer in the log —
-/// which is how the crash at arm time was pinned on the moment rather than on
-/// the walk. Worth keeping for the next time the two need telling apart.
-///
-/// Scheduled onto the Unity main thread; the menu callback runs on the render
-/// thread. Logs what it finds, and keeps it for the notification if it worked.
-pub fn probe_trainee_line() {
-    extern "C" fn probe_cb() {
-        let card_id = trainee_card_id();
-        let Some(chara) = card_id
-            .and_then(honse_career_meta::chara_id_from_card_id)
-            .and_then(|chara| i32::try_from(chara).ok())
-        else {
-            hlog_warn!(target: "training-tracker", "No trainee on the session; nothing to look up");
-            return;
-        };
-        hlog_info!(target: "training-tracker", "Looking up the line for chara {chara}...");
-        let greeting = memory_reader::read_trainee_greeting(chara);
-        match &greeting {
-            Some(g) => hlog_info!(
-                target: "training-tracker",
-                "Trainee line found: {:?} says {:?}",
-                g.name.as_deref().unwrap_or("?"),
-                g.line
-            ),
-            None => hlog_warn!(target: "training-tracker", "No line for chara {chara}"),
-        }
-        if greeting.is_some() {
-            *GREETING.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = greeting;
-        }
-    }
-    Sdk::get().schedule_on_main_thread(probe_cb);
-}
-
 /// How the arming log names the trainee: the card id, and the character behind
 /// it, because the card id alone does not say who is out.
 fn describe_trainee(session: Option<IdleSession>) -> String {

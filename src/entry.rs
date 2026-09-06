@@ -5,25 +5,7 @@ use std::ffi::c_void;
 use edge_sdk::declare_plugin;
 
 use crate::compat::Sdk;
-use crate::{apply_hooks, class_dump, command_hooks, gametora_data, hooks, idle_export, race_cutin};
-
-/// Persist a setting after flipping it.
-///
-/// Saves what actually took, not what was asked for: turning cut-in skipping on
-/// can fail if the hook will not install, and turning the export on can fail if
-/// its hooks did not. A config claiming otherwise would be a lie that survives
-/// a restart.
-fn set_cutin_skip(enabled: bool) {
-    race_cutin::set_enabled(enabled);
-    let took = race_cutin::is_enabled();
-    crate::config::edit(|file| file.settings.skip_race_skill_cutins = took);
-}
-
-fn set_idle_export(enabled: bool) {
-    idle_export::set_enabled(enabled);
-    let took = idle_export::is_enabled();
-    crate::config::edit(|file| file.settings.save_idle_careers = took);
-}
+use crate::{apply_hooks, command_hooks, gametora_data, hooks, idle_export, race_cutin};
 
 declare_plugin! {
     fn init() -> bool {
@@ -110,56 +92,8 @@ fn plugin_init() -> bool {
         }
     });
 
-    // Register Hachimi menu button for IL2CPP class dump.
-    edge_sdk::gui::register_menu_item("Dump IL2CPP classes", || {
-        hlog_info!(target: "training-tracker", "IL2CPP class dump requested");
-        std::thread::spawn(|| {
-            class_dump::dump_all_classes();
-        });
-    });
-
-    // The narrow counterpart to the full dump: one class into the log, for
-    // deciding whether the Independent Training notification can name the
-    // trainee. Cheap enough to leave in place next to the dump it complements.
-    edge_sdk::gui::register_menu_item("Dump Independent Training class", || {
-        std::thread::spawn(|| {
-            class_dump::dump_named_class("Gallop", "WorkIdleSingleModeData");
-        });
-    });
-
-    // Deliberately manual: the automatic version of this crashed the game at
-    // the arming moment. See `idle_training::probe_trainee_line`.
-    edge_sdk::gui::register_menu_item("Look up trainee line", || {
-        crate::idle_training::probe_trainee_line();
-    });
-
-    // Toggle for the screen/debug readout. `register_menu_item` is label +
-    // callback only, so it carries no egui types across the boundary and none of
-    // the ABI-lockstep rules apply.
-    edge_sdk::gui::register_menu_item("Toggle debug overlay", || {
-        crate::ui::debug::toggle();
-    });
-
-    edge_sdk::gui::register_menu_item("Toggle Independent Training timer", || {
-        crate::ui::idle::toggle();
-    });
-
-    // Where the exported runs go is the part worth being able to check without
-    // opening the config file, so the toggle logs the directory too.
-    edge_sdk::gui::register_menu_item("Toggle Independent Training export", || {
-        set_idle_export(!crate::idle_export::is_enabled());
-        hlog_info!(
-            target: "training-tracker",
-            "Idle career export directory: {}",
-            crate::idle_export::output_dir().display()
-        );
-    });
-
-    // Skipping race cut-ins is a setting, not a hotkey: it is something you
-    // decide once, and the menu is where the game's own equivalent lives.
-    edge_sdk::gui::register_menu_item("Toggle race cut-in skip", || {
-        set_cutin_skip(!race_cutin::is_enabled());
-    });
+    // The plugin's own section of the Hachimi menu.
+    crate::ui::menu::install();
 
     hlog_info!(target: "training-tracker", "Training Tracker ready");
     sdk.show_notification("Training Tracker loaded!");

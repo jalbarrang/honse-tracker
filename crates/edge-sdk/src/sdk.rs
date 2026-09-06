@@ -223,22 +223,26 @@ impl Sdk {
     }
 
     /// Post `callback` onto the IL2CPP main (game) thread.
-    pub fn schedule_on_main_thread(&self, callback: unsafe extern "C" fn()) {
+    /// Returns whether the callback was handed to the main thread. `false`
+    /// means it will never run, which a caller holding a "work in flight" flag
+    /// has to know about.
+    pub fn schedule_on_main_thread(&self, callback: unsafe extern "C" fn()) -> bool {
         let api = Api::get();
         let Some(get_main) = api.il2cpp_get_main_thread else {
-            return;
+            return false;
         };
         let Some(schedule) = api.il2cpp_schedule_on_thread else {
-            return;
+            return false;
         };
         // SAFETY: edge returns the main Il2CppThread; callback has no captures and must
         // remain valid until invoked (same contract as the fork compat shim).
         let thread: *mut Il2CppThread = unsafe { get_main() };
         if thread.is_null() {
-            return;
+            return false;
         }
         // SAFETY: main thread pointer from edge; callback is capture-free and must stay valid until run.
         unsafe { schedule(thread, callback) };
+        true
     }
 
     /// Free a string returned by il2cpp introspection (resolves `il2cpp_free`).

@@ -450,6 +450,66 @@ fn released_skill_ids() -> &'static HashSet<i64> {
     })
 }
 
+/// Skill ids a hint applies to, keyed by `(group_id, rarity)`.
+///
+/// The game stores a hint as a group and a rarity, never as a skill id, and
+/// `group_id == skill_id / 10` holds for all 712 rows of its own `skill_data`
+/// master table (`master.mdb`, checked 2026-09-06). So the index is arithmetic
+/// over the catalogue rather than a table we have to ship.
+fn skills_by_group() -> &'static HashMap<(i64, i64), Vec<i64>> {
+    static S: OnceLock<HashMap<(i64, i64), Vec<i64>>> = OnceLock::new();
+    S.get_or_init(|| {
+        let mut index: HashMap<(i64, i64), Vec<i64>> = HashMap::new();
+        for skill in catalog().skills.values() {
+            let Some(rarity) = skill.rarity else { continue };
+            index.entry((skill.id / 10, rarity)).or_default().push(skill.id);
+        }
+        for ids in index.values_mut() {
+            ids.sort_unstable();
+        }
+        index
+    })
+}
+
+/// The skills a career's hints discount, as `(skill_id, hint_level)`.
+///
+/// A hint names a group and a rarity, and a group at one rarity can hold
+/// several skills — group 20006 rarity 1 is Kyoto Racecourse ○, ◎ and ×. All
+/// of them get the hint, which is how the game itself prices them: the white
+/// variants share one hint level, and the gold in the same group is a
+/// separate skill with its own (confirmed in play, 2026-09-06).
+///
+/// Empty when the catalogue is unavailable — indistinguishable here from a
+/// career with no hints, so callers that care have to check.
+#[must_use]
+pub fn hinted_skills(tips: &[crate::memory_reader::SkillTip]) -> Vec<(i32, u8)> {
+    hinted_from_index(tips, skills_by_group())
+}
+
+/// The pure half, so the mapping is testable without a catalogue on disk.
+fn hinted_from_index(tips: &[crate::memory_reader::SkillTip], index: &HashMap<(i64, i64), Vec<i64>>) -> Vec<(i32, u8)> {
+    // Highest level wins where two hints reach the same skill: the game charges
+    // the best discount it has, and so should the plan.
+    let mut best: HashMap<i64, u8> = HashMap::new();
+    for tip in tips {
+        let level = tip.level.clamp(0, 5) as u8;
+        let Some(ids) = index.get(&(i64::from(tip.group_id), i64::from(tip.rarity))) else {
+            continue;
+        };
+        for &id in ids {
+            let entry = best.entry(id).or_default();
+            *entry = (*entry).max(level);
+        }
+    }
+    let mut out: Vec<(i32, u8)> = best.into_iter().map(|(id, level)| (id as i32, level)).collect();
+    // Biggest discount first, then by id. Sorted at all so the same career
+    // always encodes to the same link; sorted *this* way because the encoding
+    // carries 127 candidates and a run with more hinted skills than that should
+    // lose the 10% ones rather than whichever happened to have the highest id.
+    out.sort_unstable_by_key(|&(id, level)| (std::cmp::Reverse(level), id));
+    out
+}
+
 /// Build the recovery entry for a skill, applying the inherited-unique rule:
 /// a unique with a `gene_version` is offered as its **inherited** variant (the
 /// reduced `gene_version` heal + id, labelled `(inherited)`) — that is the value
@@ -762,5 +822,58 @@ mod tests {
             "condition_groups": [{ "effects": [{ "type": 1, "value": 500 }] }] }"#,
         );
         assert!(recovery_entry(&non, &[1].into_iter().collect()).is_none());
+    }
+
+    fn tip(group_id: i32, rarity: i32, level: i32) -> crate::memory_reader::SkillTip {
+        crate::memory_reader::SkillTip {
+            group_id,
+            rarity,
+            level,
+        }
+    }
+
+    /// Group 20006 rarity 1 is Kyoto Racecourse ○/◎/×; 200064 is the gold in
+    /// the same group, which a white hint must not touch.
+    fn kyoto_index() -> HashMap<(i64, i64), Vec<i64>> {
+        HashMap::from([
+            ((20006, 1), vec![200_061, 200_062, 200_063]),
+            ((20006, 2), vec![200_064]),
+            ((20143, 1), vec![201_431, 201_432]),
+        ])
+    }
+
+    #[test]
+    fn a_hint_reaches_every_skill_in_its_group_at_that_rarity() {
+        let hinted = hinted_from_index(&[tip(20006, 1, 3)], &kyoto_index());
+        assert_eq!(hinted, vec![(200_061, 3), (200_062, 3), (200_063, 3)]);
+    }
+
+    #[test]
+    fn rarity_separates_the_gold_from_the_whites() {
+        let hinted = hinted_from_index(&[tip(20006, 2, 5)], &kyoto_index());
+        assert_eq!(hinted, vec![(200_064, 5)]);
+    }
+
+    #[test]
+    fn the_best_hint_wins_when_two_reach_the_same_skill() {
+        let hinted = hinted_from_index(&[tip(20006, 1, 2), tip(20006, 1, 4)], &kyoto_index());
+        assert!(hinted.iter().all(|&(_, level)| level == 4));
+    }
+
+    /// The encoding only carries 127 candidates, so order is a policy, not a
+    /// detail: the deepest discounts have to survive the cut.
+    #[test]
+    fn the_biggest_discounts_come_first() {
+        let hinted = hinted_from_index(&[tip(20006, 1, 1), tip(20143, 1, 4)], &kyoto_index());
+        assert_eq!(
+            hinted,
+            vec![(201_431, 4), (201_432, 4), (200_061, 1), (200_062, 1), (200_063, 1)]
+        );
+    }
+
+    #[test]
+    fn levels_are_clamped_and_unknown_groups_are_dropped() {
+        let hinted = hinted_from_index(&[tip(20143, 1, 9), tip(99999, 1, 3)], &kyoto_index());
+        assert_eq!(hinted, vec![(201_431, 5), (201_432, 5)]);
     }
 }

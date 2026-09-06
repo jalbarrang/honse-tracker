@@ -392,6 +392,15 @@ unsafe fn value_type(addr: *mut c_void, ftype: *mut c_void, walk: &mut Walk) -> 
     unsafe { fields(addr, klass, walk) }
 }
 
+/// The value a CodeStage `ObscuredBool` decodes to when it is `false`.
+///
+/// `ObscuredBool` is the odd one out: it does not store 0 and 1 XORed with a
+/// key, it stores one of two sentinels, and its key is a single `byte` keying
+/// an `int`. Decoding it like the others — widening the key to 32 bits and
+/// testing the result against zero — reads *every* such field as the same
+/// value regardless of the truth, which is how it was decoded until 0.5.
+pub(crate) const OBSCURED_FALSE: i32 = 0xB5;
+
 /// Decrypt a CodeStage `Obscured*` wrapper by finding its two fields by name.
 ///
 /// Offsets are read from the metadata rather than assumed: the struct carries
@@ -416,10 +425,12 @@ unsafe fn obscured(addr: *mut c_void, klass: *mut c_void, class_name: &str) -> O
         let k32 = || *addr.byte_add(key_at).cast::<i32>();
         let h64 = || *addr.byte_add(hidden_at).cast::<i64>();
         let k64 = || *addr.byte_add(key_at).cast::<i64>();
+        // `ObscuredBool` alone keys an `int` with a single `byte`.
+        let k8 = || i32::from(*addr.byte_add(key_at).cast::<u8>());
         match class_name {
             "ObscuredInt" => Some(Value::Number(Number::from(h32() ^ k32()))),
             "ObscuredLong" => Some(Value::Number(Number::from(h64() ^ k64()))),
-            "ObscuredBool" => Some(Value::Bool((h32() ^ k32()) != 0)),
+            "ObscuredBool" => Some(Value::Bool((h32() ^ k8()) != OBSCURED_FALSE)),
             "ObscuredFloat" => Some(finite(f64::from(f32::from_bits((h32() as u32) ^ (k32() as u32))))),
             "ObscuredDouble" => Some(finite(f64::from_bits((h64() as u64) ^ (k64() as u64)))),
             _ => None,

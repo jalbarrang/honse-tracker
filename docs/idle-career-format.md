@@ -90,6 +90,13 @@ explanation lives in one place at the top.
   `[267, 268, ...]`. Files from plugin 0.3 and 0.4 have `{"m_value": 267}`
   elements there instead; that was the walker reading `System.Int32` as a
   struct, not the game.
+- **Booleans in files written before 0.5 are not trustworthy.** The game stores
+  them as `ObscuredBool`, which does not encode `true`/`false` as 1 and 0 — it
+  stores one of two sentinels keyed by a single byte. The walker decoded it
+  like the integer wrappers and tested the result against zero, which made
+  every such field come out the same regardless of the truth. Fixed in 0.5;
+  older files cannot be repaired after the fact, because the key that would
+  decode them was in the game's memory at the time.
 
 ## Files from before the format
 
