@@ -89,14 +89,19 @@ plus a distance from it, so changing resolution does not move anything.
 
 ## The Hachimi menu
 
-Five items, for things you set once rather than press:
+One **honse-tracker** section under Plugins, for things you set once rather
+than press:
 
-- **Toggle debug overlay** — same as `Ctrl+Shift+D`.
-- **Toggle Independent Training timer** — same as `Ctrl+Shift+I`.
-- **Toggle Independent Training export** — see below.
-- **Toggle race cut-in skip** — see below.
-- **Dump IL2CPP classes** — writes `il2cpp_classes.txt` next to the game
-  executable. Only useful if you are working on the plugin.
+- **Export Veterans** — writes every trained character on the account to
+  `Documents\honse-tracker\veterans.json`. See below.
+- **Independent Training export** — see below.
+- **Skip race cut-ins** — see below.
+- **Debug → Dump IL2CPP classes** — writes `il2cpp_classes.txt` next to the
+  game executable. Only useful if you are working on the plugin.
+
+The overlay panels are not in the menu; they are on hotkeys —
+`Ctrl+Shift+D` for the debug overlay, `Ctrl+Shift+I` for the Independent
+Training timer.
 
 ## Settings
 
@@ -141,7 +146,7 @@ through the summary. Turn it off in the Hachimi menu if you do not want the
 files.
 
 **`idle_career_dir`** — where those files go. Empty means
-`%USERPROFILE%\Documents\SavedIdleCareers`. A relative path resolves under your
+`%USERPROFILE%\Documents\honse-tracker\idle-careers`. A relative path resolves under your
 user profile, not under the game folder, so you cannot accidentally aim it
 somewhere Windows will refuse to write.
 
@@ -157,6 +162,32 @@ anything the walk could not read — is ours. The full shape is in
 [`docs/idle-career-format.md`](docs/idle-career-format.md), with a complete
 example next to it. Files written by 0.3 and 0.4 have an older shape; the
 viewer still opens them.
+
+## Exporting veterans
+
+**Export Veterans** in the menu writes every trained character the account owns
+to `Documents\honse-tracker\veterans.json` — stats, aptitudes, skills, the
+support cards that trained them, race history, succession factors and their
+upgrade history, and the inherited parents and grandparents.
+
+The format is byte-for-byte the schema of
+[umadump](https://github.com/Werseter/umadump)'s `trained_chara_data.json`, so
+anything that already reads umadump output reads this file with no changes. A
+few keys are always `0` — `chara_seed`, `route_id`, `race_cloth_id` and a few
+more. They exist in the server's response but not in the client's memory;
+umadump emits them as zeros too, and dropping them would change the shape of the
+file for everything downstream.
+
+The difference is how it gets there. umadump reads the game from outside:
+pattern-scan for `MetadataRegistration`, parse `global-metadata.dat`, walk
+hardcoded byte offsets. This plugin is already inside the process, so it asks
+the IL2CPP metadata for each field by name — no offsets to go stale, no
+metadata file, and no second program to run alongside the game.
+
+One file, rewritten each time: the export is a snapshot of the account as it is
+now, and a folder of near-identical snapshots is a folder nobody reads. Press it
+from anywhere the account is loaded; the read runs on the game's own thread and
+the writing does not, so it does not cost you a frame you would notice.
 
 ## Browsing saved careers
 
@@ -184,8 +215,15 @@ publishes offline yet.
 
 - `hachimi/honse-tracker.json` — everything above, plus your panel positions and
   song plan. Deleting it is safe; you get the defaults back.
-- `Documents\SavedIdleCareers\*.json` — one file per finished Independent
-  Training, if `save_idle_careers` is on. See `idle_career_dir` above.
+- `Documents\honse-tracker\idle-careers\*.json` — one file per finished
+  Independent Training, if `save_idle_careers` is on. See `idle_career_dir`
+  above.
+- `Documents\honse-tracker\veterans.json` — every trained character on the
+  account, written when you press **Export Veterans**. See below.
+
+Careers saved by 0.4.1 and earlier are in `Documents\SavedIdleCareers`. Nothing
+moves them and nothing deletes them; the career viewer reads both folders, so
+older runs stay in the list.
 
 Upgrading from an older build, the first launch folds `honseTrackerConfig.json`,
 `overlayLayout.json` and `songPlan.json` into the single file and says so in the

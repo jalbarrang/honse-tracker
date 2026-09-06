@@ -148,46 +148,6 @@ pub fn dump_all_classes() {
     }
 }
 
-/// Dump one named class's fields and methods into the log.
-///
-/// [`dump_all_classes`] writes about a million lines to disk. That is the right
-/// tool for "find every class matching X" and the wrong one for "what does
-/// *this* class actually offer" — the question that comes up whenever a reader
-/// needs one more accessor than it currently binds. This answers that in the
-/// log the player already has open, with no file to go and grep.
-///
-/// Game assembly only (`umamusume.dll`).
-pub fn dump_named_class(namespace: &str, name: &str) {
-    let Some(ctx) = DumpContext::resolve() else {
-        hlog_error!("Class dump failed: could not resolve IL2CPP enumeration symbols");
-        return;
-    };
-    let sdk = Sdk::get();
-    let Some(klass) = sdk
-        .get_assembly_image("umamusume.dll")
-        .and_then(|image| sdk.get_class(image, namespace, name))
-    else {
-        hlog_warn!(target: "training-tracker", "Class dump: {namespace}.{name} not found");
-        return;
-    };
-
-    let mut buffer = Vec::new();
-    if let Err(err) = dump_class(&ctx, &mut buffer, klass.cast()) {
-        hlog_error!("Class dump: {namespace}.{name} failed: {err}");
-        return;
-    }
-
-    // One log line per dumped line. The host's log view is a scrolling list of
-    // entries, not a text editor, so a single multi-kilobyte entry is unreadable
-    // and this output exists precisely to be read.
-    for line in String::from_utf8_lossy(&buffer)
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-    {
-        hlog_info!(target: "training-tracker", "{line}");
-    }
-}
-
 /// The .NET base class library assemblies. Introspecting some of their runtime
 /// types (e.g. `mscorlib` `MulticastDelegate`) segfaults the IL2CPP metadata
 /// APIs, and none of it is game code worth reverse-engineering. Skipping them

@@ -47,14 +47,16 @@ use axum::Router;
 use assets::Assets;
 
 struct App {
-    careers_dir: PathBuf,
+    /// Every directory careers are read from, in priority order: the current
+    /// one first, then the folder older builds wrote to.
+    careers_dirs: Vec<PathBuf>,
     assets: Assets,
     umdb: umdb::Umdb,
 }
 
 #[tokio::main]
 async fn main() {
-    let careers_dir = env_path("CAREERS_DIR").unwrap_or_else(default_careers_dir);
+    let careers_dirs = env_path("CAREERS_DIR").map_or_else(default_careers_dirs, |dir| vec![dir]);
     let base = std::env::var("HAKURAKU_URL")
         .ok()
         .filter(|s| !s.trim().is_empty())
@@ -63,10 +65,10 @@ async fn main() {
 
     // Say what is missing at startup rather than rendering an empty page and
     // leaving someone to guess where it looked.
-    if !careers_dir.is_dir() {
+    if !careers_dirs.iter().any(|d| d.is_dir()) {
         eprintln!(
             "note: no careers directory at {} (set CAREERS_DIR)",
-            careers_dir.display()
+            careers_dirs[0].display()
         );
     }
 
@@ -79,7 +81,7 @@ async fn main() {
     });
 
     let app = Arc::new(App {
-        careers_dir,
+        careers_dirs,
         assets: Assets::new(&base),
         umdb,
     });
@@ -99,7 +101,14 @@ async fn main() {
         }
     };
     println!("career-viewer → http://{addr}");
-    println!("  careers: {}", app.careers_dir.display());
+    for (i, dir) in app.careers_dirs.iter().enumerate() {
+        let label = if i == 0 { "careers:" } else { "         " };
+        println!(
+            "  {label} {}{}",
+            dir.display(),
+            if i == 0 { "" } else { " (older builds)" }
+        );
+    }
     println!("  art:     {}", app.assets.base());
     if !app.umdb.is_empty() {
         println!("  names:   {} (delete to refresh)", cache.display());
@@ -117,16 +126,23 @@ fn env_path(key: &str) -> Option<PathBuf> {
 
 /// Where the plugin writes exports by default — the same rule it uses, from
 /// the shared crate, so the two cannot disagree.
-fn default_careers_dir() -> PathBuf {
-    std::env::var_os("USERPROFILE").map_or_else(
-        || PathBuf::from("SavedIdleCareers"),
-        |home| honse_career_meta::saved_careers_dir(&PathBuf::from(home)),
-    )
+///
+/// The old `SavedIdleCareers` folder comes along behind it: the export folder
+/// moved, nothing moved the files that were already in it, and a run someone
+/// saved last month should not vanish from the list because of a rename.
+fn default_careers_dirs() -> Vec<PathBuf> {
+    let Some(home) = std::env::var_os("USERPROFILE").map(PathBuf::from) else {
+        return vec![PathBuf::from("idle-careers")];
+    };
+    vec![
+        honse_career_meta::idle_careers_dir(&home),
+        honse_career_meta::legacy_saved_careers_dir(&home),
+    ]
 }
 
 async fn index(State(app): State<Arc<App>>) -> Response {
-    let entries = career::list(&app.careers_dir, &app.umdb);
-    Html(view::index(&entries, &app.assets, &app.careers_dir).into_string()).into_response()
+    let entries = career::list(&app.careers_dirs, &app.umdb);
+    Html(view::index(&entries, &app.assets, &app.careers_dirs[0]).into_string()).into_response()
 }
 
 async fn detail(State(app): State<Arc<App>>, UrlPath(file): UrlPath<String>) -> Response {
@@ -152,7 +168,7 @@ async fn raw(State(app): State<Arc<App>>, UrlPath(file): UrlPath<String>) -> Res
 /// Resolve and read, or `None` — the two failures a caller can do nothing
 /// different about, so they collapse into one answer.
 fn load(app: &App, file: &str) -> Option<honse_career_meta::CareerDocument> {
-    career::read_document(&career::resolve(&app.careers_dir, file)?)
+    career::read_document(&career::resolve(&app.careers_dirs, file)?)
 }
 
 /// One answer for "refused" and "absent" alike.

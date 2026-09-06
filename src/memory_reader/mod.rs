@@ -36,6 +36,7 @@ mod skills;
 mod snapshot;
 mod story_events;
 mod support_deck;
+mod veterans;
 
 pub use chain::get_chara_ptr;
 pub(crate) use chain::{diag_read_current_turn, ensure_resolved};
@@ -58,3 +59,4 @@ pub use skills::{read_acquired_skill_list, read_acquired_skills, AcquiredSkillIn
 pub use snapshot::{read_light_refresh, read_snapshot, CareerSnapshot, LightRefresh};
 pub use story_events::{read_fired_events, FiredEvent};
 pub use support_deck::read_equipped_support_ids;
+pub use veterans::read_veterans;

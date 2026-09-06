@@ -32,5 +32,5 @@ pub use career_meta::{
     chara_id_from_card_id, rank_icon_index, rank_label_sprite, stat_icon_path, stat_rank_sprite, turn_date,
 };
 pub use chara_effects::{is_known, lookup, Polarity};
-pub use paths::saved_careers_dir;
+pub use paths::{honse_tracker_dir, idle_careers_dir, legacy_saved_careers_dir, veterans_file};
 pub use rank_table::rank_label;

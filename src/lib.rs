@@ -101,6 +101,7 @@ mod song_catalog;
 mod song_plan;
 mod telemetry;
 mod ui;
+pub(crate) mod veterans_export;
 
 /// Mark a career command in flight before the original submit method runs.
 pub(crate) fn suspend_reads_for_command() {

@@ -95,8 +95,8 @@ fn home() -> Option<PathBuf> {
 /// refusing to load over.
 fn default_dir() -> PathBuf {
     home().map_or_else(
-        || PathBuf::from("SavedIdleCareers"),
-        |home| honse_career_meta::saved_careers_dir(&home),
+        || PathBuf::from("idle-careers"),
+        |home| honse_career_meta::idle_careers_dir(&home),
     )
 }
 

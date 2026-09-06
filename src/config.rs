@@ -89,8 +89,8 @@ pub struct Settings {
     #[serde(default = "yes")]
     pub save_idle_careers: bool,
     /// Where those files go. Empty means
-    /// `%USERPROFILE%\Documents\SavedIdleCareers`; a relative path resolves
-    /// under the user profile, never under the game folder.
+    /// `%USERPROFILE%\Documents\honse-tracker\idle-careers`; a relative path
+    /// resolves under the user profile, never under the game folder.
     #[serde(default)]
     pub idle_career_dir: String,
 }

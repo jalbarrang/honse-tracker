@@ -26,6 +26,7 @@ pub mod debug;
 pub mod idle;
 pub mod keys;
 pub mod layout;
+pub mod menu;
 pub mod performance;
 pub mod plan;
 pub mod training;
