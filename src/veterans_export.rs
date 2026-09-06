@@ -233,11 +233,31 @@ pub fn output_path() -> PathBuf {
 /// Kick off an export. Safe to call from the menu (any thread): the read is
 /// scheduled onto the Unity main thread, where the objects are live.
 pub fn request() {
+    schedule(export_cb);
+}
+
+/// Upload only on an explicit click; a missing key never schedules a read or request.
+pub fn request_upload() {
+    if upload_key().is_none() {
+        Sdk::get().show_notification("Veteran upload: set uma-moe.api-key in your config first");
+        return;
+    }
+    schedule(upload_cb);
+}
+
+fn upload_key() -> Option<String> {
+    crate::config::read(|file| {
+        let key = file.uma_moe.api_key.trim();
+        (!key.is_empty()).then(|| key.to_owned())
+    })
+}
+
+fn schedule(callback: extern "C" fn()) {
     if RUNNING.swap(true, Ordering::AcqRel) {
         hlog_info!(target: "training-tracker", "Veteran export already running");
         return;
     }
-    if !Sdk::get().schedule_on_main_thread(export_cb) {
+    if !Sdk::get().schedule_on_main_thread(callback) {
         // Nothing was queued, so nothing will ever clear the flag.
         RUNNING.store(false, Ordering::Release);
         hlog_warn!(target: "training-tracker", "Veteran export: could not reach the main thread");
@@ -251,6 +271,64 @@ extern "C" fn export_cb() {
         finish(veterans);
         RUNNING.store(false, Ordering::Release);
     });
+}
+
+extern "C" fn upload_cb() {
+    let key = upload_key();
+    let veterans = crate::memory_reader::read_veterans();
+    std::thread::spawn(move || {
+        let result = key
+            .ok_or_else(|| "set uma-moe.api-key in your config first".to_owned())
+            .and_then(|key| upload(&veterans, &key));
+        match result {
+            Ok(()) => {
+                Sdk::get().show_notification(&format!("Uploaded {} veterans to uma.moe", veterans.len()));
+            }
+            Err(message) => {
+                hlog_warn!(target: "training-tracker", "Veteran upload: {message}");
+                Sdk::get().show_notification(&format!("Veteran upload failed: {message}"));
+            }
+        }
+        RUNNING.store(false, Ordering::Release);
+    });
+}
+
+/// `viewer_id` identifies the roster's account, not a borrowed ancestor's owner.
+fn upload_account_id(veterans: &[Veteran]) -> Result<i64, String> {
+    let first = veterans.first().ok_or("no veterans found")?;
+    let id = first.viewer_id;
+    if id <= 0 || veterans.iter().any(|v| v.viewer_id != id) {
+        return Err("cannot determine a consistent account ID; upload skipped".to_owned());
+    }
+    Ok(id)
+}
+
+fn upload(veterans: &[Veteran], key: &str) -> Result<(), String> {
+    let account_id = upload_account_id(veterans)?;
+    let body = serde_json::to_vec(veterans).map_err(|_| "cannot serialise veterans")?;
+    send_upload("https://uma.moe/ingest/veteran", account_id, key, &body)
+}
+
+fn send_upload(url: &str, account_id: i64, key: &str, body: &[u8]) -> Result<(), String> {
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(60))
+        .redirects(0)
+        .build();
+    // X-API-Key: https://uma.moe/api/docs/openapi.yaml, ApiKeyAuth (checked 2026-09-06).
+    let response = agent
+        .post(url)
+        .query("account_id", &account_id.to_string())
+        .set("X-API-Key", key)
+        .set("Accept", "application/json")
+        .set("Content-Type", "application/json")
+        .send_bytes(body);
+    // Do not log response bodies or transport details: they may echo credentials.
+    match response {
+        Ok(response) if (200..300).contains(&response.status()) => Ok(()),
+        Ok(response) => Err(format!("unexpected HTTP {}", response.status())),
+        Err(ureq::Error::Status(code, _)) => Err(format!("uma.moe returned HTTP {code}")),
+        Err(ureq::Error::Transport(_)) => Err("network request failed or timed out".to_owned()),
+    }
 }
 
 /// Serialise and write, saying what happened either way. Off the game's thread.
@@ -291,6 +369,72 @@ fn write_json(path: &std::path::Path, veterans: &[Veteran]) -> Result<(), String
 #[cfg(test)]
 mod tests {
     use super::{jst_timestamp, RaceResult, Skill, SuccessionChara, SupportCard, Veteran, NO_TIME};
+
+    #[test]
+    fn upload_posts_json_with_api_key_and_handles_http_failures() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        for status in [200, 302, 401, 500] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let url = format!("http://{}/ingest/veteran", listener.local_addr().unwrap());
+            let server = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                    .unwrap();
+                let mut request = Vec::new();
+                let mut byte = [0];
+                while !request.ends_with(b"\r\n\r\n") {
+                    stream.read_exact(&mut byte).unwrap();
+                    request.push(byte[0]);
+                }
+                let headers = String::from_utf8(request).unwrap().to_ascii_lowercase();
+                assert!(headers.starts_with("post /ingest/veteran?account_id=123456789 http/1.1\r\n"));
+                assert!(headers.contains("x-api-key: test-secret\r\n"));
+                assert!(headers.contains("content-type: application/json\r\n"));
+                assert!(!headers.contains("authorization:"));
+                let mut body = [0; 2];
+                stream.read_exact(&mut body).unwrap();
+                assert_eq!(&body, b"[]");
+                write!(
+                    stream,
+                    "HTTP/1.1 {status} Test\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                )
+                .unwrap();
+            });
+            let result = super::send_upload(&url, 123456789, "test-secret", b"[]");
+            server.join().unwrap();
+            assert_eq!(result.is_ok(), status == 200);
+            if let Err(error) = result {
+                assert!(error.contains(&status.to_string()));
+                assert!(!error.contains("test-secret"));
+            }
+        }
+    }
+
+    #[test]
+    fn upload_requires_a_nonempty_roster_with_one_valid_account() {
+        assert!(super::upload_account_id(&[]).is_err());
+        assert!(super::upload_account_id(&[Veteran::default()]).is_err());
+        let veteran = Veteran {
+            viewer_id: 280420104509,
+            ..Veteran::default()
+        };
+        assert_eq!(
+            super::upload_account_id(&[veteran.clone(), veteran.clone()]).unwrap(),
+            280420104509
+        );
+        let other = Veteran {
+            viewer_id: 123456789,
+            ..Veteran::default()
+        };
+        assert!(super::upload_account_id(&[veteran, other]).is_err());
+        assert!(super::upload_account_id(&[Veteran {
+            viewer_id: -1,
+            ..Veteran::default()
+        }])
+        .is_err());
+    }
 
     /// The key order of one entry of umadump's `trained_chara_data.json`.
     ///

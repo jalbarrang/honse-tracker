@@ -55,9 +55,14 @@ pub fn install() {
 fn draw(ui: *mut c_void) {
     ui::heading(ui, "honse-tracker");
 
-    if ui::button(ui, "Export Veterans") {
+    ui::small(ui, "Export Veterans");
+    if ui::button(ui, "Export Locally") {
         veterans_export::request();
     }
+    if ui::button(ui, "Export to uma.moe") {
+        veterans_export::request_upload();
+    }
+    ui::separator(ui);
     // Reads the trainee on the click, whether from a live career or an
     // Independent Training one, and says so if it finds neither.
     if ui::button(ui, "Open in Skill Planner") {
@@ -118,12 +123,19 @@ fn start_class_dump() {
     });
 }
 
-/// The same four actions as separate menu items, for a host with no sections.
+/// Separate menu items for a host with no sections.
 ///
 /// The two settings lose their checkbox here and go back to being toggles, so
 /// the labels say so.
 fn install_flat_items() {
-    edge_sdk::gui::register_menu_item("honse-tracker: Export Veterans", veterans_export::request);
+    edge_sdk::gui::register_menu_item(
+        "honse-tracker: Export Veterans: Export Locally",
+        veterans_export::request,
+    );
+    edge_sdk::gui::register_menu_item(
+        "honse-tracker: Export Veterans: Export to uma.moe",
+        veterans_export::request_upload,
+    );
     edge_sdk::gui::register_menu_item("honse-tracker: Open in Skill Planner", crate::planner_export::request);
     edge_sdk::gui::register_menu_item("honse-tracker: Toggle Independent Training export", || {
         set_idle_export(!idle_export::is_enabled());

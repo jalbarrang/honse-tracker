@@ -92,8 +92,10 @@ plus a distance from it, so changing resolution does not move anything.
 One **honse-tracker** section under Plugins, for things you set once rather
 than press:
 
-- **Export Veterans** — writes every trained character on the account to
-  `Documents\honse-tracker\veterans.json`. See below.
+- **Export Veterans** subsection:
+  - **Export Locally** — writes every trained character to `Documents\honse-tracker\veterans.json`.
+  - **Export to uma.moe** — uploads the same umadump-compatible array using `uma-moe.api-key`
+    and the roster's account ID. A missing key or account ID skips the upload with a notification.
 - **Independent Training export** — see below.
 - **Skip race cut-ins** — see below.
 - **Debug → Dump IL2CPP classes** — writes `il2cpp_classes.txt` next to the
@@ -170,7 +172,7 @@ viewer still opens them.
 
 ## Exporting veterans
 
-**Export Veterans** in the menu writes every trained character the account owns
+**Export Veterans → Export Locally** in the menu writes every trained character the account owns
 to `Documents\honse-tracker\veterans.json` — stats, aptitudes, skills, the
 support cards that trained them, race history, succession factors and their
 upgrade history, and the inherited parents and grandparents.
@@ -224,7 +226,7 @@ publishes offline yet.
   Independent Training, if `save_idle_careers` is on. See `idle_career_dir`
   above.
 - `Documents\honse-tracker\veterans.json` — every trained character on the
-  account, written when you press **Export Veterans**. See below.
+  account, written when you press **Export Locally**. See below.
 
 Careers saved by 0.4.1 and earlier are in `Documents\SavedIdleCareers`. Nothing
 moves them and nothing deletes them; the career viewer reads both folders, so
