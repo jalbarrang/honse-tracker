@@ -50,10 +50,11 @@ pub use presentation::mood_label;
 #[allow(unused_imports)]
 pub use presentation::motivation_color;
 pub use reserve::{read_reserved_races, ReservedRace};
+pub(crate) use scenario::reset_next_song_observer;
 #[allow(unused_imports)]
 pub use scenario::{
-    GrandLivePerformance, GrandLiveSquare, PerformanceTokens, ScenarioState, TrackblazerOwnedItem, TrackblazerShop,
-    TrackblazerShopItem, Worth,
+    GrandLivePerformance, GrandLiveSquare, NextSongStatus, PerformanceTokens, ScenarioState, TrackblazerOwnedItem,
+    TrackblazerShop, TrackblazerShopItem, Worth,
 };
 pub(crate) use skill_points::{read_skill_points, read_skill_points_of};
 pub use skill_tips::{read_skill_tips, SkillTip};

@@ -104,6 +104,9 @@ pub(crate) fn enter_command() {
 
 /// Observe fresh server data without claiming that assets or UI are stable.
 pub(crate) fn apply_observed(event: ApplyEvent) {
+    if matches!(event, ApplyEvent::CareerStart) {
+        reset_career_state();
+    }
     advance_lifecycle(CareerEvent::Applied(event));
     request_capture();
 }
@@ -585,6 +588,7 @@ pub(crate) fn diag_settle_edge(
 pub(crate) fn reset_career_state() {
     EVAL_DIAG_LOGGED.store(false, AtomicOrdering::Relaxed);
     crate::bond_progress::clear();
+    memory_reader::reset_next_song_observer();
     deck_bonuses::clear();
     if let Ok(mut guard) = PREV_SUPPORT_IDS.lock() {
         guard.clear();

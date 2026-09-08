@@ -24,7 +24,8 @@ mod items;
 mod master_shop;
 mod trackblazer;
 
-pub use grand_live::{GrandLivePerformance, GrandLiveSquare, PerformanceTokens};
+pub(crate) use grand_live::reset_next_song_observer;
+pub use grand_live::{GrandLivePerformance, GrandLiveSquare, NextSongStatus, PerformanceTokens};
 pub use items::Worth;
 pub use trackblazer::{TrackblazerOwnedItem, TrackblazerShop, TrackblazerShopItem};
 

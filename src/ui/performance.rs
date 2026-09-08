@@ -21,7 +21,7 @@
 use honse_services::overlay::theme;
 
 use super::{egui, with_snapshot, Face};
-use crate::memory_reader::{GrandLivePerformance, ScenarioState};
+use crate::memory_reader::{GrandLivePerformance, NextSongStatus, ScenarioState};
 use crate::song_catalog;
 use crate::song_plan::Scope;
 
@@ -57,7 +57,21 @@ fn body(ui: &mut egui::Ui, perf: &GrandLivePerformance, face: Face) {
         row(ui, label, value, caps[i].1);
     }
 
+    next_song_row(ui, perf.next_song);
     concert_plan(ui, perf);
+}
+
+fn next_song_row(ui: &mut egui::Ui, status: NextSongStatus) {
+    let (value, colour) = match status {
+        NextSongStatus::Available => ("available now".to_string(), theme::ACCENT_VALUE),
+        NextSongStatus::Techniques { bought, required } => {
+            (format!("{bought}/{required} techniques"), theme::TEXT_SECONDARY)
+        }
+        NextSongStatus::Unknown => ("tracking after next song".to_string(), theme::TEXT_FAINT),
+        NextSongStatus::Complete => ("all songs bought".to_string(), theme::ACCENT_VALUE),
+    };
+    ui.add_space(4.0);
+    summary_row(ui, "Next song", value, colour);
 }
 
 /// What your plan for this concert still costs.
