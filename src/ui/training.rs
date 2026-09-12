@@ -19,7 +19,7 @@
 //! a lie that reads as "safe to train", which is the exact opposite of what the
 //! panel is for.
 
-use honse_services::overlay::theme;
+use honse_services::overlay::{theme, Painted};
 
 use super::{egui, with_snapshot, Face};
 use crate::memory_reader::CareerSnapshot;
@@ -37,18 +37,22 @@ const FACILITIES: [(&str, &str); 5] = [
 /// the highlight is asking you to accept.
 const WARN_FAILURE_PCT: i32 = 10;
 
-/// Draw the panel. Called every present; returns without painting whenever the
-/// overlay has nothing true to say.
-pub fn draw(ui: &mut egui::Ui) {
+/// Draw the panel. Called every present; `Painted::Nothing` whenever the
+/// overlay has nothing true to say, which leaves it off screen entirely.
+pub fn draw(ui: &mut egui::Ui) -> Painted {
     let face = super::refreshed_face();
     if !face.visible() {
-        return; // no chrome either — see `overlay::chrome`
+        return Painted::Nothing;
     }
     with_snapshot(|snapshot| {
         if snapshot.is_playing {
             honse_services::overlay::chrome(ui, |ui| body(ui, snapshot, face));
+            Painted::Body
+        } else {
+            Painted::Nothing
         }
-    });
+    })
+    .unwrap_or(Painted::Nothing)
 }
 
 fn body(ui: &mut egui::Ui, snapshot: &CareerSnapshot, face: Face) {

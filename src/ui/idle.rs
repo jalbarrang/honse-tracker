@@ -20,7 +20,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use honse_services::overlay::theme;
+use honse_services::overlay::{theme, Painted};
 
 use super::egui;
 use crate::idle_training::{Countdown, IdleState};
@@ -83,13 +83,16 @@ fn report(countdown: Option<Countdown>) -> Report {
     }
 }
 
-pub fn draw(ui: &mut egui::Ui) {
+pub fn draw(ui: &mut egui::Ui) -> Painted {
     if !is_enabled() {
-        return;
+        return Painted::Nothing;
     }
     match report(crate::idle_training::countdown()) {
-        Report::Nothing => (), // no chrome either — nothing is running
-        r => honse_services::overlay::chrome(ui, |ui| body(ui, r)),
+        Report::Nothing => Painted::Nothing, // nothing is running
+        r => {
+            honse_services::overlay::chrome(ui, |ui| body(ui, r));
+            Painted::Body
+        }
     }
 }
 

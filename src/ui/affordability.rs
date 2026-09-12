@@ -20,7 +20,7 @@
 //! second, so a purchase shows up immediately. `refreshed_face` reports that as
 //! `Live`.
 
-use honse_services::overlay::theme;
+use honse_services::overlay::{theme, Painted};
 
 use super::{egui, with_snapshot, Face};
 use crate::memory_reader::{GrandLivePerformance, GrandLiveSquare, PerformanceTokens, ScenarioState};
@@ -29,23 +29,25 @@ use crate::memory_reader::{GrandLivePerformance, GrandLiveSquare, PerformanceTok
 /// The tree can offer more than fits a readable panel.
 const MAX_ROWS: usize = 8;
 
-pub fn draw(ui: &mut egui::Ui) {
+pub fn draw(ui: &mut egui::Ui) -> Painted {
     let face = super::refreshed_face();
     if !face.visible() {
-        return;
+        return Painted::Nothing;
     }
     with_snapshot(|snapshot| {
         if !snapshot.is_playing {
-            return;
+            return Painted::Nothing;
         }
         let Some(ScenarioState::GrandLive(perf)) = &snapshot.scenario_state else {
-            return;
+            return Painted::Nothing;
         };
         if perf.squares.is_empty() {
-            return; // no tree on offer — nothing to weigh up
+            return Painted::Nothing; // no tree on offer — nothing to weigh up
         }
         honse_services::overlay::chrome(ui, |ui| body(ui, perf, face));
-    });
+        Painted::Body
+    })
+    .unwrap_or(Painted::Nothing)
 }
 
 fn body(ui: &mut egui::Ui, perf: &GrandLivePerformance, face: Face) {

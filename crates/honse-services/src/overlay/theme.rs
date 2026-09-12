@@ -53,7 +53,7 @@ pub const ACCENT: Color32 = Color32::from_rgb(0, 210, 211);
 pub const ACCENT_BRIGHT: Color32 = Color32::from_rgb(54, 222, 222);
 /// `oklch(0.86 0.12 195)` — an accented value.
 pub const ACCENT_VALUE: Color32 = Color32::from_rgb(93, 233, 233);
-/// `oklch(0.78 0.14 65)` — layout mode, and anything with a deadline.
+/// `oklch(0.78 0.14 65)` — anything with a deadline.
 pub const CAUTION: Color32 = Color32::from_rgb(244, 163, 75);
 /// `oklch(0.80 0.14 35)` — a failure rate worth looking at twice.
 pub const WARN_RATE: Color32 = Color32::from_rgb(255, 155, 127);
@@ -101,9 +101,13 @@ pub const GAP: f32 = 24.0;
 /// Opacity multiplier applied to the whole panel while holding.
 pub const HOLDING_OPACITY: f32 = 0.62;
 
-/// Minimum height a panel is given in layout mode, so one with nothing to draw
-/// still has a box you can select and move.
-pub const LAYOUT_GHOST_HEIGHT: f32 = 26.0;
+/// Height of the draggable strip at the top of a panel.
+///
+/// Fixed rather than measured from the row inside it: every panel opens with a
+/// one-line title in the same font, so the strip lands on that line, and the
+/// panel decides its own layout without the registry having to measure a header
+/// it does not draw.
+pub const TITLE_BAR_HEIGHT: f32 = 26.0;
 
 // ── glyphs ──────────────────────────────────────────────────────────────────
 //

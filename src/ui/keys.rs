@@ -38,12 +38,10 @@ mod vk {
     pub const UP: u16 = 0x26;
     pub const RIGHT: u16 = 0x27;
     pub const DOWN: u16 = 0x28;
-    pub const A: u16 = 0x41;
     pub const B: u16 = 0x42;
     pub const D: u16 = 0x44;
     pub const I: u16 = 0x49;
-    pub const M: u16 = 0x4D;
-    pub const N: u16 = 0x4E;
+    pub const L: u16 = 0x4C;
     pub const O: u16 = 0x4F;
     pub const P: u16 = 0x50;
     pub const R: u16 = 0x52;
@@ -71,52 +69,26 @@ extern "C" fn toggle_overlay(_: *mut std::ffi::c_void) {
     hlog_info!(target: "training-tracker", "Overlay: {}", if on { "shown" } else { "hidden" });
 }
 
-// The arrows and R are shared: layout mode owns them while it is on, the
-// planner otherwise, and neither when both are closed. Sharing rather than
-// binding more chords keeps the whole scheme inside Ctrl+Shift, and only one of
-// the two can be open at a time by construction.
+// The arrows and R belong to the planner. They used to be shared with layout
+// mode; a panel is now moved by dragging its title bar with the mouse, so these
+// keys have one owner again.
 extern "C" fn nav_up(_: *mut std::ffi::c_void) {
-    if super::layout::is_active() {
-        super::layout::nudge(0.0, -1.0);
-    } else {
-        super::plan::move_cursor(-1);
-    }
+    super::plan::move_cursor(-1);
 }
 extern "C" fn nav_down(_: *mut std::ffi::c_void) {
-    if super::layout::is_active() {
-        super::layout::nudge(0.0, 1.0);
-    } else {
-        super::plan::move_cursor(1);
-    }
+    super::plan::move_cursor(1);
 }
 extern "C" fn nav_left(_: *mut std::ffi::c_void) {
-    if super::layout::is_active() {
-        super::layout::nudge(-1.0, 0.0);
-    } else {
-        super::plan::change_window(-1);
-    }
+    super::plan::change_window(-1);
 }
 extern "C" fn nav_right(_: *mut std::ffi::c_void) {
-    if super::layout::is_active() {
-        super::layout::nudge(1.0, 0.0);
-    } else {
-        super::plan::change_window(1);
-    }
+    super::plan::change_window(1);
 }
 extern "C" fn reset(_: *mut std::ffi::c_void) {
-    if super::layout::is_active() {
-        super::layout::reset_selected();
-    } else {
-        super::plan::reset_window();
-    }
+    super::plan::reset_window();
 }
 
 extern "C" fn plan_toggle_open(_: *mut std::ffi::c_void) {
-    // Layout mode and the planner both own the arrows; opening one closes the
-    // other rather than leaving the keys ambiguous.
-    if super::layout::is_active() {
-        super::layout::toggle();
-    }
     super::plan::toggle_open();
 }
 extern "C" fn plan_toggle_song(_: *mut std::ffi::c_void) {
@@ -126,17 +98,10 @@ extern "C" fn plan_toggle_bought(_: *mut std::ffi::c_void) {
     super::plan::toggle_bought_selected();
 }
 
-extern "C" fn layout_toggle(_: *mut std::ffi::c_void) {
-    if super::plan::is_open() {
-        super::plan::toggle_open();
-    }
-    super::layout::toggle();
-}
-extern "C" fn layout_next_panel(_: *mut std::ffi::c_void) {
-    super::layout::select_next();
-}
-extern "C" fn layout_cycle_anchor(_: *mut std::ffi::c_void) {
-    super::layout::cycle_anchor();
+/// Put every panel back where it registered. Not a toggle and not a mode: it is
+/// the way out of a layout that has ended up somewhere unhelpful.
+extern "C" fn layout_reset(_: *mut std::ffi::c_void) {
+    super::layout::reset_all();
 }
 
 const BINDINGS: &[Binding] = &[
@@ -159,52 +124,40 @@ const BINDINGS: &[Binding] = &[
         action: toggle_idle,
     },
     Binding {
+        id: "layout.reset",
+        label: "Put every panel back in its default position",
+        vk: vk::L,
+        action: layout_reset,
+    },
+    Binding {
         id: "plan.open",
         label: "Open/close the song planner",
         vk: vk::P,
         action: plan_toggle_open,
     },
-    Binding {
-        id: "layout.toggle",
-        label: "Enter/leave layout mode",
-        vk: vk::M,
-        action: layout_toggle,
-    },
-    Binding {
-        id: "layout.next_panel",
-        label: "Layout mode: select the next panel",
-        vk: vk::N,
-        action: layout_next_panel,
-    },
-    Binding {
-        id: "layout.cycle_anchor",
-        label: "Layout mode: send the panel to the next corner",
-        vk: vk::A,
-        action: layout_cycle_anchor,
-    },
-    // Shared between layout mode and the planner. Repeating, because nudging a
-    // panel one step per press would mean fifty presses to cross the screen.
+    // The planner's keys. Repeating, because a cursor that needs one press per
+    // song is not navigation.
     Binding {
         id: "nav.up",
-        label: "Previous song / nudge panel up",
+        label: "Previous song",
         vk: vk::UP,
         action: nav_up,
     },
     Binding {
         id: "nav.down",
-        label: "Next song / nudge panel down",
+        label: "Next song",
         vk: vk::DOWN,
         action: nav_down,
     },
     Binding {
         id: "nav.left",
-        label: "Previous concert / nudge panel left",
+        label: "Previous concert",
         vk: vk::LEFT,
         action: nav_left,
     },
     Binding {
         id: "nav.right",
-        label: "Next concert / nudge panel right",
+        label: "Next concert",
         vk: vk::RIGHT,
         action: nav_right,
     },
@@ -222,14 +175,14 @@ const BINDINGS: &[Binding] = &[
     },
     Binding {
         id: "nav.reset",
-        label: "Reset this concert / this panel's position",
+        label: "Reset this concert to the default plan",
         vk: vk::R,
         action: reset,
     },
 ];
 
-/// Bindings that fire repeatedly while held. Only the nudge/cursor keys — a
-/// toggle that repeats is a toggle that flickers.
+/// Bindings that fire repeatedly while held. Only the cursor keys — a toggle
+/// that repeats is a toggle that flickers.
 const REPEATING: &[&str] = &["nav.up", "nav.down", "nav.left", "nav.right"];
 
 /// Register every binding. Called once from plugin init.
@@ -248,7 +201,7 @@ pub fn install() {
     }
     hlog_info!(
         target: "training-tracker",
-        "Hotkeys: {bound}/{} bound \u{2014} Ctrl+Shift: O overlay, D debug, I idle timer, P planner, M layout, arrows nav, Space plan, B bought",
+        "Hotkeys: {bound}/{} bound \u{2014} Ctrl+Shift: O overlay, D debug, I idle timer, L reset panels, P planner, arrows nav, Space plan, B bought",
         BINDINGS.len()
     );
 }

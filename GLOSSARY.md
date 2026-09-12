@@ -208,10 +208,12 @@ paints its own, so a panel with nothing to say leaves *nothing* on screen rather
 than an empty box.
 
 **Anchor and inset** — a panel's position is a corner plus a distance in from
-that corner, never absolute coordinates. A resolution change then moves nothing.
+that corner, never absolute coordinates. A resolution change then moves nothing;
+the corner is re-picked as a panel is dragged, so it can still settle anywhere.
 
-**Layout mode** — the mode for moving panels: drag them, or nudge them with the
-arrow keys. Positions are saved per panel.
+**Title bar** — the top strip of a panel, and the drag handle that moves it. It
+is the panel's own header row, so a panel that is not drawn has no bar to grab
+and is moved on a screen where it is up.
 
 **Planner** — the song planner. Pick what you are saving for, per concert.
 

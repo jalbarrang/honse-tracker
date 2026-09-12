@@ -24,7 +24,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use honse_services::overlay::theme;
+use honse_services::overlay::{theme, Painted};
 
 use super::{egui, Face};
 use crate::read_gate::View;
@@ -54,11 +54,12 @@ pub fn toggle() {
     set_enabled(!is_enabled());
 }
 
-pub fn draw(ui: &mut egui::Ui) {
+pub fn draw(ui: &mut egui::Ui) -> Painted {
     if !is_enabled() {
-        return; // no chrome either — see `overlay::chrome`
+        return Painted::Nothing;
     }
     honse_services::overlay::chrome(ui, body);
+    Painted::Body
 }
 
 fn body(ui: &mut egui::Ui) {

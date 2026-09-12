@@ -17,12 +17,25 @@
 //!
 //! Mouse events arrive from [`crate::input_block`] via [`crate::pointer`] and
 //! are fed to the context every frame. Which clicks the overlay *takes* is a
-//! narrower question: a panel is interactable only while layout mode is on or
-//! the plugin has opted it in, and egui only reports the pointer as over an
-//! area when that area is interactable. So a HUD with nothing to click never
-//! swallows a click meant for the game.
+//! narrower question: a panel's title bar is a drag handle and claims the mouse
+//! while the pointer is on it, and the plugin opts a panel in for the rest of
+//! its area when the panel has something to click. Everything else reaches the
+//! game — a HUD you are not touching never swallows a click.
 //!
 //! Keyboard is not fed here at all — hotkeys are polled, not typed.
+//!
+//! # Moving a panel
+//!
+//! The top [`theme::TITLE_BAR_HEIGHT`] pixels of a panel are its handle, and
+//! they are the panel's own header row — this module draws no header of its
+//! own. A panel the game is not showing draws nothing, so it has no handle and
+//! cannot be moved; the strip exists only where there is a box under it. What
+//! this module owns is the drag, and where the panel ends up.
+//!
+//! A panel is stored as a corner plus an inset, but a drag moves a rectangle.
+//! [`placement_from_rect`] turns the moved rectangle back into the other form,
+//! re-picking the corner each frame, so a panel can be dragged anywhere on
+//! screen rather than only inward from the corner it started at.
 //!
 //! # One instance per DLL
 //!
@@ -43,7 +56,21 @@ mod d3d11_state;
 mod render;
 
 /// Draw callback for one panel. Receives a `Ui` from OUR context.
-pub type DrawFn = Box<dyn FnMut(&mut egui::Ui) + Send>;
+pub type DrawFn = Box<dyn FnMut(&mut egui::Ui) -> Painted + Send>;
+
+/// What a panel's draw closure put on screen.
+///
+/// The registry needs the answer rather than the panel's early return: a panel
+/// that painted nothing has no box, so a title strip measured off one would be
+/// an invisible grab target sitting over the game.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Painted {
+    /// The panel drew itself, chrome included — and so has a title bar.
+    Body,
+    /// Nothing at all. The game is not showing the panel, or the player turned
+    /// it off; either way there is no box, no title bar and nothing to drag.
+    Nothing,
+}
 
 /// Where a panel pins itself. Positions are stored as a corner plus an offset
 /// so a resolution change moves nothing — see the design canvas' anchor rules.
@@ -56,7 +83,8 @@ pub enum Anchor {
 }
 
 impl Anchor {
-    /// All four, in the order layout mode cycles them.
+    /// All four. The order is not stored anywhere — config files use
+    /// [`Anchor::name`].
     pub const ALL: [Self; 4] = [Self::TopLeft, Self::TopRight, Self::BottomRight, Self::BottomLeft];
 
     /// Stable name for config files — an index would renumber if the enum grew.
@@ -75,13 +103,6 @@ impl Anchor {
     #[must_use]
     pub fn from_name(name: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|a| a.name() == name)
-    }
-
-    /// The next corner, clockwise from top-left.
-    #[must_use]
-    pub fn next(self) -> Self {
-        let i = Self::ALL.iter().position(|&a| a == self).unwrap_or(0);
-        Self::ALL[(i + 1) % Self::ALL.len()]
     }
 
     const fn align(self) -> egui::Align2 {
@@ -111,18 +132,21 @@ struct Panel {
     offset: egui::Vec2,
     width: f32,
     draw: DrawFn,
-    /// Where registration put it, kept so layout mode can undo a move.
+    /// Where the panel was drawn last frame. A drag moves this rectangle and
+    /// re-derives the corner and inset from it, so it has to be kept.
+    rect: egui::Rect,
+    /// Where registration put it, so one reset can undo every move at once.
     home: (Anchor, egui::Vec2),
-    /// Whether this panel takes the mouse. Off until a panel has something to
-    /// click, because an interactable panel is one the game cannot be clicked
-    /// through.
+    /// Whether this panel takes the mouse over its whole area. Off until a
+    /// panel has something to click, because an interactable panel is one the
+    /// game cannot be clicked through.
     interactive: bool,
 }
 
 static PANELS: Lazy<Mutex<Vec<Panel>>> = Lazy::new(|| Mutex::new(Vec::new()));
 static ENABLED: AtomicBool = AtomicBool::new(true);
 
-/// A layout-mode drag in progress, and the panel the last one ended on.
+/// A title-bar drag in progress, and the panel the last one ended on.
 #[derive(Default)]
 struct Drag {
     panel: Option<&'static str>,
@@ -131,22 +155,13 @@ struct Drag {
 
 static DRAGGING: Lazy<Mutex<Drag>> = Lazy::new(|| Mutex::new(Drag::default()));
 
-/// The panel layout mode is editing, or `None` when it is off.
+/// Whether the pointer is over some panel's title bar.
 ///
-/// Lives here rather than in the plugin because [`draw_panels`] is what has to
-/// outline the panels — the state and the thing it changes are one step apart.
-static LAYOUT_SELECTION: Lazy<Mutex<Option<&'static str>>> = Lazy::new(|| Mutex::new(None));
-
-/// Enter layout mode on a panel, or leave it with `None`.
-pub fn set_layout_selection(id: Option<&'static str>) {
-    *LAYOUT_SELECTION.lock() = id;
-}
-
-/// The panel layout mode is editing.
-#[must_use]
-pub fn layout_selection() -> Option<&'static str> {
-    *LAYOUT_SELECTION.lock()
-}
+/// The bars are not egui-interactable areas, so
+/// [`egui::Context::is_pointer_over_area`] cannot see them. [`draw_panels`] sets
+/// this while it has the rects in hand, and [`paint_frame`] reads it after the
+/// frame to decide whether the next click belongs to the overlay.
+static TITLE_HOVER: AtomicBool = AtomicBool::new(false);
 
 /// Registered panel ids, in registration order.
 #[must_use]
@@ -177,6 +192,68 @@ fn inset(offset: egui::Vec2) -> egui::Vec2 {
     egui::vec2(offset.x.max(0.0), offset.y.max(0.0))
 }
 
+/// Move a rectangle the shortest way that puts it inside `screen`.
+///
+/// A drag can carry a panel past an edge — the pointer keeps moving after the
+/// panel has nowhere left to go. Clamping the rectangle before a placement is
+/// derived from it means what gets written to the config is already on screen,
+/// rather than depending on egui's `constrain_to` to hide the result every
+/// frame.
+///
+/// A rectangle larger than the screen cannot fit; it is aligned to the near edge
+/// and allowed to overflow the far one.
+fn clamp_into(rect: egui::Rect, screen: egui::Rect) -> egui::Rect {
+    let dx = if rect.left() < screen.left() {
+        screen.left() - rect.left()
+    } else if rect.right() > screen.right() {
+        screen.right() - rect.right()
+    } else {
+        0.0
+    };
+    let dy = if rect.top() < screen.top() {
+        screen.top() - rect.top()
+    } else if rect.bottom() > screen.bottom() {
+        screen.bottom() - rect.bottom()
+    } else {
+        0.0
+    };
+    rect.translate(egui::vec2(dx, dy))
+}
+
+/// The corner a panel is nearest, and its inset from that corner.
+///
+/// The inverse of what [`Anchor::signed`] plus egui's `Area::anchor` do: those
+/// turn a corner and a positive inset into a position. A drag moves a
+/// rectangle, which is not in that form, so this turns it back — the corner is
+/// the one nearest the panel's centre, and the inset is the gap between the
+/// panel's edge and that corner's screen edges.
+///
+/// Re-deriving the corner every frame is what lets a panel be dragged anywhere.
+/// An inset from a fixed corner can only push a panel inward from it; switching
+/// corners as the centre crosses the middle of the screen costs nothing because
+/// the inset is measured afresh from the same rectangle, so the position does
+/// not move when the corner changes.
+///
+/// The rectangle is clamped into the screen first, so no inset this returns can
+/// place a panel somewhere its title bar is off the edge and unreachable.
+fn placement_from_rect(rect: egui::Rect, screen: egui::Rect) -> (Anchor, egui::Vec2) {
+    let rect = clamp_into(rect, screen);
+    let centre = rect.center();
+    let anchor = match (centre.x < screen.center().x, centre.y < screen.center().y) {
+        (true, true) => Anchor::TopLeft,
+        (false, true) => Anchor::TopRight,
+        (true, false) => Anchor::BottomLeft,
+        (false, false) => Anchor::BottomRight,
+    };
+    let offset = match anchor {
+        Anchor::TopLeft => egui::vec2(rect.left() - screen.left(), rect.top() - screen.top()),
+        Anchor::TopRight => egui::vec2(screen.right() - rect.right(), rect.top() - screen.top()),
+        Anchor::BottomLeft => egui::vec2(rect.left() - screen.left(), screen.bottom() - rect.bottom()),
+        Anchor::BottomRight => egui::vec2(screen.right() - rect.right(), screen.bottom() - rect.bottom()),
+    };
+    (anchor, inset(offset))
+}
+
 /// Let a panel take the mouse, or stop it taking the mouse.
 ///
 /// The plugin turns this on for a panel while it has something to click and off
@@ -188,33 +265,37 @@ pub fn set_panel_interactive(id: &str, interactive: bool) {
     }
 }
 
-/// The panel a mouse drag just finished on, taken once.
+/// The panel a title-bar drag just finished on, taken once.
 ///
-/// Layout mode drags a panel by updating its offset directly; persisting that
-/// belongs to the plugin, which owns the config file.
+/// The drag moves the panel directly; persisting where it landed belongs to the
+/// plugin, which owns the config file.
 #[must_use]
 pub fn take_moved_panel() -> Option<&'static str> {
     DRAGGING.lock().finished.take()
 }
 
-/// Put a panel back where registration placed it.
-pub fn reset_placement(id: &str) {
-    if let Some(panel) = PANELS.lock().iter_mut().find(|p| p.id == id) {
+/// Put every panel back where it registered.
+///
+/// The recovery path for a layout that has gone somewhere unhelpful: a panel
+/// parked over the thing it was reporting on, or a saved position from a
+/// resolution the game no longer runs at.
+pub fn reset_all_placements() {
+    for panel in PANELS.lock().iter_mut() {
         let (anchor, offset) = panel.home;
         panel.anchor = anchor;
         panel.offset = offset;
     }
 }
 
-/// Register a panel. It renders every frame the overlay is enabled and its own
-/// draw closure chooses to put something on screen — a panel with nothing to
-/// say should draw nothing rather than an empty frame.
+/// Register a panel. It renders every frame the overlay is enabled, and its own
+/// draw closure decides what that means: a panel with nothing to say paints
+/// nothing and says so, rather than leaving an empty box on screen.
 pub fn register_panel(
     id: &'static str,
     anchor: Anchor,
     offset: egui::Vec2,
     width: f32,
-    draw: impl FnMut(&mut egui::Ui) + Send + 'static,
+    draw: impl FnMut(&mut egui::Ui) -> Painted + Send + 'static,
 ) {
     PANELS.lock().push(Panel {
         id,
@@ -222,6 +303,9 @@ pub fn register_panel(
         offset,
         width,
         draw: Box::new(draw),
+        // Empty until the first frame. A drag cannot start before then either,
+        // because the strip it grabs is measured off this.
+        rect: egui::Rect::ZERO,
         home: (anchor, offset),
         interactive: false,
     });
@@ -368,7 +452,8 @@ fn paint_frame(swapchain: &windows::Win32::Graphics::Dxgi::IDXGISwapChain) -> wi
     // Now that the frame knows where the pointer landed, decide whether the
     // next click is ours. One frame behind by construction — which is harmless,
     // because the move that establishes the hover always precedes the click.
-    let capturing = ctx.is_pointer_over_area() || DRAGGING.lock().panel.is_some();
+    let capturing =
+        ctx.is_pointer_over_area() || DRAGGING.lock().panel.is_some() || TITLE_HOVER.load(Ordering::Acquire);
     crate::pointer::set_capturing(capturing);
 
     let (output, _platform, _viewports) = egui_directx11::split_output(full_output);
@@ -431,8 +516,15 @@ fn current_modifiers() -> egui::Modifiers {
 ///
 /// Called before the panels are drawn so the panel moves under the cursor this
 /// frame rather than trailing it by one.
+///
+/// The panel's remembered rectangle is where it was drawn last frame, which is
+/// where the pointer is holding it. Translating that and re-deriving the corner
+/// and inset is what lets a drag cross the middle of the screen: an inset from a
+/// fixed corner could only ever push the panel inward from it. The derivation
+/// also clamps the moved rectangle into the screen, so a drag cannot park a
+/// panel off the edge.
 #[cfg(windows)]
-fn drag_step(panels: &mut [Panel], down: bool, delta: egui::Vec2) {
+fn drag_step(panels: &mut [Panel], screen: egui::Rect, down: bool, delta: egui::Vec2) {
     let mut drag = DRAGGING.lock();
     let Some(id) = drag.panel else {
         return;
@@ -443,16 +535,14 @@ fn drag_step(panels: &mut [Panel], down: bool, delta: egui::Vec2) {
         return;
     }
     if let Some(panel) = panels.iter_mut().find(|p| p.id == id) {
-        // Offsets are insets from the panel's own corner, so a screen-space
-        // delta needs the same sign flip that turns an inset into a position.
-        // `signed` is its own inverse, which is why it does both jobs.
-        panel.offset = inset(panel.offset + panel.anchor.signed(delta));
+        let (anchor, offset) = placement_from_rect(panel.rect.translate(delta), screen);
+        panel.anchor = anchor;
+        panel.offset = offset;
     }
 }
 
 #[cfg(windows)]
 fn draw_panels(ctx: &egui::Context, screen: egui::Rect) {
-    let selected = layout_selection();
     let (pointer, pressed, down, delta) = ctx.input(|i| {
         (
             i.pointer.interact_pos(),
@@ -463,15 +553,16 @@ fn draw_panels(ctx: &egui::Context, screen: egui::Rect) {
     });
 
     let mut panels = PANELS.lock();
-    drag_step(&mut panels, down, delta);
+    drag_step(&mut panels, screen, down, delta);
+    TITLE_HOVER.store(false, Ordering::Release);
 
     for panel in panels.iter_mut() {
         let anchor = panel.anchor;
         let width = panel.width;
         let id = panel.id;
-        // Layout mode makes every panel grabbable; otherwise only a panel that
-        // asked for the mouse takes it.
-        let interactive = panel.interactive || selected.is_some();
+        // Only a panel with something to click takes the mouse over its body;
+        // the title bar is claimed separately, from the rect it ends up with.
+        let interactive = panel.interactive;
         let draw = &mut panel.draw;
         let response = egui::Area::new(egui::Id::new(("honse-overlay", id)))
             .anchor(anchor.align(), anchor.signed(panel.offset))
@@ -479,56 +570,73 @@ fn draw_panels(ctx: &egui::Context, screen: egui::Rect) {
             .constrain_to(screen)
             .show(ctx, |ui| {
                 ui.set_width(width);
-                if selected.is_some() {
-                    // Layout mode shows every panel, including ones with
-                    // nothing to say — you cannot place what you cannot see.
-                    ui.set_min_height(theme::LAYOUT_GHOST_HEIGHT);
-                }
-                // No chrome here: the panel paints its own via `chrome`, so a
-                // panel that returns early leaves nothing at all on screen.
-                draw(ui);
+                draw(ui)
             });
 
-        let rect = response.response.rect;
-        // Press to grab: in layout mode the whole panel is the handle, which is
-        // what makes it draggable without giving it a title bar it would carry
-        // for the other 99% of the time.
-        let grabbed = selected.is_some() && pressed && pointer.is_some_and(|pos| rect.contains(pos));
-        if grabbed {
-            DRAGGING.lock().panel = Some(id);
-            *LAYOUT_SELECTION.lock() = Some(id);
+        // A panel with nothing on screen leaves no box, so a strip measured
+        // off one would be an invisible grab target sitting over the game.
+        if response.inner == Painted::Nothing {
+            panel.rect = egui::Rect::ZERO;
+            continue;
         }
 
-        if let Some(selected) = selected {
-            outline(ctx, id, rect, selected == id);
+        let rect = response.response.rect;
+        panel.rect = rect;
+
+        // What egui drew is the truth, because it constrains the area to the
+        // screen. Deriving the placement from the drawn rectangle keeps what is
+        // stored equal to what is on screen, so a position saved at a resolution
+        // the game no longer runs at corrects itself on the first frame.
+        let (anchor, offset) = placement_from_rect(rect, screen);
+        panel.anchor = anchor;
+        panel.offset = offset;
+
+        // The handle is the top strip of the panel, which is its own header
+        // row. Nothing is drawn for the handle itself — only the cue.
+        let strip = title_strip(rect);
+        let hovered = pointer.is_some_and(|pos| strip.contains(pos));
+        let dragging = DRAGGING.lock().panel == Some(id);
+        if hovered {
+            TITLE_HOVER.store(true, Ordering::Release);
+            // Press to grab. With two panels overlapping the first one in
+            // registration order is the one that takes it.
+            let mut drag = DRAGGING.lock();
+            if pressed && drag.panel.is_none() {
+                drag.panel = Some(id);
+            }
+        }
+        if hovered || dragging {
+            handle_cue(ctx, id, strip, dragging);
         }
     }
 }
 
-/// Layout-mode decoration: box the panel and name it.
+/// The draggable strip at the top of a panel.
 #[cfg(windows)]
-fn outline(ctx: &egui::Context, id: &str, rect: egui::Rect, selected: bool) {
+fn title_strip(rect: egui::Rect) -> egui::Rect {
+    egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), theme::TITLE_BAR_HEIGHT))
+}
+
+/// Say that a panel's title bar is there to be picked up.
+///
+/// A line under the strip rather than a wash over it: at this row height a fill
+/// behind small text costs more legibility than the cue is worth, and the strip
+/// already carries the panel's own title.
+#[cfg(windows)]
+fn handle_cue(ctx: &egui::Context, id: &str, strip: egui::Rect, dragging: bool) {
     let painter = ctx.layer_painter(egui::LayerId::new(
         egui::Order::Foreground,
-        egui::Id::new(("honse-overlay-layout", id)),
+        egui::Id::new(("honse-overlay-handle", id)),
     ));
-    let colour = if selected {
+    let colour = if dragging {
         theme::ACCENT_BRIGHT
     } else {
         theme::TEXT_FAINT
     };
-    painter.rect_stroke(
-        rect.expand(2.0),
-        egui::CornerRadius::same(theme::RADIUS_PANEL),
-        egui::Stroke::new(if selected { 2.0 } else { 1.0 }, colour),
-        egui::StrokeKind::Outside,
-    );
-    painter.text(
-        rect.left_top() + egui::vec2(2.0, -4.0),
-        egui::Align2::LEFT_BOTTOM,
-        id,
-        theme::text::meta(),
-        colour,
+    painter.hline(
+        strip.left()..=strip.right(),
+        strip.bottom() - 1.0,
+        egui::Stroke::new(if dragging { 2.0 } else { 1.0 }, colour),
     );
 }
 
@@ -564,5 +672,81 @@ mod tests {
     #[test]
     fn insets_never_go_negative() {
         assert_eq!(inset(egui::vec2(-5.0, 12.0)), egui::vec2(0.0, 12.0));
+    }
+
+    fn screen() -> egui::Rect {
+        egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1920.0, 1080.0))
+    }
+
+    /// A corner and inset turned back into a rectangle the way egui's
+    /// `Area::anchor` does it: align the size to the corner, then apply the
+    /// signed inset. `placement_from_rect` has to invert exactly this.
+    fn anchored_rect(anchor: Anchor, offset: egui::Vec2, size: egui::Vec2, screen: egui::Rect) -> egui::Rect {
+        let corner = match anchor {
+            Anchor::TopLeft => screen.left_top(),
+            Anchor::TopRight => screen.right_top() - egui::vec2(size.x, 0.0),
+            Anchor::BottomLeft => screen.left_bottom() - egui::vec2(0.0, size.y),
+            Anchor::BottomRight => screen.right_bottom() - size,
+        };
+        egui::Rect::from_min_size(corner + anchor.signed(offset), size)
+    }
+
+    #[test]
+    fn every_quadrant_stores_against_its_own_corner() {
+        let size = egui::vec2(100.0, 100.0);
+        let cases = [
+            (egui::pos2(50.0, 50.0), Anchor::TopLeft),
+            (egui::pos2(1700.0, 50.0), Anchor::TopRight),
+            (egui::pos2(50.0, 900.0), Anchor::BottomLeft),
+            (egui::pos2(1700.0, 900.0), Anchor::BottomRight),
+        ];
+        for (min, expected) in cases {
+            let rect = egui::Rect::from_min_size(min, size);
+            let (anchor, offset) = placement_from_rect(rect, screen());
+            assert_eq!(anchor, expected, "{min:?}");
+            assert_eq!(anchored_rect(anchor, offset, size, screen()), rect, "{min:?}");
+        }
+    }
+
+    #[test]
+    fn crossing_the_middle_changes_the_corner_without_moving_the_panel() {
+        let size = egui::vec2(200.0, 100.0);
+        // Two positions straddling the vertical middle of the screen. They are
+        // re-anchored on opposite sides, and both have to resolve to the
+        // rectangle they came from — that equality is what makes the corner
+        // change invisible while dragging across the centre.
+        for x in [855.0, 865.0] {
+            let rect = egui::Rect::from_min_size(egui::pos2(x, 450.0), size);
+            let (anchor, offset) = placement_from_rect(rect, screen());
+            assert_eq!(anchored_rect(anchor, offset, size, screen()), rect, "{anchor:?}");
+        }
+    }
+
+    #[test]
+    fn a_rect_past_an_edge_is_pulled_back_inside() {
+        let screen = screen();
+        let size = egui::vec2(300.0, 200.0);
+
+        // Off the top and the right at once: the shortest way in is down and
+        // left, one edge each.
+        let off = egui::Rect::from_min_size(egui::pos2(1900.0, -40.0), size);
+        let inside = clamp_into(off, screen);
+        assert_eq!(inside.top(), screen.top());
+        assert_eq!(inside.right(), screen.right());
+        assert!(screen.contains_rect(inside), "{inside:?}");
+
+        // Already inside is left exactly alone.
+        let already = egui::Rect::from_min_size(egui::pos2(24.0, 96.0), size);
+        assert_eq!(clamp_into(already, screen), already);
+    }
+
+    #[test]
+    fn a_placement_derived_from_an_off_screen_rect_still_lands_on_screen() {
+        let screen = screen();
+        let size = egui::vec2(300.0, 200.0);
+        let off = egui::Rect::from_min_size(egui::pos2(5000.0, 5000.0), size);
+        let (anchor, offset) = placement_from_rect(off, screen);
+        let placed = anchored_rect(anchor, offset, size, screen);
+        assert!(screen.contains_rect(placed), "{anchor:?} {placed:?}");
     }
 }

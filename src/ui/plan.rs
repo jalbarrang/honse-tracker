@@ -27,7 +27,7 @@
 
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 
-use honse_services::overlay::theme;
+use honse_services::overlay::{theme, Painted};
 
 use super::{egui, with_snapshot};
 use crate::memory_reader::ScenarioState;
@@ -169,11 +169,13 @@ pub fn reset_window() {
     hlog_info!(target: "training-tracker", "Song planner: concert {window} reset to guide defaults");
 }
 
-pub fn draw(ui: &mut egui::Ui) {
+pub fn draw(ui: &mut egui::Ui) -> Painted {
     if !is_open() {
-        return;
+        // Switched off by the player: nothing on screen, and so no title bar.
+        return Painted::Nothing;
     }
     honse_services::overlay::chrome(ui, body);
+    Painted::Body
 }
 
 fn body(ui: &mut egui::Ui) {

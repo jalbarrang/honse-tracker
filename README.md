@@ -59,7 +59,7 @@ the game sees them — a bound chord does not reach it.
 | `Ctrl+Shift+P` | Open/close the song planner |
 | `Ctrl+Shift+D` | Show/hide the screen debug readout |
 | `Ctrl+Shift+I` | Show/hide the Independent Training timer |
-| `Ctrl+Shift+M` | Enter/leave layout mode |
+| `Ctrl+Shift+L` | Put every panel back in its default position |
 
 ### In the planner
 
@@ -75,17 +75,21 @@ The mouse works too: **left-click** plans a song, **right-click** marks it
 bought. Clicks only go to the planner while it is open — everywhere else they
 reach the game as normal.
 
-### In layout mode
+### Moving a panel
 
-| Shortcut | Does |
-| --- | --- |
-| `Ctrl+Shift+N` | Select the next panel |
-| `Ctrl+Shift+A` | Send it to the next corner |
-| `Ctrl+Shift+↑↓←→` | Nudge it, four pixels at a time. Hold to repeat |
-| `Ctrl+Shift+R` | Put it back where it started |
+Grab a panel by its **title bar** — the top strip of the box — and drag it
+anywhere on screen. The line under the title bar lights up while the bar is
+under the pointer. A panel the game is not showing is not drawn at all, so it has
+to be moved on a screen where it is up.
 
-You can also just drag a panel with the mouse. Positions are saved as a corner
-plus a distance from it, so changing resolution does not move anything.
+Positions are saved as a corner plus a distance in from it, so changing
+resolution does not move anything. The corner is re-chosen as you drag, which is
+what lets a panel cross the middle of the screen and settle anywhere.
+
+A drag is clamped to the game window, so a panel cannot be parked off screen.
+If a saved layout is still somewhere unhelpful — the window got smaller, or a
+panel ended up over the thing it reports on — `Ctrl+Shift+L` puts every panel
+back where it started and forgets the saved positions.
 
 ## The Hachimi menu
 
