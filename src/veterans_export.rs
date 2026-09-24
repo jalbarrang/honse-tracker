@@ -521,6 +521,19 @@ mod tests {
         assert_eq!(keys_of(&Veteran::default()), sorted(UMADUMP_KEYS));
     }
 
+    /// The career example carries a veteran in this exact shape, minus the
+    /// account ids the career envelope strips. A reader written for one file
+    /// reads the other, and the example is what `idle_export` embeds.
+    #[test]
+    fn the_career_examples_vet_matches_this_schema() {
+        let example: serde_json::Value =
+            serde_json::from_str(include_str!("../docs/idle-career-format.example.json")).expect("json");
+        let vet = example.get("vet").expect("the example carries a vet");
+        let mut expected = sorted(UMADUMP_KEYS);
+        expected.retain(|key| key != "viewer_id" && key != "owner_viewer_id");
+        assert_eq!(keys_of(vet), expected);
+    }
+
     #[test]
     fn the_nested_records_match_too() {
         assert_eq!(keys_of(&Skill::default()), sorted(&["skill_id", "level"]));

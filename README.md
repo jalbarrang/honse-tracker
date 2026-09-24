@@ -149,8 +149,9 @@ none at all.
 **`save_idle_careers`** — when an Independent Training finishes, the server
 sends the whole run in one response: every stat, every skill learned, the race
 history, the succession factors, what each support card contributed. The game
-shows you a summary and drops the rest. This writes the response to disk first,
-as pretty-printed JSON, so you can analyse it later.
+shows you a summary and drops the rest. This writes the response to disk, as
+pretty-printed JSON, so you can analyse it later — together with the trained
+character the run produced, once the game has created it.
 
 On by default — it only reads, and the data is gone once you have clicked
 through the summary. Turn it off in the Hachimi menu if you do not want the
@@ -169,10 +170,10 @@ suffix keeps the two apart.
 
 Inside, the game's response sits untouched under `response`, and everything
 around it — when it was captured, which plugin build and callback wrote it,
-anything the walk could not read — is ours. The full shape is in
-[`docs/idle-career-format.md`](docs/idle-career-format.md), with a complete
-example next to it. Files written by 0.3 and 0.4 have an older shape; the
-viewer still opens them.
+anything the walk could not read, and the `vet` it became — is ours. The full
+shape is in [`docs/idle-career-format.md`](docs/idle-career-format.md), with a
+complete example next to it. Files written by 0.3 and 0.4 have an older shape;
+the viewer still opens them.
 
 ## Exporting veterans
 

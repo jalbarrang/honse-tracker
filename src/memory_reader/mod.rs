@@ -64,4 +64,4 @@ pub use snapshot::{
 };
 pub use story_events::{read_fired_events, FiredEvent};
 pub use support_deck::read_equipped_support_ids;
-pub use veterans::read_veterans;
+pub use veterans::{read_veterans, read_veterans_by_id, server_trained_chara_id, server_trained_chara_ids};

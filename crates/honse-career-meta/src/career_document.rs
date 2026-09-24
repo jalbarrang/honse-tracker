@@ -14,6 +14,7 @@
 //!   "captured_at": "2026-09-02T01:24:56-04:00",
 //!   "source": { "plugin_version": "0.4.0", "callback": "end",
 //!               "response_type": "IdleSingleModeEndResponse" },
+//!   "vet": { "trained_chara_id": 4021, "...": "..." },
 //!   "unreadable": [],
 //!   "response": { "data": { "end_info": {}, "progress_log_info": {} } }
 //! }
@@ -121,6 +122,14 @@ pub struct CareerDocument {
     format_version: u32,
     captured_at: DateTime<FixedOffset>,
     source: Source,
+    /// The trained character this run produced, once the game has created it.
+    ///
+    /// Ours, so it lives in the envelope and not in `response`. Absent on
+    /// files written before the plugin waited for the vet, and on any run whose
+    /// vet never appeared — which is why it is optional and skipped when
+    /// absent rather than written as `null`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    vet: Option<Value>,
     unreadable: Vec<Unreadable>,
     response: Value,
 }
@@ -179,7 +188,21 @@ impl CareerDocument {
             source,
             unreadable,
             response,
+            vet: None,
         }
+    }
+
+    /// Attach the trained character the run produced.
+    ///
+    /// Called once the game has created the vet, which is after the response
+    /// this document was built from. Account ids are stripped from it the same
+    /// way they are stripped from the payload: a career file may be shared, and
+    /// the vet record carries `viewer_id`/`owner_viewer_id`.
+    #[must_use]
+    pub fn with_vet(mut self, mut vet: Value) -> Self {
+        scrub(&mut vet);
+        self.vet = Some(vet);
+        self
     }
 
     /// Read a file back.
@@ -224,6 +247,7 @@ impl CareerDocument {
             source: Source::new(callback, &plugin_version),
             unreadable: Vec::new(),
             response: value,
+            vet: None,
         })
     }
 
@@ -270,6 +294,13 @@ impl CareerDocument {
     #[must_use]
     pub fn response(&self) -> &Value {
         &self.response
+    }
+
+    /// The trained character this run produced, if the plugin had it when the
+    /// file was written. `None` on files from before the vet was waited for.
+    #[must_use]
+    pub fn vet(&self) -> Option<&Value> {
+        self.vet.as_ref()
     }
 
     /// The trainee's card, if the payload still has the shape it had when this
@@ -331,6 +362,10 @@ mod tests {
             parsed.response().clone(),
             parsed.unreadable().to_vec(),
         );
+        let rebuilt = match parsed.vet() {
+            Some(vet) => rebuilt.with_vet(vet.clone()),
+            None => rebuilt,
+        };
         assert_eq!(rebuilt, parsed, "capture builds what parse read");
 
         let written = rebuilt.to_json().expect("serialises");
@@ -362,6 +397,45 @@ mod tests {
         assert!(!text.contains("viewer"), "{text}");
         assert_eq!(doc.card_id(), Some(100_702), "everything else survives");
         assert_eq!(doc.response()["data"]["list"][1]["keep"], 1);
+    }
+
+    /// The vet is ours, so it lives in the envelope, survives a round trip, and
+    /// is scrubbed exactly like the payload: a career file may be shared.
+    #[test]
+    fn the_vet_is_carried_and_scrubbed() {
+        let response = json!({ "data": { "end_info": { "chara_info": { "card_id": 100702 } } } });
+        let vet = json!({
+            "trained_chara_id": 42,
+            "viewer_id": 413,
+            "owner_viewer_id": 413,
+            "succession_chara_array": [ { "owner_viewer_id": 413, "card_id": 100101 } ]
+        });
+        let doc = CareerDocument::capture(Source::new(Callback::End, "0"), stamp(), response, Vec::new()).with_vet(vet);
+
+        let written = doc.to_json().expect("serialises");
+        assert!(!written.contains("413"), "{written}");
+        assert!(!written.contains("viewer"), "{written}");
+
+        let again = CareerDocument::parse("x.json", &written).expect("reads its own output");
+        let vet = again.vet().expect("the vet survives");
+        assert_eq!(vet["trained_chara_id"], 42);
+        assert_eq!(vet["succession_chara_array"][0]["card_id"], 100101);
+        assert_eq!(again, doc, "vet and all");
+    }
+
+    /// A run whose vet never appeared keeps the shape it had before the key
+    /// existed: absent, not `null`, so an old reader sees nothing new.
+    #[test]
+    fn a_document_without_a_vet_omits_the_key() {
+        let doc = CareerDocument::capture(
+            Source::new(Callback::End, "0"),
+            stamp(),
+            json!({ "data": {} }),
+            Vec::new(),
+        );
+        let written = doc.to_json().expect("serialises");
+        assert!(!written.contains("\"vet\""), "{written}");
+        assert_eq!(CareerDocument::parse("x.json", &written).expect("parses").vet(), None);
     }
 
     #[test]

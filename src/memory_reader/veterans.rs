@@ -27,7 +27,7 @@
 //! Unity main thread. These are live managed objects; reading them from
 //! anywhere else is reading memory the GC may be moving.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
 
 use crate::compat::Sdk;
@@ -48,7 +48,7 @@ use super::il2cpp::{
 pub fn read_veterans() -> Vec<Veteran> {
     // SAFETY: every read below is on resolved metadata / live objects, on the
     // Unity main thread per the module contract.
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe { inner() })) {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe { inner(None) })) {
         Ok(v) => v,
         Err(_) => {
             hlog_error!("read_veterans PANICKED");
@@ -57,7 +57,70 @@ pub fn read_veterans() -> Vec<Veteran> {
     }
 }
 
-unsafe fn inner() -> Vec<Veteran> {
+/// Just the veterans whose `trained_chara_id` is in `ids`.
+///
+/// `WorkTrainedCharaData.AddTrainedCharaArray` hands the finish hook the ids the
+/// server just created, so the hook can ask for those entries instead of paying
+/// for a walk of the whole roster. Every other entry is skipped after one
+/// `ObscuredInt` read.
+///
+/// Unity main thread, same contract as [`read_veterans`]: these are live managed
+/// objects and the GC may move them on any other thread.
+#[must_use]
+pub fn read_veterans_by_id(ids: &[i32]) -> Vec<Veteran> {
+    if ids.is_empty() {
+        return Vec::new();
+    }
+    let wanted: HashSet<i32> = ids.iter().copied().collect();
+    // SAFETY: as in `read_veterans`.
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe { inner(Some(&wanted)) })) {
+        Ok(v) => v,
+        Err(_) => {
+            hlog_error!("read_veterans_by_id PANICKED");
+            Vec::new()
+        }
+    }
+}
+
+/// The `trained_chara_id`s on a server `Gallop.TrainedChara[]`.
+///
+/// `WorkTrainedCharaData.AddTrainedCharaArray` is handed the array the server
+/// just created, so these are the ids that are new — no guessing from the
+/// roster. The server type carries them as plain `System.Int32` fields, not
+/// `ObscuredInt`, so there is no key to decrypt (`Gallop.TrainedChara`,
+/// `il2cpp_classes.txt`, Global 2026-09-13).
+///
+/// Unity main thread: the array is a live managed object.
+#[must_use]
+pub unsafe fn server_trained_chara_ids(array: *mut c_void) -> Vec<i32> {
+    // SAFETY: `array` is a live Gallop.TrainedChara[] or null.
+    let Some((base, len)) = (unsafe { read_obj_array(array) }) else {
+        return Vec::new();
+    };
+    (0..len)
+        .filter_map(|i| {
+            // SAFETY: i < len, and each slot holds an object pointer.
+            let element = unsafe { *base.add(i) };
+            (!element.is_null()).then(|| unsafe { read_i32_field_any(element, &["trained_chara_id"]) })
+        })
+        .filter(|id| *id != 0)
+        .collect()
+}
+
+/// The `trained_chara_id` on one `Gallop.TrainedChara`, or `None` when absent.
+///
+/// Unity main thread, same as [`server_trained_chara_ids`].
+#[must_use]
+pub unsafe fn server_trained_chara_id(chara: *mut c_void) -> Option<i32> {
+    if chara.is_null() {
+        return None;
+    }
+    // SAFETY: `chara` is a live Gallop.TrainedChara.
+    let id = unsafe { read_i32_field_any(chara, &["trained_chara_id"]) };
+    (id != 0).then_some(id)
+}
+
+unsafe fn inner(wanted: Option<&HashSet<i32>>) -> Vec<Veteran> {
     let sdk = Sdk::get();
     let Some(image) = sdk.get_assembly_image("umamusume.dll") else {
         hlog_warn!(target: "training-tracker", "veterans: umamusume.dll not found");
@@ -102,6 +165,11 @@ unsafe fn inner() -> Vec<Veteran> {
     );
     entries
         .into_iter()
+        .filter(|obj| match wanted {
+            // SAFETY: each value is a live TrainedCharaData the dictionary holds.
+            Some(ids) => ids.contains(&unsafe { read_obscured_int(*obj, "id") }),
+            None => true,
+        })
         // SAFETY: each value is a live TrainedCharaData the dictionary holds.
         .map(|obj| unsafe { veteran(obj, &favorites) })
         .collect()

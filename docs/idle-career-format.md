@@ -19,6 +19,7 @@ construction a file the current code writes.
     "callback": "end",
     "response_type": "IdleSingleModeEndResponse"
   },
+  "vet": { "trained_chara_id": 4021, "...": "..." },
   "unreadable": [],
   "response": {
     "data": {
@@ -49,8 +50,37 @@ Two halves, with a hard line between them:
 | `source.plugin_version` | string | The `honse-tracker` build that wrote the file. |
 | `source.callback` | `"end"` or `"result"` | Which of the game's two callbacks produced it. `end` fires when the run is finalised, `result` when its log is opened later. Same payload shape either way. |
 | `source.response_type` | string | The game's own type for the payload, to look up in the client. |
+| `vet` | object | The trained character this run produced, in umadump's `trained_chara_data.json` schema. Absent when the plugin did not have it. See below. |
 | `unreadable` | array | Branches the walk gave up on. See below. |
 | `response` | object | The payload. |
+
+## The veteran
+
+The response says what the run did; it does not say which trained character the
+run became. That record is created afterwards, so the plugin holds the walked
+response and writes the file only once the game has created the veteran — the
+file then carries it under `vet`, in the same schema as `veterans.json`
+(umadump's `trained_chara_data.json`). Account ids are stripped from it too.
+
+How the two are joined: the game announces the new record to
+`WorkTrainedCharaData.AddTrainedCharaArray(Gallop.TrainedChara[])`, and the
+plugin matches it to the held run by race history — `race_history_array` in the
+payload against `race_result_list` on the veteran, `turn`/`program_id`/
+`weather`/`ground_condition`/`running_style`/`result_rank`, in order. There is no
+id shared by both sides: `Gallop.TrainedChara` has no `single_mode_chara_id`
+(the field is server-only and reads as `0` in the client), and the payload has no
+`trained_chara_id`.
+
+A run whose veteran never appears is dropped, and the log says so. That is
+deliberate: a career file that cannot name the character it became is the thing
+this key exists to avoid. `result` is the exception in timing only — it fires
+when the log is opened later, by which point the veteran is already in the
+roster, so it is matched against the roster instead of waiting for a hook.
+
+If the plugin cannot hook `WorkTrainedCharaData` (a game update moved it), there
+is nothing to wait for, so runs are written as soon as they finish with no `vet`
+key at all. Files written before this existed have no `vet` key either; an
+absent key means "not known", never "no veteran".
 
 ## Departures from "verbatim"
 
